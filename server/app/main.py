@@ -8,6 +8,32 @@ from typing import List, Dict, Optional, Any
 import json
 import uuid
 from datetime import datetime
+from dotenv import load_dotenv
+import psycopg
+from sqlalchemy import create_engine, text, Column, Integer, String, DateTime, JSON, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import json
+
+# 환경 변수 로드
+load_dotenv()
+
+# SQLAlchemy 설정
+Base = declarative_base()
+
+class Welcome1Raw(Base):
+    __tablename__ = 'welcome1_raw'
+    id = Column(Integer, primary_key=True)
+    source_name = Column(String)
+    source_rownum = Column(Integer)
+    payload = Column(Text)
+    row_hash = Column(String)
+
+class Welcome2Second(Base):
+    __tablename__ = 'welcome2_2nd'
+    id = Column(Integer, primary_key=True)
+    data = Column(JSON)
+    created_at = Column(DateTime)
 
 try:
   from anthropic import Anthropic
@@ -55,6 +81,29 @@ class ComparisonRequest(BaseModel):
 
 # FastAPI 앱 초기화
 app = FastAPI(title="Panel Insight API", version="0.1.0")
+
+# 데이터베이스 연결 설정
+DATABASE_URL = f"postgresql+psycopg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 데이터베이스 연결 테스트 함수
+def test_db_connection():
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            return True
+    except Exception as e:
+        print(f"Database connection failed: {e}")
+        return False
+
+# 데이터베이스 세션 의존성
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 app.add_middleware(
   CORSMiddleware,
@@ -234,6 +283,14 @@ for i in range(17):
 def health():
     return {"status": "ok"}
 
+@app.get("/db/test")
+def test_database():
+    """데이터베이스 연결 테스트"""
+    if test_db_connection():
+        return {"status": "success", "message": "Database connection successful"}
+    else:
+        return {"status": "error", "message": "Database connection failed"}
+
 @app.get("/")
 def root():
     return {"name": "Panel Insight API", "version": "0.1.0"}
@@ -241,103 +298,248 @@ def root():
 # 패널 관련 API
 @app.get("/api/panels")
 def get_panels(page: int = 1, limit: int = 20):
-    """패널 목록 조회"""
-    start_idx = (page - 1) * limit
-    end_idx = start_idx + limit
-    
-    panels = SAMPLE_PANELS[start_idx:end_idx]
-    total = len(SAMPLE_PANELS)
-    
-    return {
-        "panels": panels,
-        "pagination": {
-            "page": page,
-            "limit": limit,
-            "total": total,
-            "pages": (total + limit - 1) // limit
-        }
-    }
+    """패널 목록 조회 - 실제 데이터베이스에서 조회"""
+    try:
+        with engine.connect() as conn:
+            # 기본 쿼리
+            query = """
+            SELECT 
+                w1.id,
+                w1.source_name,
+                w1.source_rownum,
+                w1.payload,
+                w1.row_hash,
+                w2.data,
+                w2.created_at
+            FROM welcome1_raw w1
+            LEFT JOIN welcome2_2nd w2 ON w1.id = w2.id
+            ORDER BY w1.id
+            LIMIT :limit OFFSET :offset
+            """
+            
+            offset = (page - 1) * limit
+            result = conn.execute(text(query), {"limit": limit, "offset": offset})
+            rows = result.fetchall()
+            
+            # 결과를 딕셔너리로 변환
+            panels = []
+            for row in rows:
+                panel_data = {
+                    "id": str(row.id),
+                    "source_name": row.source_name,
+                    "source_rownum": row.source_rownum,
+                    "payload": row.payload,
+                    "row_hash": row.row_hash,
+                    "data": row.data,
+                    "created_at": row.created_at.isoformat() if row.created_at else None
+                }
+                panels.append(panel_data)
+            
+            # 전체 개수 조회
+            count_query = """
+            SELECT COUNT(*) 
+            FROM welcome1_raw w1
+            LEFT JOIN welcome2_2nd w2 ON w1.id = w2.id
+            """
+            count_result = conn.execute(text(count_query))
+            total = count_result.scalar()
+            
+            return {
+                "panels": panels,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "pages": (total + limit - 1) // limit
+                }
+            }
+            
+    except Exception as e:
+        print(f"Panels list error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch panels: {str(e)}")
 
 @app.get("/api/panels/{panel_id}")
 def get_panel(panel_id: str):
-    """패널 상세 조회"""
-    panel = next((p for p in SAMPLE_PANELS if p["id"] == panel_id), None)
-    if not panel:
-        raise HTTPException(status_code=404, detail="Panel not found")
-    return panel
+    """패널 상세 정보 조회 - 실제 데이터베이스에서 조회"""
+    try:
+        with engine.connect() as conn:
+            query = """
+            SELECT 
+                w1.id,
+                w1.source_name,
+                w1.source_rownum,
+                w1.payload,
+                w1.row_hash,
+                w2.data,
+                w2.created_at
+            FROM welcome1_raw w1
+            LEFT JOIN welcome2_2nd w2 ON w1.id = w2.id
+            WHERE w1.id = :panel_id
+            """
+            
+            result = conn.execute(text(query), {"panel_id": int(panel_id)})
+            row = result.fetchone()
+            
+            if not row:
+                raise HTTPException(status_code=404, detail="Panel not found")
+            
+            panel_data = {
+                "id": str(row.id),
+                "source_name": row.source_name,
+                "source_rownum": row.source_rownum,
+                "payload": row.payload,
+                "row_hash": row.row_hash,
+                "data": row.data,
+                "created_at": row.created_at.isoformat() if row.created_at else None
+            }
+            
+            return panel_data
+            
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid panel ID format")
+    except Exception as e:
+        print(f"Panel detail error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch panel: {str(e)}")
 
 @app.post("/api/search")
 def search_panels(request: SearchRequest):
-    """패널 검색"""
+    """패널 검색 - 실제 데이터베이스에서 검색"""
     query = request.query.lower()
     filters = request.filters or {}
     
-    # 검색 로직 (실제로는 벡터 검색 사용)
-    results = []
-    qw_results = []  # Q+W 결과 (쿼리 + 워드)
-    w_only_results = []  # Wonly 결과 (워드만)
-    
-    for panel in SAMPLE_PANELS:
-        # 텍스트 검색 (빈 응답 제외)
-        responses = [panel['responses']['q1'], panel['responses']['q2'], panel['responses']['q3']]
-        non_empty_responses = [r for r in responses if r.strip()]
-        searchable_text = f"{panel['name']} {' '.join(non_empty_responses)}".lower()
-        
-        if query in searchable_text:
-            # 필터 적용 (프론트엔드 형식에 맞게 수정)
+    try:
+        with engine.connect() as conn:
+            # 기본 검색 쿼리 - welcome1_raw와 welcome2_2nd를 조인
+            base_query = """
+            SELECT 
+                w1.id,
+                w1.source_name,
+                w1.source_rownum,
+                w1.payload,
+                w1.row_hash,
+                w2.data,
+                w2.created_at
+            FROM welcome1_raw w1
+            LEFT JOIN welcome2_2nd w2 ON w1.id = w2.id
+            WHERE 1=1
+            """
             
-            # 나이 필터 (ageRange: [min, max])
+            params = {}
+            param_count = 1
+            
+            # 텍스트 검색 조건 추가
+            if query:
+                # payload와 data(JSONB)에서 검색
+                search_condition = f"""
+                AND (
+                    LOWER(w1.payload) LIKE :search_param_{param_count}
+                    OR LOWER(w2.data::text) LIKE :search_param_{param_count}
+                )
+                """
+                base_query += search_condition
+                params[f"search_param_{param_count}"] = f"%{query}%"
+                param_count += 1
+            
+            # 필터 조건 추가
             if filters.get('ageRange'):
                 age_min, age_max = filters['ageRange']
-                if panel['age'] < age_min or panel['age'] > age_max:
-                    continue
+                # JSONB에서 나이 필터링 (data.age 필드가 있다고 가정)
+                age_condition = f"""
+                AND (
+                    (w2.data->>'age')::int BETWEEN :age_min_{param_count} AND :age_max_{param_count}
+                    OR (w1.payload LIKE '%age%' AND w1.payload LIKE '%{age_min}%')
+                )
+                """
+                base_query += age_condition
+                params[f"age_min_{param_count}"] = age_min
+                params[f"age_max_{param_count}"] = age_max
+                param_count += 1
             
-            # 성별 필터 (selectedGenders: ['여성', '남성'])
             if filters.get('selectedGenders') and len(filters['selectedGenders']) > 0:
-                if panel['gender'] not in filters['selectedGenders']:
-                    continue
+                gender_conditions = []
+                for gender in filters['selectedGenders']:
+                    gender_conditions.append(f"LOWER(w2.data->>'gender') = :gender_{param_count}")
+                    gender_conditions.append(f"LOWER(w1.payload) LIKE :gender_payload_{param_count}")
+                    params[f"gender_{param_count}"] = gender.lower()
+                    params[f"gender_payload_{param_count}"] = f"%{gender}%"
+                    param_count += 1
+                
+                gender_condition = f"AND ({' OR '.join(gender_conditions)})"
+                base_query += gender_condition
             
-            # 지역 필터 (selectedRegions: ['서울', '경기'])
             if filters.get('selectedRegions') and len(filters['selectedRegions']) > 0:
-                if panel['region'] not in filters['selectedRegions']:
-                    continue
+                region_conditions = []
+                for region in filters['selectedRegions']:
+                    region_conditions.append(f"LOWER(w2.data->>'region') = :region_{param_count}")
+                    region_conditions.append(f"LOWER(w1.payload) LIKE :region_payload_{param_count}")
+                    params[f"region_{param_count}"] = region.lower()
+                    params[f"region_payload_{param_count}"] = f"%{region}%"
+                    param_count += 1
+                
+                region_condition = f"AND ({' OR '.join(region_conditions)})"
+                base_query += region_condition
             
-            # 소득 필터 (selectedIncomes: ['200~300', '300~400'])
-            if filters.get('selectedIncomes') and len(filters['selectedIncomes']) > 0:
-                if panel['income'] not in filters['selectedIncomes']:
-                    continue
-            
-            # 퀵폴 필터 (quickpollOnly: true/false)
+            # 퀵폴 필터 (payload에 응답이 있는 경우)
             if filters.get('quickpollOnly'):
-                # 퀵폴 응답이 있는 패널만 (q1 응답이 있는 경우)
-                if not panel['responses'].get('q1') or not panel['responses']['q1'].strip():
-                    continue
+                base_query += " AND w1.payload IS NOT NULL AND TRIM(w1.payload) != ''"
             
-            # Q+W vs Wonly 분류
-            # Q+W: 쿼리가 질문 응답에 포함된 경우
-            q_responses = f"{panel['responses']['q1']} {panel['responses']['q2']} {panel['responses']['q3']}".lower()
-            if query in q_responses and any(r.strip() for r in [panel['responses']['q1'], panel['responses']['q2'], panel['responses']['q3']]):
-                qw_results.append(panel)
-            else:
-                w_only_results.append(panel)
+            # 정렬 및 페이지네이션
+            base_query += " ORDER BY w1.id"
+            base_query += f" LIMIT :limit_{param_count} OFFSET :offset_{param_count}"
+            params[f"limit_{param_count}"] = request.limit
+            params[f"offset_{param_count}"] = (request.page - 1) * request.limit
             
-            results.append(panel)
-    
-    # 페이지네이션
-    start_idx = (request.page - 1) * request.limit
-    end_idx = start_idx + request.limit
-    paginated_results = results[start_idx:end_idx]
-    
-    return {
-        "results": paginated_results,
-        "query": request.query,
-        "total": len(results),
-        "qw_count": len(qw_results),
-        "w_only_count": len(w_only_results),
-        "page": request.page,
-        "limit": request.limit,
-        "pages": (len(results) + request.limit - 1) // request.limit
-    }
+            # 쿼리 실행
+            result = conn.execute(text(base_query), params)
+            rows = result.fetchall()
+            
+            # 결과를 딕셔너리로 변환
+            results = []
+            qw_results = []
+            w_only_results = []
+            
+            for row in rows:
+                panel_data = {
+                    "id": str(row.id),
+                    "source_name": row.source_name,
+                    "source_rownum": row.source_rownum,
+                    "payload": row.payload,
+                    "row_hash": row.row_hash,
+                    "data": row.data,
+                    "created_at": row.created_at.isoformat() if row.created_at else None
+                }
+                
+                # Q+W vs Wonly 분류
+                searchable_text = f"{row.payload or ''} {json.dumps(row.data or {})}".lower()
+                if query in searchable_text:
+                    # 질문 응답이 있는지 확인 (payload에 내용이 있으면 Q+W)
+                    if row.payload and row.payload.strip():
+                        qw_results.append(panel_data)
+                    else:
+                        w_only_results.append(panel_data)
+                
+                results.append(panel_data)
+            
+            # 전체 개수 조회 (페이지네이션용)
+            count_query = base_query.replace("SELECT \n                w1.id,\n                w1.source_name,\n                w1.source_rownum,\n                w1.payload,\n                w1.row_hash,\n                w2.data,\n                w2.created_at", "SELECT COUNT(*)")
+            count_query = count_query.split("ORDER BY")[0]  # ORDER BY 제거
+            count_result = conn.execute(text(count_query), params)
+            total_count = count_result.scalar()
+            
+            return {
+                "results": results,
+                "query": request.query,
+                "total": total_count,
+                "qw_count": len(qw_results),
+                "w_only_count": len(w_only_results),
+                "page": request.page,
+                "limit": request.limit,
+                "pages": (total_count + request.limit - 1) // request.limit
+            }
+            
+    except Exception as e:
+        print(f"Search error: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @app.post("/api/panels/compare")
 def compare_panels(request: Dict[str, List[str]]):

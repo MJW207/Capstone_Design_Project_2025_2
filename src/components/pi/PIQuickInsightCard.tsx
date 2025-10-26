@@ -19,9 +19,11 @@ interface QuickInsightData {
 interface PIQuickInsightCardProps {
   data: QuickInsightData;
   isEmpty?: boolean;
+  insight?: string; // LLM 인사이트 텍스트
+  loading?: boolean; // 로딩 상태
 }
 
-export function PIQuickInsightCard({ data, isEmpty = false }: PIQuickInsightCardProps) {
+export function PIQuickInsightCard({ data, isEmpty = false, insight, loading = false }: PIQuickInsightCardProps) {
   if (isEmpty) {
     return (
       <PICard variant="summary" className="relative overflow-hidden h-full flex items-center justify-center">
@@ -70,6 +72,29 @@ export function PIQuickInsightCard({ data, isEmpty = false }: PIQuickInsightCard
             </Tooltip>
           </TooltipProvider>
         </div>
+
+        {/* LLM 인사이트 텍스트 */}
+        {insight && (
+          <div className="bg-white/60 rounded-lg p-3 border border-[var(--neutral-200)]">
+            <div className="flex items-start gap-2">
+              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[var(--accent-blue)] to-[#7C3AED] flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Sparkles className="w-3 h-3 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-[var(--primary-500)] font-medium leading-relaxed">
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-[var(--accent-blue)] border-t-transparent rounded-full animate-spin" />
+                      인사이트 생성 중...
+                    </span>
+                  ) : (
+                    insight
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Body - Insight Text with Icons */}
         <div className="flex-1 space-y-4">

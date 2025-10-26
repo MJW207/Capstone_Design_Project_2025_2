@@ -78,9 +78,9 @@ SAMPLE_PANELS = [
         "gender": "남성",
         "region": "서울",
         "responses": {
-            "q1": "스마트폰을 하루에 5-6시간 사용합니다",
-            "q2": "온라인 쇼핑을 자주 이용합니다",
-            "q3": "SNS 활동이 활발합니다"
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -92,9 +92,9 @@ SAMPLE_PANELS = [
         "gender": "여성",
         "region": "부산",
         "responses": {
-            "q1": "스마트폰을 하루에 3-4시간 사용합니다",
-            "q2": "오프라인 쇼핑을 선호합니다",
-            "q3": "SNS는 가끔 사용합니다"
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -106,9 +106,9 @@ SAMPLE_PANELS = [
         "gender": "남성",
         "region": "대구",
         "responses": {
-            "q1": "스마트폰을 하루에 2-3시간 사용합니다",
-            "q2": "온라인 쇼핑을 거의 하지 않습니다",
-            "q3": "SNS를 거의 사용하지 않습니다"
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -130,9 +130,9 @@ for i in range(10):
         "region": "서울",
         "income": np.random.choice(income_ranges),
         "responses": {
-            "q1": f"스마트폰을 하루에 {np.random.randint(4, 8)}시간 사용합니다",
-            "q2": np.random.choice(["온라인 쇼핑을 자주 이용합니다", "뷰티 제품을 정기적으로 구매합니다", "패션에 관심이 많습니다"]),
-            "q3": np.random.choice(["SNS 활동이 활발합니다", "인스타그램을 매일 사용합니다", "유튜브를 자주 시청합니다"])
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -148,9 +148,9 @@ for i in range(8):
         "region": "서울",
         "income": np.random.choice(["300~400", "400~600", "600~"]),
         "responses": {
-            "q1": f"스마트폰을 하루에 {np.random.randint(3, 6)}시간 사용합니다",
-            "q2": np.random.choice(["온라인 쇼핑을 가끔 이용합니다", "전자제품에 관심이 많습니다", "합리적인 소비를 추구합니다"]),
-            "q3": np.random.choice(["SNS는 가끔 사용합니다", "뉴스를 자주 확인합니다", "게임을 즐깁니다"])
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -166,9 +166,9 @@ for i in range(6):
         "region": "경기",
         "income": np.random.choice(income_ranges),
         "responses": {
-            "q1": f"스마트폰을 하루에 {np.random.randint(5, 8)}시간 사용합니다",
-            "q2": np.random.choice(["온라인 쇼핑을 자주 이용합니다", "쿠폰과 할인을 적극 활용합니다", "브랜드보다 가성비를 중시합니다"]),
-            "q3": np.random.choice(["SNS 활동이 활발합니다", "틱톡을 자주 사용합니다", "유튜브 쇼츠를 즐깁니다"])
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -184,9 +184,9 @@ for i in range(5):
         "region": "부산",
         "income": np.random.choice(["200~300", "300~400", "400~600"]),
         "responses": {
-            "q1": f"스마트폰을 하루에 {np.random.randint(3, 6)}시간 사용합니다",
-            "q2": np.random.choice(["오프라인 쇼핑을 선호합니다", "가족과 함께 쇼핑합니다", "지역 상권을 자주 이용합니다"]),
-            "q3": np.random.choice(["SNS는 가끔 사용합니다", "카카오톡을 주로 사용합니다", "뉴스를 자주 확인합니다"])
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -202,9 +202,9 @@ for i in range(4):
         "region": "대구",
         "income": np.random.choice(["300~400", "400~600", "600~"]),
         "responses": {
-            "q1": f"스마트폰을 하루에 {np.random.randint(2, 5)}시간 사용합니다",
-            "q2": np.random.choice(["온라인 쇼핑을 거의 하지 않습니다", "오프라인 쇼핑을 선호합니다", "필요한 것만 구매합니다"]),
-            "q3": np.random.choice(["SNS를 거의 사용하지 않습니다", "뉴스 앱을 주로 사용합니다", "전화와 문자를 주로 사용합니다"])
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -220,9 +220,9 @@ for i in range(17):
         "region": np.random.choice(regions[2:]),  # 서울, 경기 제외
         "income": np.random.choice(income_ranges),
         "responses": {
-            "q1": f"스마트폰을 하루에 {np.random.randint(1, 8)}시간 사용합니다",
-            "q2": np.random.choice(["온라인 쇼핑을 자주 이용합니다", "오프라인 쇼핑을 선호합니다", "온라인 쇼핑을 거의 하지 않습니다"]),
-            "q3": np.random.choice(["SNS 활동이 활발합니다", "SNS는 가끔 사용합니다", "SNS를 거의 사용하지 않습니다"])
+            "q1": "",
+            "q2": "",
+            "q3": ""
         },
         "embedding": np.random.rand(1024).tolist(),
         "created_at": datetime.now().isoformat()
@@ -278,8 +278,10 @@ def search_panels(request: SearchRequest):
     w_only_results = []  # Wonly 결과 (워드만)
     
     for panel in SAMPLE_PANELS:
-        # 텍스트 검색
-        searchable_text = f"{panel['name']} {panel['responses']['q1']} {panel['responses']['q2']} {panel['responses']['q3']}".lower()
+        # 텍스트 검색 (빈 응답 제외)
+        responses = [panel['responses']['q1'], panel['responses']['q2'], panel['responses']['q3']]
+        non_empty_responses = [r for r in responses if r.strip()]
+        searchable_text = f"{panel['name']} {' '.join(non_empty_responses)}".lower()
         
         if query in searchable_text:
             # 필터 적용 (프론트엔드 형식에 맞게 수정)
@@ -308,13 +310,13 @@ def search_panels(request: SearchRequest):
             # 퀵폴 필터 (quickpollOnly: true/false)
             if filters.get('quickpollOnly'):
                 # 퀵폴 응답이 있는 패널만 (q1 응답이 있는 경우)
-                if not panel['responses'].get('q1'):
+                if not panel['responses'].get('q1') or not panel['responses']['q1'].strip():
                     continue
             
             # Q+W vs Wonly 분류
             # Q+W: 쿼리가 질문 응답에 포함된 경우
             q_responses = f"{panel['responses']['q1']} {panel['responses']['q2']} {panel['responses']['q3']}".lower()
-            if query in q_responses:
+            if query in q_responses and any(r.strip() for r in [panel['responses']['q1'], panel['responses']['q2'], panel['responses']['q3']]):
                 qw_results.append(panel)
             else:
                 w_only_results.append(panel)
@@ -425,6 +427,131 @@ def quality_check():
     embeddings = np.array([panel["embedding"] for panel in SAMPLE_PANELS])
     result = clustering_pipeline.quality_check(embeddings)
     return result
+
+# 퀵 인사이트 API
+@app.post("/api/quick-insight")
+def generate_quick_insight(request: Dict[str, Any]):
+    """검색 결과 기반 퀵 인사이트 생성"""
+    query = request.get("query", "")
+    panels = request.get("panels", [])
+    filters = request.get("filters", {})
+    
+    if not panels:
+        return {
+            "insight": "검색 결과가 없어 인사이트를 생성할 수 없습니다.",
+            "confidence": 0.0,
+            "summary": {
+                "total": 0,
+                "q_cnt": 0,
+                "w_cnt": 0,
+                "gender_top": 0,
+                "top_regions": [],
+                "top_tags": [],
+                "age_med": 0
+            }
+        }
+    
+    # 기본 통계 계산
+    total = len(panels)
+    q_cnt = len([p for p in panels if p.get('responses', {}).get('q1') and p['responses']['q1'].strip()])
+    w_cnt = total - q_cnt
+    
+    # 성별 분포
+    gender_counts = {}
+    for panel in panels:
+        gender = panel.get('gender', '기타')
+        gender_counts[gender] = gender_counts.get(gender, 0) + 1
+    gender_top = max(gender_counts.values()) if gender_counts else 0
+    
+    # 지역 분포
+    region_counts = {}
+    for panel in panels:
+        region = panel.get('region', '기타')
+        region_counts[region] = region_counts.get(region, 0) + 1
+    top_regions = sorted(region_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_regions = [r[0] for r in top_regions]
+    
+    # 나이 중앙값
+    ages = [p.get('age', 0) for p in panels if p.get('age')]
+    age_med = sorted(ages)[len(ages)//2] if ages else 0
+    
+    # LLM 인사이트 생성
+    insight_text = generate_llm_insight(query, panels, filters)
+    
+    return {
+        "insight": insight_text,
+        "confidence": 0.8,
+        "summary": {
+            "total": total,
+            "q_cnt": q_cnt,
+            "w_cnt": w_cnt,
+            "gender_top": gender_top,
+            "top_regions": top_regions,
+            "top_tags": [],  # 추후 태그 분석 추가
+            "age_med": age_med
+        }
+    }
+
+def generate_llm_insight(query: str, panels: List[Dict], filters: Dict) -> str:
+    """LLM을 사용한 인사이트 생성"""
+    if not panels:
+        return "검색 결과가 없습니다."
+    
+    # 패널 데이터 요약
+    total = len(panels)
+    age_range = f"{min(p.get('age', 0) for p in panels)}-{max(p.get('age', 0) for p in panels)}세"
+    
+    # 성별 분포
+    gender_dist = {}
+    for panel in panels:
+        gender = panel.get('gender', '기타')
+        gender_dist[gender] = gender_dist.get(gender, 0) + 1
+    
+    # 지역 분포
+    region_dist = {}
+    for panel in panels:
+        region = panel.get('region', '기타')
+        region_dist[region] = region_dist.get(region, 0) + 1
+    
+    # 간단한 인사이트 생성 (현재는 더미, 추후 LLM 연동)
+    insights = []
+    
+    if total > 0:
+        insights.append(f"총 {total}명의 패널이 검색되었습니다.")
+        
+        if gender_dist:
+            top_gender = max(gender_dist.items(), key=lambda x: x[1])
+            insights.append(f"성별로는 {top_gender[0]}이 {top_gender[1]}명({round(top_gender[1]/total*100)}%)로 가장 많습니다.")
+        
+        if region_dist:
+            top_region = max(region_dist.items(), key=lambda x: x[1])
+            insights.append(f"지역별로는 {top_region[0]}이 {top_region[1]}명으로 가장 많습니다.")
+        
+        insights.append(f"나이 분포는 {age_range}입니다.")
+    
+    # LLM API 연동 시 (추후 구현)
+    # api_key = os.getenv("ANTHROPIC_API_KEY")
+    # if Anthropic and api_key:
+    #     client = Anthropic(api_key=api_key)
+    #     prompt = f"""
+    #     다음 패널 데이터를 분석하여 간단한 인사이트를 제공해주세요:
+    #     - 검색 쿼리: {query}
+    #     - 총 패널 수: {total}
+    #     - 성별 분포: {gender_dist}
+    #     - 지역 분포: {region_dist}
+    #     - 나이 범위: {age_range}
+    #     
+    #     간단하고 명확한 인사이트를 2-3문장으로 작성해주세요.
+    #     """
+    #     
+    #     response = client.messages.create(
+    #         model="claude-3-haiku-20240307",
+    #         max_tokens=200,
+    #         messages=[{"role": "user", "content": prompt}]
+    #     )
+    #     return response.content[0].text
+    
+    return " ".join(insights) if insights else "인사이트를 생성할 수 없습니다."
 
 # AI 인사이트 API
 @app.post("/api/ai-insight")

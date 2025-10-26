@@ -261,9 +261,53 @@ export function ResultsPage({
     setAppliedFilters(filterLabels);
   }, [propFilters]);
 
-  // Quick Insight 데이터 (실제 데이터 기반)
+  // 퀵 인사이트 상태 관리
+  const [quickInsight, setQuickInsight] = useState<any>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+
+  // 퀵 인사이트 생성
+  const generateQuickInsight = async () => {
+    if (!panels.length || !query.trim()) return;
+    
+    setInsightLoading(true);
+    try {
+      const response = await searchApi.generateQuickInsight(query, panels, propFilters);
+      setQuickInsight(response);
+    } catch (err) {
+      console.error('Quick insight error:', err);
+      toast.error('퀵 인사이트 생성 중 오류가 발생했습니다.');
+    } finally {
+      setInsightLoading(false);
+    }
+  };
+
+  // 검색 결과 변경 시 퀵 인사이트 자동 생성
+  useEffect(() => {
+    if (panels.length > 0 && query.trim()) {
+      generateQuickInsight();
+    }
+  }, [panels, query, propFilters]);
+
+  // Quick Insight 데이터 (API 응답 기반)
   const quickInsightData = useMemo(() => {
-    const qwCount = panels.filter(p => p.responses?.q1).length;
+    if (quickInsight?.summary) {
+      const { summary } = quickInsight;
+      return {
+        total: summary.total,
+        q_cnt: summary.q_cnt,
+        q_ratio: summary.total > 0 ? Math.round((summary.q_cnt / summary.total) * 100) : 0,
+        w_cnt: summary.w_cnt,
+        w_ratio: summary.total > 0 ? Math.round((summary.w_cnt / summary.total) * 100) : 0,
+        gender_top: summary.gender_top,
+        top_regions: summary.top_regions as [string, string, string],
+        top_tags: summary.top_tags as [string, string, string],
+        recent_30d: 1823, // 추후 계산
+        age_med: summary.age_med,
+      };
+    }
+    
+    // 기본값 (API 응답이 없을 때)
+    const qwCount = panels.filter(p => p.responses?.q1 && p.responses.q1.trim()).length;
     const wCount = panels.length - qwCount;
     
     return {
@@ -272,13 +316,13 @@ export function ResultsPage({
       q_ratio: totalResults > 0 ? Math.round((qwCount / totalResults) * 100) : 0,
       w_cnt: wCount,
       w_ratio: totalResults > 0 ? Math.round((wCount / totalResults) * 100) : 0,
-      gender_top: 96, // 실제로는 계산 필요
-      top_regions: ['서울', '경기', '인천'] as [string, string, string], // 실제로는 계산 필요
-      top_tags: ['OTT이용', '스킨케어', '뷰티'] as [string, string, string], // 실제로는 계산 필요
-      recent_30d: 1823, // 실제로는 계산 필요
-      age_med: 26, // 실제로는 계산 필요
+      gender_top: 0,
+      top_regions: ['', '', ''] as [string, string, string],
+      top_tags: ['', '', ''] as [string, string, string],
+      recent_30d: 0,
+      age_med: 0,
     };
-  }, [panels, totalResults]);
+  }, [quickInsight, panels, totalResults]);
 
   // Sort panels by response date
   const sortedPanels = useMemo(() => {
@@ -400,7 +444,11 @@ export function ResultsPage({
           {/* Quick Insight - 8 cols */}
           <div className="col-span-8">
             <div style={{ height: '240px' }}>
-              <PIQuickInsightCard data={quickInsightData} />
+              <PIQuickInsightCard 
+                data={quickInsightData} 
+                insight={quickInsight?.insight}
+                loading={insightLoading}
+              />
             </div>
           </div>
         </div>

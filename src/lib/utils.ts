@@ -73,6 +73,10 @@ export const searchApi = {
   exportData: (format: string, data: any) => 
     api.post('/api/export', { format, data }),
   
+  // 퀵 인사이트 생성
+  generateQuickInsight: (query: string, panels: any[], filters?: any) => 
+    api.post('/api/quick-insight', { query, panels, filters }),
+  
   // 그룹 목록 조회
   getGroups: (groupType: string = 'cluster') => 
     api.get(`/api/groups?group_type=${groupType}`),

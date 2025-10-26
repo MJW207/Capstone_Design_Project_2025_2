@@ -319,7 +319,7 @@ export function ComparePage() {
     <div className="min-h-screen bg-[var(--neutral-50)]">
       {/* SECTION-0: Compare Bar */}
       <div className="sticky top-0 z-40 bg-white border-b border-[var(--neutral-200)]" style={{ height: '72px' }}>
-        <div className="max-w-[1440px] mx-auto px-20 h-full flex items-center justify-between">
+        <div className="mx-auto px-20 h-full flex items-center justify-between">
           {/* Left: Controls */}
           <div className="flex items-center gap-4">
             <PISegmentedControl
@@ -433,7 +433,7 @@ export function ComparePage() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-[1440px] mx-auto px-20 py-6 space-y-6 comparison-chart-container">
+      <div className="mx-auto px-20 py-6 space-y-6 comparison-chart-container">
         {/* SECTION-1: Profile Cards */}
         <div className="grid grid-cols-12 gap-6" style={{ minHeight: '220px', height: '240px' }}>
           {/* Group A Card */}
@@ -991,7 +991,7 @@ export function ComparePage() {
         className="sticky bottom-0 z-30 bg-white border-t border-[var(--neutral-200)] shadow-[0_-4px_12px_rgba(0,0,0,0.08)]"
         style={{ height: '56px' }}
       >
-        <div className="max-w-[1440px] mx-auto px-20 h-full flex items-center justify-between">
+        <div className="mx-auto px-20 h-full flex items-center justify-between">
           <div className="text-sm text-[var(--neutral-600)]">
             선택:{' '}
             <span className="font-semibold" style={{ color: selectedGroupA?.color }}>

@@ -570,6 +570,7 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                   description={`${cluster.size}명의 패널이 포함된 군집`}
                   tags={['특성 분석 중...']}
                   size={cluster.size}
+                  silhouette={cluster.query_similarity}
                   snippets={[
                     `쿼리 유사도: ${(cluster.query_similarity * 100).toFixed(1)}%`,
                     `대표 패널: ${cluster.representative_items.length}개`,
@@ -582,71 +583,6 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
           </div>
         )}
 
-        {/* Row 3: Silhouette Score Compact */}
-        {!loading && !error && (
-          <div className="bg-white rounded-xl border border-[var(--neutral-200)] p-4 relative overflow-hidden">
-            <div 
-              className="absolute top-0 left-0 right-0 h-[1px]"
-              style={{
-                background: 'linear-gradient(135deg, #1D4ED8 0%, #7C3AED 100%)',
-                opacity: 0.5,
-              }}
-            />
-            
-            {/* Header */}
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[var(--primary-500)]">
-                군집별 실루엣 점수
-              </h3>
-              <span className="text-xs text-[var(--neutral-500)]">
-                0.5+ 양호, 0.7+ 우수
-              </span>
-            </div>
-            
-            {/* Compact Score Cards */}
-            <div className="grid grid-cols-5 gap-3">
-              {clusters.map((cluster, index) => {
-                const score = cluster.query_similarity;
-                const isGood = score >= 0.5;
-                const isExcellent = score >= 0.7;
-                
-                return (
-                  <div key={index} className="bg-gradient-to-br from-white to-gray-50 rounded-lg p-3 border border-[var(--neutral-200)] hover:shadow-sm transition-shadow">
-                    {/* Cluster Header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-1.5">
-                        <div 
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: clusterColors[index % clusterColors.length] }}
-                        />
-                        <span className="text-xs font-medium text-[var(--primary-500)]">
-                          C{index + 1}
-                        </span>
-                      </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                        isExcellent ? 'bg-green-100 text-green-700' :
-                        isGood ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {isExcellent ? '우수' : isGood ? '양호' : '개선'}
-                      </span>
-                    </div>
-                    
-                    {/* Score Display */}
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-[var(--primary-500)] mb-1">
-                        {score.toFixed(3)}
-                      </div>
-                      <div className="text-[10px] text-[var(--neutral-600)]">
-                        {cluster.size}명
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Row 4: Model Status and Quality Metrics */}
         <div className="grid grid-cols-2 gap-6">

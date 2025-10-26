@@ -11,6 +11,7 @@ interface PIClusterProfileCardProps {
   tags: string[];
   snippets: string[];
   size?: number;
+  silhouette?: number;
   onSave?: () => void;
 }
 
@@ -22,6 +23,7 @@ export function PIClusterProfileCard({
   tags,
   snippets,
   size,
+  silhouette,
   onSave,
 }: PIClusterProfileCardProps) {
   return (
@@ -46,16 +48,35 @@ export function PIClusterProfileCard({
           }}
         />
         
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="w-4 h-4 rounded-full flex-shrink-0"
-            style={{ background: color }}
-          />
-          <PIBadge kind="cluster">{id}</PIBadge>
-          {size && (
-            <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748B' }}>
-              {size}명
-            </span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-4 h-4 rounded-full flex-shrink-0"
+              style={{ background: color }}
+            />
+            <PIBadge kind="cluster">{id}</PIBadge>
+            {size && (
+              <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748B' }}>
+                {size}명
+              </span>
+            )}
+          </div>
+          
+          {/* Silhouette Score */}
+          {silhouette !== undefined && (
+            <div className="flex items-center gap-1.5">
+              <div className="text-right">
+                <div className="text-xs text-[var(--neutral-500)]">실루엣</div>
+                <div className="text-sm font-bold text-[var(--primary-500)]">
+                  {silhouette.toFixed(3)}
+                </div>
+              </div>
+              <div className={`w-2 h-2 rounded-full ${
+                silhouette >= 0.7 ? 'bg-green-500' :
+                silhouette >= 0.5 ? 'bg-yellow-500' :
+                'bg-red-500'
+              }`} />
+            </div>
           )}
         </div>
         

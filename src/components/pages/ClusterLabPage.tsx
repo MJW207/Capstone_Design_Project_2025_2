@@ -131,12 +131,6 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
   const [showNoise, setShowNoise] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [densityCorrection, setDensityCorrection] = useState(false);
-  const [pointSize, setPointSize] = useState(4);
-  
-  const handlePointSizeChange = (newSize: number) => {
-    console.log('ClusterLabPage: Point size changing from', pointSize, 'to', newSize);
-    setPointSize(newSize);
-  };
   const [opacity, setOpacity] = useState(0.8);
   const [colorBy, setColorBy] = useState('cluster');
   
@@ -356,7 +350,7 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                 </h3>
                 <div className="flex-1" style={{ minHeight: 0 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                    <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }} data={getFilteredUmapData(umapData, selectedClusters, showNoise)}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(17, 24, 39, 0.1)" />
                       <XAxis
                         type="number"
@@ -406,19 +400,16 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                         }}
                       />
                       {/* 색상 기준이 클러스터인 경우 기존 방식 사용 */}
-                      {colorBy === 'cluster' && clusters.map((_, clusterId) => {
-                        console.log('Rendering cluster', clusterId, 'with point size:', pointSize);
-                        return (
-                          <Scatter
-                            key={clusterId}
-                            name={`C${clusterId + 1}`}
-                            data={getFilteredUmapData(umapData, selectedClusters, showNoise).filter((d) => d.cluster === clusterId)}
-                            fill={clusterColors[clusterId % clusterColors.length]}
-                            fillOpacity={opacity}
-                            r={pointSize}
-                          />
-                        );
-                      })}
+                      {colorBy === 'cluster' && clusters.map((_, clusterId) => (
+                        <Scatter
+                          key={clusterId}
+                          name={`C${clusterId + 1}`}
+                          data={getFilteredUmapData(umapData, selectedClusters, showNoise).filter((d) => d.cluster === clusterId)}
+                          fill={clusterColors[clusterId % clusterColors.length]}
+                          fillOpacity={opacity}
+                          r={4}
+                        />
+                      ))}
                       
                       {/* 색상 기준이 클러스터가 아닌 경우 모든 점을 하나의 Scatter로 처리 */}
                       {colorBy !== 'cluster' && (
@@ -426,12 +417,11 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                           name="패널"
                           data={getFilteredUmapData(umapData, selectedClusters, showNoise)}
                           fillOpacity={opacity}
-                          r={pointSize}
+                          r={4}
                         >
-                          {getFilteredUmapData(umapData, selectedClusters, showNoise).map((point, index) => {
-                            console.log('Rendering non-cluster point', index, 'with point size:', pointSize);
-                            return <Cell key={`cell-${index}`} fill={getColorByAttribute(point, colorBy)} />;
-                          })}
+                          {getFilteredUmapData(umapData, selectedClusters, showNoise).map((point, index) => (
+                            <Cell key={`cell-${index}`} fill={getColorByAttribute(point, colorBy)} />
+                          ))}
                         </Scatter>
                       )}
                       
@@ -442,7 +432,7 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                           data={getFilteredUmapData(umapData, selectedClusters, showNoise).filter((d) => d.cluster === -1)}
                           fill="#94A3B8"
                           fillOpacity={opacity * 0.6}
-                          r={pointSize * 0.8}
+                          r={3}
                         />
                       )}
                     </ScatterChart>
@@ -522,8 +512,6 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                   onShowLabelsChange={setShowLabels}
                   densityCorrection={densityCorrection}
                   onDensityCorrectionChange={setDensityCorrection}
-                  pointSize={pointSize}
-                  onPointSizeChange={handlePointSizeChange}
                   opacity={opacity}
                   onOpacityChange={setOpacity}
                   colorBy={colorBy}

@@ -12,8 +12,6 @@ interface PIViewControlsProps {
   onShowLabelsChange?: (value: boolean) => void;
   densityCorrection?: boolean;
   onDensityCorrectionChange?: (value: boolean) => void;
-  pointSize?: number;
-  onPointSizeChange?: (value: number) => void;
   opacity?: number;
   onOpacityChange?: (value: number) => void;
   colorBy?: string;
@@ -29,8 +27,6 @@ export function PIViewControls({
   onShowLabelsChange,
   densityCorrection = false,
   onDensityCorrectionChange,
-  pointSize = 4,
-  onPointSizeChange,
   opacity = 0.8,
   onOpacityChange,
   colorBy = 'cluster',
@@ -116,27 +112,6 @@ export function PIViewControls({
 
         {/* Sliders */}
         <div className="space-y-3">
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <Label style={{ fontSize: '11px', fontWeight: 500, color: '#0F172A' }}>
-                점 크기
-              </Label>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748B' }}>
-                {pointSize}
-              </span>
-            </div>
-            <Slider
-              value={[pointSize]}
-              onValueChange={(vals) => {
-                console.log('Point size changed:', vals[0]);
-                onPointSizeChange?.(vals[0]);
-              }}
-              min={1}
-              max={8}
-              step={1}
-              className="w-full"
-            />
-          </div>
 
           <div>
             <div className="flex items-center justify-between mb-1.5">

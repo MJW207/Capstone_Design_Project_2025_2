@@ -12,8 +12,7 @@ import { PIActionBar } from '../pi/PIActionBar';
 import { PILocatorOverlay } from '../pi/PILocatorOverlay';
 import { PILocatorStrip } from '../pi/PILocatorStrip';
 import { PIModelBadge, ModelStatus } from '../pi/PIModelBadge';
-import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { toast } from 'sonner';
 import { historyManager } from '../../lib/history';
 import { Loader2 } from 'lucide-react';
@@ -610,105 +609,104 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
               - 0.5 이상 = 양호, 0.7 이상 = 우수
             </p>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={clusters.map((cluster, index) => ({ cluster: `C${index + 1}`, value: cluster.query_similarity }))} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(17, 24, 39, 0.1)" />
-              <XAxis
-                type="number"
-                domain={[0, 1]}
-                stroke="#64748B"
-                tick={{ fontSize: 11 }}
-                strokeWidth={0.5}
-              />
-              <YAxis
-                type="category"
-                dataKey="cluster"
-                stroke="#64748B"
-                tick={{ fontSize: 11 }}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'rgba(255, 255, 255, 0.95)',
-                  backdropFilter: 'blur(16px)',
-                  border: '1px solid rgba(17, 24, 39, 0.1)',
-                  borderRadius: '8px',
-                  fontSize: '11px',
-                }}
-              />
-              <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={32}>
-                {clusters.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={clusterColors[index % clusterColors.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          {/* Silhouette Score Grid */}
+          <div className="grid grid-cols-3 gap-4">
+            {clusters.map((cluster, index) => {
+              const score = cluster.query_similarity;
+              const isGood = score >= 0.5;
+              const isExcellent = score >= 0.7;
+              
+              return (
+                <div key={index} className="bg-white/80 rounded-lg p-4 border border-[var(--neutral-200)]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: clusterColors[index % clusterColors.length] }}
+                      />
+                      <span className="text-sm font-medium text-[var(--primary-500)]">
+                        군집 {index + 1}
+                      </span>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      isExcellent ? 'bg-green-100 text-green-700' :
+                      isGood ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {isExcellent ? '우수' : isGood ? '양호' : '개선필요'}
+                    </span>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-[var(--primary-500)] mb-1">
+                      {score.toFixed(3)}
+                    </div>
+                    <div className="text-xs text-[var(--neutral-600)]">
+                      {cluster.size}명
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           </div>
         )}
 
-        {/* Row 4: About this model */}
-        <div>
-          <p style={{ fontSize: '12px', fontWeight: 400, color: '#94A3B8', marginBottom: '12px' }}>
-            상세 품질·학습 정보는 이곳에서 확인하세요.
-          </p>
-          
-          <Accordion type="single" collapsible className="space-y-4">
-            <AccordionItem 
-              value="model-status"
-              className="rounded-2xl overflow-hidden"
-              style={{
-                background: 'rgba(255, 255, 255, 0.8)',
-                backdropFilter: 'blur(16px)',
-                border: '1px solid rgba(17, 24, 39, 0.10)',
-                boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
-              }}
-            >
-              <AccordionTrigger className="px-5 py-4 hover:no-underline">
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
-                  모델 상태
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <PIModelStatusCard
-                  status={modelStatus}
-                  userRole={userRole}
-                  modelVersion="v2025-10-13 14:30"
-                  quickpollCount={8863}
-                  panelCount={2140}
-                  clusterCount={5}
-                  noiseRatio={8.5}
-                  silhouette={0.62}
-                  lastUpdated="2시간 전"
-                  onRefresh={() => toast.success('모델을 새로고침했습니다')}
-                  onRequestRetrain={() => toast.success('재학습 요청이 전송되었습니다')}
-                  onViewHistory={() => toast.info('이전 버전 기능 개발 중')}
-                />
-              </AccordionContent>
-            </AccordionItem>
+        {/* Row 4: Model Status and Quality Metrics */}
+        <div className="grid grid-cols-2 gap-6">
+          {/* Model Status */}
+          <div className="rounded-2xl overflow-hidden"
+            style={{
+              background: 'rgba(255, 255, 255, 0.8)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(17, 24, 39, 0.10)',
+              boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
+            }}
+          >
+            <div className="px-5 py-4 border-b border-[var(--neutral-200)]">
+              <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
+                모델 상태
+              </h3>
+            </div>
+            <div className="p-5">
+              <PIModelStatusCard
+                status={modelStatus}
+                userRole={userRole}
+                modelVersion="v2025-10-13 14:30"
+                quickpollCount={8863}
+                panelCount={2140}
+                clusterCount={5}
+                noiseRatio={8.5}
+                silhouette={0.62}
+                lastUpdated="2시간 전"
+                onRefresh={() => toast.success('모델을 새로고침했습니다')}
+                onRequestRetrain={() => toast.success('재학습 요청이 전송되었습니다')}
+                onViewHistory={() => toast.info('이전 버전 기능 개발 중')}
+              />
+            </div>
+          </div>
 
-            <AccordionItem 
-              value="quality-metrics"
-              className="rounded-2xl overflow-hidden"
-              style={{
-                background: 'rgba(255, 255, 255, 0.8)',
-                backdropFilter: 'blur(16px)',
-                border: '1px solid rgba(17, 24, 39, 0.10)',
-                boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
-              }}
-            >
-              <AccordionTrigger className="px-5 py-4 hover:no-underline">
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
-                  품질 지표
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-5">
-                <PIQualityLegend
-                  silhouette={0.62}
-                  noiseRatio={8.5}
-                  balanceScore={0.78}
-                />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+          {/* Quality Metrics */}
+          <div className="rounded-2xl overflow-hidden"
+            style={{
+              background: 'rgba(255, 255, 255, 0.8)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(17, 24, 39, 0.10)',
+              boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
+            }}
+          >
+            <div className="px-5 py-4 border-b border-[var(--neutral-200)]">
+              <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
+                품질 지표
+              </h3>
+            </div>
+            <div className="p-5">
+              <PIQualityLegend
+                silhouette={0.62}
+                noiseRatio={8.5}
+                balanceScore={0.78}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Row 5: Clustering Explainer */}

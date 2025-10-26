@@ -127,7 +127,10 @@ export function PIViewControls({
             </div>
             <Slider
               value={[pointSize]}
-              onValueChange={(vals) => onPointSizeChange?.(vals[0])}
+              onValueChange={(vals) => {
+                console.log('Point size changed:', vals[0]);
+                onPointSizeChange?.(vals[0]);
+              }}
               min={1}
               max={8}
               step={1}

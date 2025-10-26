@@ -132,6 +132,11 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
   const [showLabels, setShowLabels] = useState(true);
   const [densityCorrection, setDensityCorrection] = useState(false);
   const [pointSize, setPointSize] = useState(4);
+  
+  const handlePointSizeChange = (newSize: number) => {
+    console.log('ClusterLabPage: Point size changing from', pointSize, 'to', newSize);
+    setPointSize(newSize);
+  };
   const [opacity, setOpacity] = useState(0.8);
   const [colorBy, setColorBy] = useState('cluster');
   
@@ -401,16 +406,19 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                         }}
                       />
                       {/* 색상 기준이 클러스터인 경우 기존 방식 사용 */}
-                      {colorBy === 'cluster' && clusters.map((_, clusterId) => (
-                        <Scatter
-                          key={clusterId}
-                          name={`C${clusterId + 1}`}
-                          data={getFilteredUmapData(umapData, selectedClusters, showNoise).filter((d) => d.cluster === clusterId)}
-                          fill={clusterColors[clusterId % clusterColors.length]}
-                          fillOpacity={opacity}
-                          r={pointSize}
-                        />
-                      ))}
+                      {colorBy === 'cluster' && clusters.map((_, clusterId) => {
+                        console.log('Rendering cluster', clusterId, 'with point size:', pointSize);
+                        return (
+                          <Scatter
+                            key={clusterId}
+                            name={`C${clusterId + 1}`}
+                            data={getFilteredUmapData(umapData, selectedClusters, showNoise).filter((d) => d.cluster === clusterId)}
+                            fill={clusterColors[clusterId % clusterColors.length]}
+                            fillOpacity={opacity}
+                            r={pointSize}
+                          />
+                        );
+                      })}
                       
                       {/* 색상 기준이 클러스터가 아닌 경우 모든 점을 하나의 Scatter로 처리 */}
                       {colorBy !== 'cluster' && (
@@ -420,9 +428,10 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                           fillOpacity={opacity}
                           r={pointSize}
                         >
-                          {getFilteredUmapData(umapData, selectedClusters, showNoise).map((point, index) => (
-                            <Cell key={`cell-${index}`} fill={getColorByAttribute(point, colorBy)} />
-                          ))}
+                          {getFilteredUmapData(umapData, selectedClusters, showNoise).map((point, index) => {
+                            console.log('Rendering non-cluster point', index, 'with point size:', pointSize);
+                            return <Cell key={`cell-${index}`} fill={getColorByAttribute(point, colorBy)} />;
+                          })}
                         </Scatter>
                       )}
                       
@@ -514,7 +523,7 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
                   densityCorrection={densityCorrection}
                   onDensityCorrectionChange={setDensityCorrection}
                   pointSize={pointSize}
-                  onPointSizeChange={setPointSize}
+                  onPointSizeChange={handlePointSizeChange}
                   opacity={opacity}
                   onOpacityChange={setOpacity}
                   colorBy={colorBy}

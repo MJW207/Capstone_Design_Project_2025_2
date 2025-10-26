@@ -582,72 +582,69 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
           </div>
         )}
 
-        {/* Row 3: Feature Comparison (Full Width) */}
+        {/* Row 3: Silhouette Score Compact */}
         {!loading && !error && (
-          <div
-            className="relative rounded-2xl p-5"
-            style={{
-              height: '360px',
-              background: 'rgba(255, 255, 255, 0.8)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(17, 24, 39, 0.10)',
-              boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
-            }}
-          >
-          <div 
-            className="absolute top-0 left-0 right-0 h-[1px]"
-            style={{
-              background: 'linear-gradient(135deg, #1D4ED8 0%, #7C3AED 100%)',
-              opacity: 0.5,
-            }}
-          />
-          <div className="flex items-center justify-between mb-3">
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
-              군집별 실루엣 점수
-            </h3>
-            <p style={{ fontSize: '11px', fontWeight: 400, color: '#64748B' }}>
-              - 0.5 이상 = 양호, 0.7 이상 = 우수
-            </p>
-          </div>
-          {/* Silhouette Score Grid */}
-          <div className="grid grid-cols-3 gap-4">
-            {clusters.map((cluster, index) => {
-              const score = cluster.query_similarity;
-              const isGood = score >= 0.5;
-              const isExcellent = score >= 0.7;
-              
-              return (
-                <div key={index} className="bg-white/80 rounded-lg p-4 border border-[var(--neutral-200)]">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: clusterColors[index % clusterColors.length] }}
-                      />
-                      <span className="text-sm font-medium text-[var(--primary-500)]">
-                        군집 {index + 1}
+          <div className="bg-white rounded-xl border border-[var(--neutral-200)] p-4 relative overflow-hidden">
+            <div 
+              className="absolute top-0 left-0 right-0 h-[1px]"
+              style={{
+                background: 'linear-gradient(135deg, #1D4ED8 0%, #7C3AED 100%)',
+                opacity: 0.5,
+              }}
+            />
+            
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-[var(--primary-500)]">
+                군집별 실루엣 점수
+              </h3>
+              <span className="text-xs text-[var(--neutral-500)]">
+                0.5+ 양호, 0.7+ 우수
+              </span>
+            </div>
+            
+            {/* Compact Score Cards */}
+            <div className="grid grid-cols-5 gap-3">
+              {clusters.map((cluster, index) => {
+                const score = cluster.query_similarity;
+                const isGood = score >= 0.5;
+                const isExcellent = score >= 0.7;
+                
+                return (
+                  <div key={index} className="bg-gradient-to-br from-white to-gray-50 rounded-lg p-3 border border-[var(--neutral-200)] hover:shadow-sm transition-shadow">
+                    {/* Cluster Header */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <div 
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: clusterColors[index % clusterColors.length] }}
+                        />
+                        <span className="text-xs font-medium text-[var(--primary-500)]">
+                          C{index + 1}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        isExcellent ? 'bg-green-100 text-green-700' :
+                        isGood ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {isExcellent ? '우수' : isGood ? '양호' : '개선'}
                       </span>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      isExcellent ? 'bg-green-100 text-green-700' :
-                      isGood ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {isExcellent ? '우수' : isGood ? '양호' : '개선필요'}
-                    </span>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-[var(--primary-500)] mb-1">
-                      {score.toFixed(3)}
-                    </div>
-                    <div className="text-xs text-[var(--neutral-600)]">
-                      {cluster.size}명
+                    
+                    {/* Score Display */}
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-[var(--primary-500)] mb-1">
+                        {score.toFixed(3)}
+                      </div>
+                      <div className="text-[10px] text-[var(--neutral-600)]">
+                        {cluster.size}명
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

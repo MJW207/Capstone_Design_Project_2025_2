@@ -38,8 +38,6 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 
 ### Backend
 - **FastAPI** with Python 3.13
-- **PostgreSQL** database with Neon cloud
-- **SQLAlchemy** ORM for database operations
 - **NumPy & SciPy** numerical computation
 - **Scikit-learn** machine learning
 - **Leiden Algorithm** graph clustering
@@ -56,94 +54,13 @@ cd panel-insight
 npm install
 cd server && pip install -r requirements.txt && cd ..
 
-# 3. 환경 변수 설정 (아래 데이터베이스 설정 참조)
-
-# 4. 서버 실행 (두 개의 터미널에서)
+# 3. 서버 실행 (두 개의 터미널에서)
 # 터미널 1: 백엔드
 cd server && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 # 터미널 2: 프론트엔드
 npm run dev
 ```
-
-## 🗄️ 데이터베이스 설정
-
-### PostgreSQL 데이터베이스 연결
-
-이 프로젝트는 PostgreSQL 데이터베이스를 사용합니다. Neon 클라우드 데이터베이스가 설정되어 있습니다.
-
-#### 1. 환경 변수 파일 생성
-
-프로젝트 루트에 `.env` 파일을 생성하고 다음 내용을 입력하세요:
-
-```env
-# Database Configuration
-DB_HOST=ep-rough-unit-a1jk3re3-pooler.ap-southeast-1.aws.neon.tech
-DB_PORT=5432
-DB_NAME=neondb
-DB_USER=neondb_owner
-DB_PASSWORD=npg_pPd6ftHM8CYl
-
-# API Configuration
-API_BASE_URL=http://localhost:8000
-
-# Development Settings
-NODE_ENV=development
-VITE_API_URL=http://localhost:8000
-```
-
-#### 2. 데이터베이스 테이블 구조
-
-현재 사용 중인 테이블:
-
-**`welcome1_raw` 테이블** (기본 인적사항):
-- `id` (INTEGER, PRIMARY KEY)
-- `source_name` (VARCHAR)
-- `source_rownum` (INTEGER)
-- `payload` (TEXT) - 패널의 기본 정보
-- `row_hash` (VARCHAR)
-
-**`welcome2_2nd` 테이블** (세부사항):
-- `id` (INTEGER, PRIMARY KEY)
-- `data` (JSONB) - JSON 형태의 세부 정보
-- `created_at` (TIMESTAMP)
-
-#### 3. DBeaver로 데이터베이스 관리
-
-**DBeaver 설치 및 연결:**
-
-1. [DBeaver 다운로드](https://dbeaver.io/download/)
-2. 새 데이터베이스 연결 생성
-3. PostgreSQL 선택
-4. 연결 정보 입력:
-   - **Host**: `ep-rough-unit-a1jk3re3-pooler.ap-southeast-1.aws.neon.tech`
-   - **Port**: `5432`
-   - **Database**: `neondb`
-   - **Username**: `neondb_owner`
-   - **Password**: `npg_pPd6ftHM8CYl`
-
-**테이블 구조 확인 방법:**
-```sql
--- 모든 테이블 목록 보기
-SELECT table_name 
-FROM information_schema.tables 
-WHERE table_schema = 'public';
-
--- 특정 테이블의 컬럼 정보 보기
-SELECT column_name, data_type, is_nullable, column_default
-FROM information_schema.columns 
-WHERE table_name = 'welcome1_raw';
-
--- 샘플 데이터 보기
-SELECT * FROM welcome1_raw LIMIT 10;
-SELECT * FROM welcome2_2nd LIMIT 10;
-```
-
-#### 4. 데이터베이스 연결 테스트
-
-서버 실행 후 다음 URL로 데이터베이스 연결을 테스트할 수 있습니다:
-- `http://127.0.0.1:8000/db/test` - 데이터베이스 연결 상태 확인
-- `http://127.0.0.1:8000/health` - 서버 상태 확인
 
 ## 시작하기
 
@@ -186,10 +103,6 @@ SELECT * FROM welcome2_2nd LIMIT 10;
    - `fastapi==0.115.0` - 웹 API 프레임워크
    - `uvicorn[standard]==0.30.6` - ASGI 서버
    - `anthropic==0.40.0` - AI API 클라이언트
-   - `python-dotenv==1.0.1` - 환경 변수 관리
-   - `psycopg[binary]==3.2.3` - PostgreSQL 드라이버
-   - `pgvector==0.3.6` - 벡터 데이터베이스 확장
-   - `sqlalchemy==2.0.36` - ORM 라이브러리
    - `numpy` - 수치 계산
    - `scikit-learn` - 머신러닝
    - `leidenalg` - 그래프 클러스터링

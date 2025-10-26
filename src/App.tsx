@@ -3,18 +3,17 @@ import { StartPage } from './components/pages/StartPage';
 import { ResultsPage } from './components/pages/ResultsPage';
 import { ClusterLabPage } from './components/pages/ClusterLabPage';
 import { ComparePage } from './components/pages/ComparePage';
-import { DesignSystemPage } from './components/pages/DesignSystemPage';
 import { FilterDrawer } from './components/drawers/FilterDrawer';
 import { ExportDrawer } from './components/drawers/ExportDrawer';
 import { PIPanelWindow } from './components/pi/PIPanelWindow';
 import { PIHistoryDrawer } from './components/pi/PIHistoryDrawer';
 import { HistoryType } from './types/history';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
-import { Search, BarChart3, GitCompare, Palette, History } from 'lucide-react';
+import { Search, BarChart3, GitCompare, History } from 'lucide-react';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 
-type AppView = 'start' | 'results' | 'design-system';
+type AppView = 'start' | 'results';
 
 // Panel window instance
 interface PanelWindow {
@@ -205,8 +204,6 @@ export default function App() {
           onPresetApply={handlePresetApply}
           currentFilters={filters}
         />
-      ) : view === 'design-system' ? (
-        <DesignSystemPage />
       ) : (
         <div className="flex flex-col h-screen">
           {/* Top Navigation with Logo */}
@@ -245,13 +242,6 @@ export default function App() {
                   <History className="w-4 h-4" />
                 </button>
                 
-                <button
-                  onClick={() => setView('design-system')}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-[var(--neutral-600)] hover:text-[var(--primary-500)] transition-colors"
-                >
-                  <Palette className="w-4 h-4" />
-                  Design System
-                </button>
               </div>
             </div>
           </div>

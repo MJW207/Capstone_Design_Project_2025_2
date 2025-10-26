@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Download, Save, ArrowRight, TrendingUp, FileText, Image } from 'lucide-react';
+import { Download, Save, ArrowRight, TrendingUp, FileText, Image, X } from 'lucide-react';
 import { PICard } from '../pi/PICard';
 import { PIButton } from '../pi/PIButton';
 import { PIBadge } from '../pi/PIBadge';
@@ -242,9 +242,17 @@ export function ComparePage() {
 
   const downloadPNG = async () => {
     try {
-      const element = document.querySelector('[data-export-chart]');
+      // 그룹이 선택되지 않은 경우 체크
+      if (!selectedGroupA || !selectedGroupB) {
+        toast.error('비교할 그룹을 먼저 선택해주세요');
+        return;
+      }
+
+      // 차트 컨테이너 찾기
+      const element = document.querySelector('.comparison-chart-container');
+      
       if (!element) {
-        toast.error('내보낼 차트를 찾을 수 없습니다');
+        toast.error('내보낼 차트를 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해주세요.');
         return;
       }
 
@@ -254,7 +262,9 @@ export function ComparePage() {
         scale: 2, // 고해상도
         useCORS: true,
         allowTaint: true,
-        logging: false
+        logging: false,
+        width: element.scrollWidth,
+        height: element.scrollHeight
       });
 
       const link = document.createElement('a');
@@ -423,7 +433,7 @@ export function ComparePage() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-[1440px] mx-auto px-20 py-6 space-y-6">
+      <div className="max-w-[1440px] mx-auto px-20 py-6 space-y-6 comparison-chart-container">
         {/* SECTION-1: Profile Cards */}
         <div className="grid grid-cols-12 gap-6" style={{ minHeight: '220px', height: '240px' }}>
           {/* Group A Card */}
@@ -1037,13 +1047,24 @@ export function ComparePage() {
 
       {/* Save Comparison Modal */}
       {isSaveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsSaveModalOpen(false)} />
-          <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl p-6">
-            <h3 className="text-lg font-semibold text-[var(--primary-500)] mb-4">
-              비교 저장
-            </h3>
-            <div className="space-y-4">
+          <div className="relative w-[80vw] max-w-[800px] h-[60vw] max-h-[600px] bg-white rounded-xl shadow-2xl p-6 flex flex-col">
+            {/* Header with close button */}
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <h3 className="text-lg font-semibold text-[var(--primary-500)]">
+                비교 저장
+              </h3>
+              <button
+                onClick={() => setIsSaveModalOpen(false)}
+                className="p-2 hover:bg-[var(--neutral-100)] rounded-lg transition-colors"
+                title="닫기"
+              >
+                <X className="w-5 h-5 text-[var(--neutral-600)]" />
+              </button>
+            </div>
+            
+            <div className="flex-1 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-sm font-medium text-[var(--neutral-600)] mb-2">
                   저장 이름
@@ -1060,11 +1081,41 @@ export function ComparePage() {
                 </label>
                 <textarea
                   placeholder="이 비교에 대한 설명을 입력하세요"
-                  className="w-full px-3 py-2 border border-[var(--neutral-200)] rounded-lg focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent h-20 resize-none"
+                  className="w-full px-3 py-2 border border-[var(--neutral-200)] rounded-lg focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent h-24 resize-none"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--neutral-600)] mb-2">
+                  태그 (선택사항)
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 건강, 트렌드, 소비패턴"
+                  className="w-full px-3 py-2 border border-[var(--neutral-200)] rounded-lg focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[var(--neutral-600)] mb-2">
+                  분석 유형
+                </label>
+                <div className="flex gap-2">
+                  <label className="flex items-center">
+                    <input type="checkbox" defaultChecked className="mr-2" />
+                    <span className="text-sm">차이 분석 (Delta%p)</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input type="checkbox" className="mr-2" />
+                    <span className="text-sm">리프트 분석</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input type="checkbox" className="mr-2" />
+                    <span className="text-sm">SMD 분석</span>
+                  </label>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center justify-end gap-3 mt-6">
+            
+            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-[var(--neutral-200)] flex-shrink-0">
               <PIButton variant="ghost" onClick={() => setIsSaveModalOpen(false)}>
                 취소
               </PIButton>

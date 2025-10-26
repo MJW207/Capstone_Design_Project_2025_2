@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Search, Trash2, Copy, Clock, BarChart3, Users, GitCompare, Maximize2, Minimize2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Search, Trash2, Copy, Clock, BarChart3, Users, GitCompare, Maximize2, Minimize2, Move } from 'lucide-react';
 import { PIButton } from './PIButton';
 import { PIBadge } from './PIBadge';
 import { Input } from '../ui/input';
@@ -23,12 +23,40 @@ export function PIHistoryDrawer({
   const [selectedType, setSelectedType] = useState<HistoryType | 'all'>('all');
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [drawerSize, setDrawerSize] = useState({ width: 1000, height: 600 });
+  const [isResizing, setIsResizing] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setHistoryItems(historyManager.getAll());
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizing && drawerRef.current) {
+        const rect = drawerRef.current.getBoundingClientRect();
+        const newWidth = Math.max(600, Math.min(window.innerWidth - 100, e.clientX - rect.left));
+        const newHeight = Math.max(400, Math.min(window.innerHeight - 100, e.clientY - rect.top));
+        setDrawerSize({ width: newWidth, height: newHeight });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   if (!isOpen) return null;
 
@@ -109,7 +137,7 @@ export function PIHistoryDrawer({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -117,13 +145,20 @@ export function PIHistoryDrawer({
       />
       
       {/* Drawer */}
-      <div className={`relative bg-white shadow-2xl transition-all duration-300 flex flex-col ${
-        isFullscreen 
-          ? 'w-full h-full' 
-          : 'w-[80vw] max-w-4xl h-[60vw] max-h-[600px]'
-      }`}>
+      <div 
+        ref={drawerRef}
+        className={`relative bg-white rounded-xl shadow-2xl transition-all duration-300 flex flex-col ${
+          isFullscreen 
+            ? 'w-full h-full rounded-none' 
+            : ''
+        }`}
+        style={!isFullscreen ? {
+          width: `${drawerSize.width}px`,
+          height: `${drawerSize.height}px`
+        } : {}}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--neutral-200)]">
+        <div className="flex items-center justify-between p-6 border-b border-[var(--neutral-200)] flex-shrink-0">
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-[var(--accent-blue)]" />
             <h2 className="text-lg font-semibold text-[var(--primary-500)]">
@@ -132,7 +167,13 @@ export function PIHistoryDrawer({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
+              onClick={() => {
+                setIsFullscreen(!isFullscreen);
+                if (!isFullscreen) {
+                  // 전체화면으로 전환할 때 현재 크기 저장
+                  setDrawerSize({ width: 1000, height: 600 });
+                }
+              }}
               className="p-2 hover:bg-[var(--neutral-100)] rounded-lg transition-colors"
               title={isFullscreen ? '창 모드' : '전체화면'}
             >
@@ -145,6 +186,7 @@ export function PIHistoryDrawer({
             <button
               onClick={onClose}
               className="p-2 hover:bg-[var(--neutral-100)] rounded-lg transition-colors"
+              title="닫기"
             >
               <X className="w-5 h-5 text-[var(--neutral-600)]" />
             </button>
@@ -293,6 +335,23 @@ export function PIHistoryDrawer({
             전체 히스토리 삭제
           </PIButton>
         </div>
+        
+        {/* Resize Handle */}
+        {!isFullscreen && (
+          <div
+            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize bg-[var(--neutral-200)] hover:bg-[var(--neutral-300)] transition-colors"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizing(true);
+            }}
+            style={{
+              borderBottomRightRadius: '12px',
+              borderTopLeftRadius: '4px'
+            }}
+          >
+            <Move className="w-3 h-3 text-[var(--neutral-500)] absolute bottom-0.5 right-0.5" />
+          </div>
+        )}
       </div>
     </div>
   );

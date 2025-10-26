@@ -47,7 +47,7 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 
 ```bash
 # 1. 저장소 클론
-git clone https://github.com/YOUR_USERNAME/panel-insight.git
+git clone https://github.com/username/panel-insight.git
 cd panel-insight
 
 # 2. 의존성 설치

@@ -17,6 +17,22 @@ import { toast } from 'sonner';
 import { historyManager } from '../../lib/history';
 import { Loader2 } from 'lucide-react';
 
+// Hardcoded demo items for UI-only search/detail demo (no API wiring)
+const DUMMY_ITEMS: Array<{ mb_sn: string; feature: string }> = [
+  { mb_sn: 'w348505857922572', feature: '충남에 거주하는 21세 남성으로 미혼이며 3인 가구... 현대 아반떼, 아이폰 SE, 소주/맥주 경험.' },
+  { mb_sn: 'w231298760068942', feature: '충남 28세 여성 1인 가구, 사무직, 아이폰 14 Pro, 맛있는 음식 소비 선호.' },
+  { mb_sn: 'w372958646970048', feature: '충남 24세 여성 1인 가구, 사무직, 최근 1년 금주, 차량 없음.' },
+  { mb_sn: 'w348952936743336', feature: '충남 29세 남성 2인 가구, 경영/관리직, 아이스크림 선호, 막걸리 경험.' },
+  { mb_sn: 'w233669292338149', feature: '충남 28세 남성 1인 가구, 아반떼, 아이폰 15, 소주/맥주/사케 등 음용 경험.' },
+  { mb_sn: 'w131392797522833', feature: '충남 26세 여성 기혼 2인 가구, 경영/관리직, 간헐적 단식, 맥시멀리스트 성향.' },
+  { mb_sn: 'w460303834949635', feature: '충남 24세 여성 3인 가구, 전문직, 다양한 가전 보유, 알람 1개, 외식 주 2~3회.' },
+  { mb_sn: 'w7462586643341', feature: '충남 28세 여성 기혼 4인 가구, 교직, 전통시장 연 1회 이상.' },
+  { mb_sn: 'w127220954132814', feature: '경기 65세 남성 기혼, 자영업, 카니발, 갤럭시 S21, 다양한 주류 경험.' },
+  { mb_sn: 'w311229782857060', feature: '경기 31세 남성 미혼 4인 가구, 개인소득 100미만, 스킨케어 소비 3~5만원.' },
+  { mb_sn: 'w105519727379516', feature: '경기 23세 남성 3인 가구 재학, 아이오닉, 다수 AI 챗봇 사용, OTT 4개 이상.' },
+  { mb_sn: 'w323083651924250', feature: '경기 57세 남성 기타, 운동으로 건강 관리, 다양한 술 경험.' },
+];
+
 // Mock UMAP data with panel attributes
 const mockUmapData = [
   // Cluster 0 (건강관리형) - 우상단 영역
@@ -121,11 +137,13 @@ interface UMAPPoint {
   panelId?: string;
 }
 
-export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
+export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '' }: ClusterLabPageProps) {
   const [modelStatus, setModelStatus] = useState<ModelStatus>('synced');
   const [userRole] = useState<'viewer' | 'admin'>('viewer');
   const [showOutdatedBanner, setShowOutdatedBanner] = useState(false);
   const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
+  const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<{ mb_sn: string; feature: string } | null>(null);
   
   // View controls state
   const [showNoise, setShowNoise] = useState(true);
@@ -152,73 +170,55 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
   //   avg_cluster_size: 3.6
   // });
   
-  // 클러스터링 실행 (더미 데이터 사용)
+  // 클러스터링 실행 (UI 틀만 - 구현 로직 제거)
   const runClustering = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 더미 클러스터 데이터 생성
-      const dummyClusters: ClusterData[] = [
-        {
-          id: 0,
-          size: 3,
-          indices: [0, 1, 2],
-          centroid: [2.0, 1.5],
-          query_similarity: 0.85,
-          representative_items: [0, 1, 2]
-        },
-        {
-          id: 1,
-          size: 3,
-          indices: [3, 4, 5],
-          centroid: [-1.5, 1.0],
-          query_similarity: 0.78,
-          representative_items: [3, 4, 5]
-        },
-        {
-          id: 2,
-          size: 3,
-          indices: [6, 7, 8],
-          centroid: [-1.0, -1.5],
-          query_similarity: 0.72,
-          representative_items: [6, 7, 8]
-        }
-      ];
-      setClusters(dummyClusters);
+      // 검색 결과가 없으면 더미 데이터 사용
+      if (!searchResults || searchResults.length === 0) {
+        toast.info('검색 결과가 없습니다. 먼저 검색을 수행해주세요.');
+        setClusters([]);
+        setUmapData([]);
+        setLoading(false);
+        return;
+      }
 
-      // UMAP 데이터 설정 (이미 정의된 더미 데이터 사용)
+      // 검색 결과 확인
+      if (searchResults.length < 2) {
+        toast.warning('클러스터링을 위해 최소 2개 이상의 패널이 필요합니다.');
+        setClusters([]);
+        setUmapData([]);
+        setLoading(false);
+        return;
+      }
+
+      // UI 틀만 남기고 실제 API 호출 제거
+      // 모의 데이터로 UI 표시
+      setClusters([]);
       setUmapData(mockUmapData);
-
-      // 품질 지표는 이미 초기값으로 설정됨
-
-      // 군집 히스토리 저장
-      const clusterData = {
-        count: mockUmapData.length,
-        percentage: 100,
-        clusters: dummyClusters
-      };
-      const historyItem = historyManager.createClusterHistory(
-        'clustering_result',
-        '군집 분석 결과',
-        clusterData,
-        mockUmapData
-      );
-      historyManager.save(historyItem);
-
-      toast.success('클러스터링이 완료되었습니다');
-    } catch (err) {
+      toast.info('클러스터링 기능이 비활성화되었습니다.');
+      
+    } catch (err: any) {
       console.error('Clustering error:', err);
-      setError('클러스터링 중 오류가 발생했습니다');
+      setError(err?.message || '클러스터링 중 오류가 발생했습니다');
+      toast.error(err?.message || '클러스터링 중 오류가 발생했습니다');
     } finally {
       setLoading(false);
     }
   };
 
-  // 컴포넌트 마운트 시 클러스터링 실행
-  useEffect(() => {
-    runClustering();
-  }, []);
+  // 검색 결과나 쿼리가 변경될 때 클러스터링 실행 제거
+  // useEffect(() => {
+  //   if (searchResults && searchResults.length > 0) {
+  //     runClustering();
+  //   }
+  // }, [searchResults, query]);
+
+  const filtered = (q || '').trim() === ''
+    ? DUMMY_ITEMS
+    : DUMMY_ITEMS.filter((it) => it.feature.toLowerCase().includes(q.toLowerCase()));
 
   useEffect(() => {
     if (locatedPanelId) {
@@ -259,6 +259,17 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
           
           <PIModelBadge status={modelStatus} version="v2025-10-13 14:30" />
         </div>
+      </div>
+
+      {/* Local Search Bar (UI-only, no API) */}
+      <div className="px-20 py-4 bg-white border-b border-[var(--neutral-200)]">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="예) 충남, 여성, 아반떼, 아이폰"
+          style={{ width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8 }}
+        />
+        <div style={{ marginTop: 8, fontSize: 12, color: '#64748B' }}>검색 결과: {filtered.length}건</div>
       </div>
 
       {/* Locator Strip (Sticky) */}
@@ -311,11 +322,49 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
           </div>
         )}
 
+        {/* Empty State - 검색 결과 없음 */}
+        {!loading && !error && (!searchResults || searchResults.length === 0) && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">먼저 검색을 수행하여 패널을 찾아주세요.</p>
+              <p className="text-sm text-gray-500">검색 결과가 있을 때 클러스터링이 자동으로 실행됩니다.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State - 클러스터 결과 없음 */}
+        {!loading && !error && searchResults && searchResults.length > 0 && clusters.length === 0 && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">클러스터링 결과가 없습니다.</p>
+              <PIButton onClick={runClustering}>다시 시도</PIButton>
+            </div>
+          </div>
+        )}
+
         {/* Row 1: UMAP Map + Inspector Stack */}
-        {!loading && !error && (
+        {!loading && !error && clusters.length > 0 && (
           <div className="grid grid-cols-12 gap-6">
-            {/* Left: UMAP Scatter (Col 1-8) */}
+            {/* Left: Result List + UMAP Scatter (Col 1-8) */}
             <div className="col-span-8">
+              {/* Result List Card */}
+              <div className="rounded-2xl p-4 mb-6" style={{ background: '#fff', border: '1px solid rgba(17,24,39,0.10)' }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>검색 결과</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, maxHeight: 240, overflow: 'auto' }}>
+                  {filtered.map(item => (
+                    <div key={item.mb_sn}
+                         onClick={() => setSelected(item)}
+                         style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: 12, cursor: 'pointer', background: '#FAFAFA' }}>
+                      <div style={{ fontSize: 12, color: '#64748B', marginBottom: 6 }}>{item.mb_sn}</div>
+                      <div style={{ fontSize: 13, color: '#0F172A' }}>
+                        {item.feature.slice(0, 120)}{item.feature.length > 120 ? '…' : ''}
+                      </div>
+                    </div>
+                  ))}
+                  {filtered.length === 0 && <div style={{ color:'#64748B' }}>검색 결과가 없습니다.</div>}
+                </div>
+              </div>
+
               <div
                 className="relative rounded-2xl p-4 flex flex-col"
                 style={{
@@ -505,6 +554,19 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
             {/* Right: Inspector Stack (Col 9-12, Sticky) */}
             <div className="col-span-4">
               <div className="sticky top-[88px] flex flex-col gap-4" style={{ height: '560px' }}>
+                {/* Selected Detail */}
+                {selected && (
+                  <div className="rounded-2xl p-4" style={{ background:'#fff', border:'1px solid rgba(17,24,39,0.10)' }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 style={{ fontSize:14, fontWeight:600 }}>상세 정보</h3>
+                      <PIButton size="sm" onClick={() => setSelected(null)}>닫기</PIButton>
+                    </div>
+                    <div style={{ fontSize:12, color:'#64748B', marginBottom:8 }}>패널 ID: {selected.mb_sn}</div>
+                    <div style={{ fontSize:13, color:'#0F172A', whiteSpace:'pre-wrap', lineHeight:1.6 }}>
+                      {selected.feature}
+                    </div>
+                  </div>
+                )}
                 <PIViewControls
                   showNoise={showNoise}
                   onShowNoiseChange={setShowNoise}
@@ -550,7 +612,7 @@ export function ClusterLabPage({ locatedPanelId }: ClusterLabPageProps) {
         )}
 
         {/* Row 2: Cluster Profile Cards (3 columns) */}
-        {!loading && !error && (
+        {!loading && !error && clusters.length > 0 && (
           <div>
             <PISectionHeader
               title="군집 프로필"

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { PIPagination } from '../pi/PIPagination';
 import { Search, Filter, Download, Quote, MapPin, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Loader2 } from 'lucide-react';
 import { PITextField } from '../pi/PITextField';
 import { PIButton } from '../pi/PIButton';
@@ -8,10 +9,9 @@ import { PIBadge } from '../pi/PIBadge';
 import { PISegmentedControl } from '../pi/PISegmentedControl';
 import { PIClusterBadge, ClusterType } from '../pi/PIClusterBadge';
 import { PISelectionBar } from '../pi/PISelectionBar';
-import { PIQuickInsightCard } from '../pi/PIQuickInsightCard';
 import { toast } from 'sonner';
-import { searchApi } from '../../lib/utils';
 import { historyManager } from '../../lib/history';
+import { searchApi } from '../../lib/utils';
 
 interface ResultsPageProps {
   query: string;
@@ -34,66 +34,8 @@ interface Panel {
   responses: any;
   created_at: string;
   embedding?: number[];
+  coverage?: 'qw' | 'w' | string;
 }
-
-const mockPanels = [
-  {
-    id: 'P****001',
-    gender: '여성',
-    age: 24,
-    region: '서울',
-    income: '300~400',
-    tags: ['OTT 이용', '스킨케어', '온라인쇼핑', '카페', '요가'],
-    coverage: 'qw',
-    cluster: 'C1' as ClusterType,
-    probability: 0.85,
-    snippet: '넷플릭스를 주 3회 이상 시청하며, 피부 관리에 관심이 많음',
-    similarity: 0.92,
-    lastAnswered: '2025-01-10',
-  },
-  {
-    id: 'P****002',
-    gender: '여성',
-    age: 27,
-    region: '서울',
-    income: '400~600',
-    tags: ['OTT 이용', '뷰티', '운동', '여행', '맛집탐방'],
-    coverage: 'qw',
-    cluster: 'C2' as ClusterType,
-    probability: 0.78,
-    snippet: '디즈니플러스와 넷플릭스를 모두 구독 중',
-    similarity: 0.88,
-    lastAnswered: '2025-01-15',
-  },
-  {
-    id: 'P****003',
-    gender: '여성',
-    age: 22,
-    region: '경기',
-    income: '200~300',
-    tags: ['스킨케어', '패션', '인스타그램', 'K-POP'],
-    coverage: 'w',
-    cluster: 'Noise' as ClusterType,
-    probability: 0.42,
-    snippet: '스킨케어 루틴에 관심이 높고 새로운 제품 시도를 좋아함',
-    similarity: 0.85,
-    lastAnswered: null, // W-only, no response
-  },
-  {
-    id: 'P****004',
-    gender: '여성',
-    age: 29,
-    region: '서울',
-    income: '400~600',
-    tags: ['OTT 이용', '독서', '요가', '명상', '건강식'],
-    coverage: 'qw',
-    cluster: 'C3' as ClusterType,
-    probability: 0.91,
-    snippet: '웰빙 라이프스타일을 추구하며 OTT로 다큐멘터리 시청',
-    similarity: 0.83,
-    lastAnswered: '2025-01-08',
-  },
-];
 
 export function ResultsPage({
   query,
@@ -111,7 +53,7 @@ export function ResultsPage({
   const [selectedPanels, setSelectedPanels] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = 최신순, asc = 오래된순
   
-  // API 상태 관리
+  // 로컬 더미 + 페이지네이션 상태
   const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,45 +62,137 @@ export function ResultsPage({
   const [wOnlyCount, setWOnlyCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize] = useState(20); // 페이지당 결과 수 (20개로 변경)
 
-  // 검색 실행
-  const searchPanels = async (page: number = 1) => {
-    if (!query.trim()) return;
+  // 서버 검색 (텍스트 일치 + 페이지네이션)
+  const searchPanels = async (pageNum: number = currentPage) => {
+    console.log('[DEBUG Frontend] ========== searchPanels 시작 ==========');
+    console.log('[DEBUG Frontend] Query:', query);
+    console.log('[DEBUG Frontend] Page:', pageNum);
+    
+    // 쿼리가 없으면 검색하지 않음
+    if (!query || !query.trim()) {
+      console.log('[DEBUG Frontend] Query가 비어있음, 검색 스킵');
+      setPanels([]);
+      setTotalResults(0);
+      setCurrentPage(1);
+      setTotalPages(1);
+      return;
+    }
     
     setLoading(true);
     setError(null);
     
+    const searchStartTime = Date.now();
+    console.log('[DEBUG Frontend] API 호출 시작...');
+    console.log('[DEBUG Frontend] 호출 파라미터:', {
+      query: query.trim(),
+      filters: {},
+      page: pageNum,
+      limit: pageSize
+    });
+    
     try {
-      const response = await searchApi.searchPanels(query, propFilters, page, pageSize);
-      setPanels(response.results);
-      setTotalResults(response.total);
-      setQwCount(response.qw_count || 0);
-      setWOnlyCount(response.w_only_count || 0);
-      setCurrentPage(response.page);
-      setTotalPages(response.pages || 1);
+      const apiCallStart = Date.now();
+      const response = await searchApi.searchPanels(query.trim(), {}, pageNum, pageSize);
+      const apiCallDuration = Date.now() - apiCallStart;
       
-      // 검색 히스토리 저장 (첫 페이지일 때만)
-      if (page === 1) {
-        const historyItem = historyManager.createQueryHistory(
-          query,
-          propFilters,
-          response.total
-        );
-        historyManager.save(historyItem);
+      console.log('[DEBUG Frontend] API 호출 완료:', {
+        duration: `${apiCallDuration}ms`,
+        responseKeys: Object.keys(response),
+        resultCount: response.results?.length || 0,
+        mode: response.mode,
+        total: response.total,
+        pages: response.pages,
+        query: response.query,
+        error: response.error,
+        fullResponse: response  // 전체 응답 로그
+      });
+      
+      // 에러 확인
+      if (response.error) {
+        console.error('[DEBUG Frontend] ⚠️ API 응답에 에러가 있습니다:', response.error);
+        setError(`검색 오류: ${response.error}`);
       }
-    } catch (err) {
-      setError('검색 중 오류가 발생했습니다.');
-      console.error('Search error:', err);
+      
+      const results = response.results || [];
+      
+      console.log('[DEBUG Frontend] 결과 상세:', {
+        resultsLength: results.length,
+        total: response.total,
+        pages: response.pages,
+        mode: response.mode,
+        hasError: !!response.error
+      });
+      
+      // 페이지네이션 정보 설정
+      const total = response.total || 0;
+      const pages = response.pages || 1;
+      const currentPageNum = response.page || pageNum;
+      
+      setPanels(results);
+      setTotalResults(total);
+      setCurrentPage(currentPageNum);
+      setTotalPages(pages);
+      
+      // Q+W, W only 카운트 (현재 페이지만)
+      setQwCount(results.filter((p: Panel) => p.coverage === 'qw').length);
+      setWOnlyCount(results.filter((p: Panel) => p.coverage === 'w').length);
+      
+      // 히스토리 저장 (전체 개수 사용)
+      const historyItem = historyManager.createQueryHistory(query.trim(), {}, total);
+      historyManager.save(historyItem);
+      
+      const totalDuration = Date.now() - searchStartTime;
+      console.log('[DEBUG Frontend] ========== 검색 완료 ==========');
+      console.log('[DEBUG Frontend] 총 소요 시간:', `${totalDuration}ms`);
+      console.log('[DEBUG Frontend] 결과 수:', results.length);
+      
+    } catch (err: any) {
+      const errorDuration = Date.now() - searchStartTime;
+      console.error('[DEBUG Frontend] ========== 에러 발생 ==========');
+      console.error('[DEBUG Frontend] 에러 발생 시간:', `${errorDuration}ms`);
+      console.error('[DEBUG Frontend] 에러 타입:', err?.constructor?.name || typeof err);
+      console.error('[DEBUG Frontend] 에러 메시지:', err?.message);
+      console.error('[DEBUG Frontend] 에러 detail:', err?.detail);
+      console.error('[DEBUG Frontend] 전체 에러 객체:', err);
+      console.error('[DEBUG Frontend] 에러 스택:', err?.stack);
+      console.error('[DEBUG Frontend] ==============================');
+      
+      let errorMsg = err?.message || err?.detail || '알 수 없는 오류';
+      
+      // Failed to fetch 에러 처리
+      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('fetch') || err?.name === 'TypeError') {
+        console.error('[DEBUG Frontend] 🔴 연결 실패 감지: 네트워크/Fetch 문제');
+        errorMsg = `백엔드 서버에 연결할 수 없습니다 (네트워크/Fetch 오류)\n\n원인 파악:\n1. 백엔드 서버 실행 여부 확인 (포트 8004)\n2. CORS 설정 확인\n3. 네트워크 연결 확인\n\n해결 방법:\n터미널에서 실행: cd server && python -m uvicorn app.main:app --reload --port 8004 --host 127.0.0.1`;
+      } else if (errorMsg.includes('HTTP error') || err?.message?.includes('status')) {
+        console.error('[DEBUG Frontend] 🔴 HTTP 응답 오류: 백엔드는 연결되었으나 오류 응답');
+      } else {
+        console.error('[DEBUG Frontend] 🔴 기타 오류: 백엔드 로직 또는 DB 문제 가능성');
+      }
+      
+      setError(errorMsg);
+      setPanels([]);
+      setTotalResults(0);
     } finally {
       setLoading(false);
+      console.log('[DEBUG Frontend] 검색 함수 종료 (finally)');
     }
   };
 
-  // 컴포넌트 마운트 시 검색 실행
+  // 쿼리 변경 시 검색 실행 (첫 페이지로)
   useEffect(() => {
-    searchPanels(1);
-  }, [query, propFilters]);
+    if (query && query.trim()) {
+      setCurrentPage(1);
+      searchPanels(1);
+    } else {
+      setPanels([]);
+      setTotalResults(0);
+      setCurrentPage(1);
+      setTotalPages(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   // 검색 결과가 변경될 때 상위 컴포넌트에 전달
   useEffect(() => {
@@ -169,69 +203,24 @@ export function ResultsPage({
 
   // 페이지 변경 핸들러
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    searchPanels(page);
+    if (query && query.trim()) {
+      searchPanels(page);
+    }
+  };
+  
+  // 검색창 돋보기 클릭 핸들러 (재검색)
+  const handleSearchClick = () => {
+    if (query && query.trim()) {
+      // 현재 페이지에서 다시 검색
+      searchPanels(currentPage);
+    } else {
+      // 쿼리가 비어있으면 첫 페이지로 검색
+      setCurrentPage(1);
+      searchPanels(1);
+    }
   };
 
-  // 페이지네이션 버튼 생성
-  const renderPaginationButtons = () => {
-    const buttons = [];
-    const maxVisiblePages = 5;
-    
-    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-    
-    if (endPage - startPage + 1 < maxVisiblePages) {
-      startPage = Math.max(1, endPage - maxVisiblePages + 1);
-    }
-    
-    // 이전 페이지 버튼
-    if (currentPage > 1) {
-      buttons.push(
-        <PIButton
-          key="prev"
-          variant="outline"
-          size="small"
-          onClick={() => handlePageChange(currentPage - 1)}
-          disabled={loading}
-        >
-          이전
-        </PIButton>
-      );
-    }
-    
-    // 페이지 번호 버튼들
-    for (let i = startPage; i <= endPage; i++) {
-      buttons.push(
-        <PIButton
-          key={i}
-          variant={i === currentPage ? "default" : "outline"}
-          size="small"
-          onClick={() => handlePageChange(i)}
-          disabled={loading}
-        >
-          {i}
-        </PIButton>
-      );
-    }
-    
-    // 다음 페이지 버튼
-    if (currentPage < totalPages) {
-      buttons.push(
-        <PIButton
-          key="next"
-          variant="outline"
-          size="small"
-          onClick={() => handlePageChange(currentPage + 1)}
-          disabled={loading}
-        >
-          다음
-        </PIButton>
-      );
-    }
-    
-    return buttons;
-  };
+  // (Deprecated) 수동 페이지 버튼 제거 → 공용 PIPagination 사용
 
   // 필터 상태를 appliedFilters에 반영
   useEffect(() => {
@@ -261,68 +250,9 @@ export function ResultsPage({
     setAppliedFilters(filterLabels);
   }, [propFilters]);
 
-  // 퀵 인사이트 상태 관리
-  const [quickInsight, setQuickInsight] = useState<any>(null);
-  const [insightLoading, setInsightLoading] = useState(false);
+  // 퀵 인사이트 제거 요청에 따라 관련 상태/로직 제거
 
-  // 퀵 인사이트 생성
-  const generateQuickInsight = async () => {
-    if (!panels.length || !query.trim()) return;
-    
-    setInsightLoading(true);
-    try {
-      const response = await searchApi.generateQuickInsight(query, panels, propFilters);
-      setQuickInsight(response);
-    } catch (err) {
-      console.error('Quick insight error:', err);
-      toast.error('퀵 인사이트 생성 중 오류가 발생했습니다.');
-    } finally {
-      setInsightLoading(false);
-    }
-  };
-
-  // 검색 결과 변경 시 퀵 인사이트 자동 생성
-  useEffect(() => {
-    if (panels.length > 0 && query.trim()) {
-      generateQuickInsight();
-    }
-  }, [panels, query, propFilters]);
-
-  // Quick Insight 데이터 (API 응답 기반)
-  const quickInsightData = useMemo(() => {
-    if (quickInsight?.summary) {
-      const { summary } = quickInsight;
-      return {
-        total: summary.total,
-        q_cnt: summary.q_cnt,
-        q_ratio: summary.total > 0 ? Math.round((summary.q_cnt / summary.total) * 100) : 0,
-        w_cnt: summary.w_cnt,
-        w_ratio: summary.total > 0 ? Math.round((summary.w_cnt / summary.total) * 100) : 0,
-        gender_top: summary.gender_top,
-        top_regions: summary.top_regions as [string, string, string],
-        top_tags: summary.top_tags as [string, string, string],
-        recent_30d: 1823, // 추후 계산
-        age_med: summary.age_med,
-      };
-    }
-    
-    // 기본값 (API 응답이 없을 때)
-    const qwCount = panels.filter(p => p.responses?.q1 && p.responses.q1.trim()).length;
-    const wCount = panels.length - qwCount;
-    
-    return {
-      total: totalResults,
-      q_cnt: qwCount,
-      q_ratio: totalResults > 0 ? Math.round((qwCount / totalResults) * 100) : 0,
-      w_cnt: wCount,
-      w_ratio: totalResults > 0 ? Math.round((wCount / totalResults) * 100) : 0,
-      gender_top: 0,
-      top_regions: ['', '', ''] as [string, string, string],
-      top_tags: ['', '', ''] as [string, string, string],
-      recent_30d: 0,
-      age_med: 0,
-    };
-  }, [quickInsight, panels, totalResults]);
+  // 퀵 인사이트 데이터/뷰 제거
 
   // Sort panels by response date
   const sortedPanels = useMemo(() => {
@@ -339,6 +269,9 @@ export function ResultsPage({
     });
   }, [panels, sortOrder]);
 
+  // 분포 데이터 계산 (현재 페이지 패널 기준)
+  
+
   return (
     <div className="min-h-screen bg-[var(--neutral-50)]">
       {/* Fixed Search Bar */}
@@ -351,12 +284,12 @@ export function ResultsPage({
               onChange={(e) => onQueryChange?.(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  onSearch?.(query);
+                  handleSearchClick();
                 }
               }}
               trailingIcons={[
-                <Filter key="filter" className="w-5 h-5" onClick={onFilterOpen} />,
-                <Search key="search" className="w-5 h-5" onClick={() => onSearch?.(query)} />,
+                <Filter key="filter" className="w-5 h-5 cursor-pointer" onClick={onFilterOpen} />,
+                <Search key="search" className="w-5 h-5 cursor-pointer" onClick={handleSearchClick} />,
               ]}
             />
           </div>
@@ -383,9 +316,9 @@ export function ResultsPage({
       <div className="px-20 py-8 space-y-6">
         {/* Summary Strip - Refactored with Quick Insight */}
         <div className="grid grid-cols-12 gap-6">
-          {/* Total Results - 4 cols */}
-          <div className="col-span-4">
-            <PICard variant="summary" className="relative overflow-hidden bg-gradient-to-br from-white via-white to-purple-50/30" style={{ height: '240px' }}>
+          {/* Total Results - 12 cols */}
+          <div className="col-span-12">
+            <PICard variant="summary" className="relative overflow-hidden bg-gradient-to-br from-white via-white to-purple-50/30 h-[240px]">
               {/* Top Gradient Hairline */}
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#C7B6FF] to-[#A5C8FF]" />
               
@@ -440,17 +373,7 @@ export function ResultsPage({
               </div>
             </PICard>
           </div>
-
-          {/* Quick Insight - 8 cols */}
-          <div className="col-span-8">
-            <div style={{ height: '240px' }}>
-              <PIQuickInsightCard 
-                data={quickInsightData} 
-                insight={quickInsight?.insight}
-                loading={insightLoading}
-              />
-            </div>
-          </div>
+          
         </div>
 
         {/* View Switch with Sort Control */}
@@ -491,9 +414,12 @@ export function ResultsPage({
         {/* Error State */}
         {error && (
           <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-red-600 mb-4">{error}</p>
-              <PIButton onClick={searchPanels}>다시 시도</PIButton>
+            <div className="text-center max-w-2xl">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-4">
+                <p className="text-red-800 font-semibold mb-2">오류 발생</p>
+                <p className="text-red-700 whitespace-pre-line text-sm">{error}</p>
+              </div>
+              <PIButton onClick={() => searchPanels()}>다시 시도</PIButton>
             </div>
           </div>
         )}
@@ -694,26 +620,22 @@ export function ResultsPage({
           </div>
         )}
 
-        {/* Pagination */}
-        {!loading && !error && totalPages > 1 && (
-          <div className="flex items-center justify-between pt-6">
-            <div className="text-sm text-[var(--neutral-600)]">
-              {totalResults > 0 ? (
-                <>
-                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalResults)} / {totalResults.toLocaleString()}개 결과
-                </>
-              ) : (
-                '검색 결과가 없습니다'
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {renderPaginationButtons()}
-            </div>
+        {/* Pagination - 항상 표시, 내보내기 버튼 위에 고정 배치(문서 흐름 내) */}
+        {!loading && !error && (
+          <div className="pt-8 flex items-center justify-center">
+            <PIPagination
+              count={Math.max(1, totalPages)}
+              page={currentPage}
+              onChange={handlePageChange}
+              siblingCount={1}
+              boundaryCount={1}
+              disabled={loading}
+            />
           </div>
         )}
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-center pt-8">
+        <div className="flex items-center justify-center pt-6">
           <PIButton
             variant="secondary"
             size="large"

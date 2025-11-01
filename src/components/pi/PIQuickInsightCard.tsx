@@ -26,7 +26,7 @@ interface PIQuickInsightCardProps {
 export function PIQuickInsightCard({ data, isEmpty = false, insight, loading = false }: PIQuickInsightCardProps) {
   if (isEmpty) {
     return (
-      <PICard variant="summary" className="relative overflow-hidden h-full flex items-center justify-center">
+      <PICard variant="summary" className="relative h-full flex items-center justify-center overflow-auto">
         {/* Top Gradient Hairline */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#C7B6FF] to-[#A5C8FF]" />
         <div className="text-center space-y-2">
@@ -38,7 +38,7 @@ export function PIQuickInsightCard({ data, isEmpty = false, insight, loading = f
   }
 
   return (
-    <PICard variant="summary" className="relative overflow-hidden h-full bg-gradient-to-br from-white via-white to-blue-50/30">
+    <PICard variant="summary" className="relative h-full bg-gradient-to-br from-white via-white to-blue-50/30 overflow-auto">
       {/* Top Gradient Hairline */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#C7B6FF] to-[#A5C8FF]" />
       

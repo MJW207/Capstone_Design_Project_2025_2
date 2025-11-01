@@ -1,0 +1,24 @@
+kr_default_v1:
+  kw_ott: ["ott","넷플릭스","디즈니플러스","티빙","웨이브","쿠팡플레이"]
+  kw_netflix: ["넷플릭스","netflix"]
+  kw_disney_plus: ["디즈니플러스","disney+"]
+  kw_secondhand: ["중고","당근","번개장터"]
+  kw_gym: ["헬스","피트니스","gym","pt"]
+  kw_jeju_trip: ["제주","제주도"]
+  kw_beauty: ["뷰티","화장품"]
+  kw_skincare: ["스킨케어","피부관리"]
+  kw_delivery: ["배달","딜리버리"]
+  kw_coffee: ["커피","카페"]
+  kw_travel: ["여행","관광","항공","숙박"]
+  kw_shopping: ["쇼핑","구매"]
+  kw_fitness: ["운동","피트니스"]
+  kw_book: ["도서","책","독서"]
+  kw_music: ["음악","스트리밍"]
+  kw_movie: ["영화","극장"]
+  kw_game: ["게임","게이밍"]
+  kw_cooking: ["요리","쿠킹"]
+  kw_pet: ["반려동물","펫"]
+  kw_car: ["자동차","차량"]
+
+
+

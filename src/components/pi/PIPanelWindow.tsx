@@ -27,6 +27,7 @@ interface PanelData {
     text: string;
     similarity: number;
   }>;
+  aiSummary?: string;
 }
 
 interface PIPanelWindowProps {
@@ -57,9 +58,9 @@ export function PIPanelWindow({
   const windowRef = useRef<HTMLDivElement>(null);
 
   const sizeMap = {
-    M: { width: 720, height: 640 },
-    L: { width: 960, height: 720 },
-    XL: { width: 1200, height: 820 },
+    M: { width: 840, height: 740 },
+    L: { width: 1080, height: 820 },
+    XL: { width: 1320, height: 900 },
   };
 
   const dimensions = sizeMap[size];
@@ -141,6 +142,8 @@ export function PIPanelWindow({
     { text: 'OTT 구독 서비스에 월 2만원 이상 지출', similarity: 0.85 },
   ];
 
+  const aiSummary = panelData.aiSummary || '해당 패널은 OTT 이용과 뷰티 관심이 두드러지고, 규칙적인 활동 패턴을 보입니다. 최근 구매는 빠른 배송을 선호하며 건강관리 관련 습관이 관찰됩니다.';
+
   return (
     <div
       ref={windowRef}
@@ -195,11 +198,11 @@ export function PIPanelWindow({
               )}
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <PIBadge variant={panelData.coverage === 'Q+W' ? 'success' : 'default'} size="sm">
+              <PIBadge variant={panelData.coverage === 'Q+W' ? 'success' : 'default'} size="md">
                 {panelData.coverage}
               </PIBadge>
               {panelData.cluster && (
-                <PIBadge variant="accent" size="sm">
+                <PIBadge variant="accent" size="md">
                   {panelData.cluster}
                 </PIBadge>
               )}
@@ -260,29 +263,34 @@ export function PIPanelWindow({
         {/* Body - Scrollable */}
         <div className="flex-1 overflow-y-auto">
           <TabsContent value="overview" className="p-6 space-y-6 m-0">
+            {/* AI Summary */}
+            <div className="p-5 rounded-xl" style={{ background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.18)' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#2563EB', marginBottom: 8 }}>AI 요약</h3>
+              <p style={{ fontSize: '14px', color: '#0F172A', lineHeight: 1.75 }}>{aiSummary}</p>
+            </div>
             {/* Basic Info */}
             <div className="space-y-3">
-              <h3 style={{ fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 기본 정보
               </h3>
               <div className="flex flex-wrap gap-2">
-                <PIBadge variant="outline">{panelData.gender}</PIBadge>
-                <PIBadge variant="outline">{panelData.age}세</PIBadge>
-                <PIBadge variant="outline">{panelData.region}</PIBadge>
-                <PIBadge variant="outline">{panelData.income}</PIBadge>
+                <PIBadge variant="outline" size="md">{panelData.gender}</PIBadge>
+                <PIBadge variant="outline" size="md">{panelData.age}세</PIBadge>
+                <PIBadge variant="outline" size="md">{panelData.region}</PIBadge>
+                <PIBadge variant="outline" size="md">{panelData.income}</PIBadge>
               </div>
             </div>
 
             {/* Warning for Welcome only */}
             {panelData.coverage === 'W only' && (
               <div 
-                className="p-4 rounded-xl"
+                className="p-5 rounded-xl"
                 style={{
                   background: 'rgba(245, 158, 11, 0.08)',
                   border: '1px solid rgba(245, 158, 11, 0.2)',
                 }}
               >
-                <p style={{ fontSize: '12px', fontWeight: 500, color: '#D97706' }}>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#D97706' }}>
                   ⚠️ Welcome Survey만 보유한 패널입니다
                 </p>
               </div>
@@ -307,7 +315,7 @@ export function PIPanelWindow({
           <TabsContent value="history" className="p-6 space-y-4 m-0">
             {/* Sort Control */}
             <div className="flex items-center justify-between mb-4">
-              <h3 style={{ fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 응답 이력
               </h3>
               <PISegmentedControl
@@ -321,26 +329,31 @@ export function PIPanelWindow({
             </div>
 
             {/* Timeline */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               {sortedResponses.map((item, idx) => (
                 <div
                   key={idx}
-                  className="p-4 rounded-xl hover:bg-white/80 transition-colors"
+                  className="p-5 rounded-xl hover:bg-white/80 transition-colors"
                   style={{
                     border: '1px solid rgba(17, 24, 39, 0.06)',
                   }}
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F172A' }}>
                       {item.title}
                     </div>
-                    <div style={{ fontSize: '12px', fontWeight: 400, color: '#64748B' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748B' }}>
                       {item.date}
                     </div>
                   </div>
-                  <p style={{ fontSize: '12px', fontWeight: 400, color: '#64748B' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 400, color: '#334155', lineHeight: 1.75 }}>
                     {item.answer}
                   </p>
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px dashed rgba(17,24,39,0.08)' }}>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full" style={{ fontSize: 11, background: 'rgba(100,116,139,0.12)', color: '#475569' }}>
+                      기록 #{idx + 1}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

@@ -185,30 +185,30 @@ export function ComparePage() {
     }
   }, [clusterGroups]);
 
-  // 비교 히스토리 저장
-  useMemo(() => {
-    if (selectedGroupA && selectedGroupB) {
-      const historyItem = historyManager.createComparisonHistory(
-        {
-          id: selectedGroupA.id,
-          name: selectedGroupA.label,
-          color: selectedGroupA.color
-        },
-        {
-          id: selectedGroupB.id,
-          name: selectedGroupB.label,
-          color: selectedGroupB.color
-        },
-        diffSortBy as 'difference' | 'lift' | 'smd',
-        {
-          differenceData,
-          liftData,
-          smdData
-        }
-      );
-      historyManager.save(historyItem);
-    }
-  }, [selectedGroupA, selectedGroupB, diffSortBy]);
+  // 비교 히스토리 저장 (UI 틀만 - 실제 저장 로직 제거)
+  // useMemo(() => {
+  //   if (selectedGroupA && selectedGroupB) {
+  //     const historyItem = historyManager.createComparisonHistory(
+  //       {
+  //         id: selectedGroupA.id,
+  //         name: selectedGroupA.label,
+  //         color: selectedGroupA.color
+  //       },
+  //       {
+  //         id: selectedGroupB.id,
+  //         name: selectedGroupB.label,
+  //         color: selectedGroupB.color
+  //       },
+  //       diffSortBy as 'difference' | 'lift' | 'smd',
+  //       {
+  //         differenceData,
+  //         liftData,
+  //         smdData
+  //       }
+  //     );
+  //     historyManager.save(historyItem);
+  //   }
+  // }, [selectedGroupA, selectedGroupB, diffSortBy]);
 
   const getQualityBadge = (warning: string) => {
     switch (warning) {

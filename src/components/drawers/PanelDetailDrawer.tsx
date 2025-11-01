@@ -11,14 +11,32 @@ interface PanelDetailDrawerProps {
   panelId: string;
 }
 
+interface PanelResponse {
+  key: string;
+  title: string;
+  answer: string;
+  date: string;
+}
+
+interface PanelEvidence {
+  text: string;
+  source: string;
+  similarity?: number | null;
+}
+
 interface Panel {
   id: string;
   name: string;
   age: number;
   gender: string;
   region: string;
-  responses: any;
+  income?: string;
+  responses: PanelResponse[] | any;  // 백엔드 응답 구조에 맞춰 배열 또는 객체
+  tags?: string[];
+  evidence?: PanelEvidence[];
+  aiSummary?: string;
   created_at: string;
+  coverage?: 'qw' | 'w' | string;
   embedding?: number[];
 }
 
@@ -103,8 +121,8 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
             <div>
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-semibold">{panel.name}</h2>
-                <PIBadge kind="coverage-qw">
-                  Q+W
+                <PIBadge kind={panel.coverage === 'qw' ? 'coverage-qw' : 'coverage-w'}>
+                  {panel.coverage === 'qw' ? 'Q+W' : 'W'}
                 </PIBadge>
               </div>
               <p className="text-sm text-gray-600 mt-1">ID: {panel.id}</p>
@@ -128,43 +146,59 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+            {/* AI Summary */}
+            {panel.aiSummary && (
+              <div className="p-4 bg-[rgba(37,99,235,0.06)] rounded-xl border border-[rgba(37,99,235,0.18)]">
+                <h3 className="text-sm font-semibold text-[#2563EB] mb-2">AI 요약</h3>
+                <p className="text-sm text-[var(--neutral-700)] leading-relaxed">{panel.aiSummary}</p>
+              </div>
+            )}
+
             <div className="space-y-4">
               <h3 className="font-semibold">기본 정보</h3>
               <div className="flex flex-wrap gap-2">
-                <PIChip type="tag">{panel.gender}</PIChip>
-                <PIChip type="tag">{panel.age}세</PIChip>
-                <PIChip type="tag">{panel.region}</PIChip>
+                {panel.gender && <PIChip type="tag">{panel.gender}</PIChip>}
+                {panel.age > 0 && <PIChip type="tag">{panel.age}세</PIChip>}
+                {panel.region && <PIChip type="tag">{panel.region}</PIChip>}
+                {panel.income && <PIChip type="tag">소득: {panel.income}</PIChip>}
                 <PIChip type="tag">생성일: {new Date(panel.created_at).toLocaleDateString()}</PIChip>
               </div>
             </div>
 
-            {panel.responses && Object.keys(panel.responses).length > 0 && (
+            {/* 응답 내용 요약 */}
+            {panel.responses && Array.isArray(panel.responses) && panel.responses.length > 0 && (
               <div className="space-y-4">
-                <h3 className="font-semibold">응답 내용</h3>
+                <h3 className="font-semibold">응답 내용 요약</h3>
                 <div className="space-y-3">
-                  {Object.entries(panel.responses).map(([key, value], i) => (
+                  {panel.responses.slice(0, 3).map((response, i) => (
                     <div key={i} className="p-3 bg-[var(--neutral-50)] rounded-lg">
-                      <h4 className="text-sm font-medium text-[var(--neutral-700)] mb-1">{key}</h4>
-                      <p className="text-sm text-[var(--neutral-600)]">{String(value)}</p>
+                      <h4 className="text-sm font-medium text-[var(--neutral-700)] mb-1">{response.title || response.key}</h4>
+                      <p className="text-sm text-[var(--neutral-600)] line-clamp-2">{response.answer}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
-            <div className="p-4 bg-[var(--neutral-50)] rounded-xl">
-              <p className="text-sm text-[var(--neutral-600)]">
-                이 패널의 상세 정보와 응답 내용을 확인할 수 있습니다. 
-                패널의 특성과 관심사를 파악하여 더 나은 분석을 제공합니다.
-              </p>
-            </div>
           </TabsContent>
 
           {/* Responses Tab */}
           <TabsContent value="responses" className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
             <h3 className="font-semibold">응답 이력</h3>
             
-            {panel.responses && Object.keys(panel.responses).length > 0 ? (
+            {panel.responses && Array.isArray(panel.responses) && panel.responses.length > 0 ? (
+              <div className="space-y-3">
+                {panel.responses.map((response, i) => (
+                  <div key={i} className="p-4 bg-white border border-[var(--neutral-200)] rounded-xl space-y-2 hover:border-[var(--accent-blue)] transition-colors">
+                    <div className="flex items-start justify-between">
+                      <h4 className="text-sm font-medium">{response.title || response.key}</h4>
+                      <span className="text-xs text-[var(--neutral-600)]">{response.date || new Date(panel.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <p className="text-sm text-[var(--neutral-600)] whitespace-pre-wrap">{response.answer}</p>
+                  </div>
+                ))}
+              </div>
+            ) : panel.responses && !Array.isArray(panel.responses) && Object.keys(panel.responses).length > 0 ? (
+              // 기존 객체 형태 응답 (하위 호환성)
               Object.entries(panel.responses).map(([key, value], i) => (
                 <div key={i} className="p-4 bg-white border border-[var(--neutral-200)] rounded-xl space-y-2 hover:border-[var(--accent-blue)] transition-colors">
                   <div className="flex items-start justify-between">
@@ -183,34 +217,58 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
 
           {/* Tags/Evidence Tab */}
           <TabsContent value="tags" className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-            <div className="space-y-4">
-              <h3 className="font-semibold">패널 특성</h3>
-              <p className="text-sm text-[var(--neutral-600)]">
-                이 패널의 주요 특성과 응답 패턴입니다.
-              </p>
-
-              <div className="space-y-3">
-                <div className="p-4 bg-gradient-to-br from-[var(--accent-blue)]/5 to-transparent rounded-xl border border-[var(--accent-blue)]/20">
-                  <h4 className="text-sm font-medium mb-2">기본 특성</h4>
+            <div className="space-y-6">
+              {/* 태그 섹션 */}
+              <div className="space-y-4">
+                <h3 className="font-semibold">태그</h3>
+                {panel.tags && panel.tags.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    <PIChip type="tag">{panel.gender}</PIChip>
-                    <PIChip type="tag">{panel.age}세</PIChip>
-                    <PIChip type="tag">{panel.region}</PIChip>
+                    {panel.tags.map((tag, i) => (
+                      <PIChip key={i} type="tag" selected>
+                        {tag}
+                      </PIChip>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--neutral-500)]">태그가 없습니다.</p>
+                )}
+              </div>
+
+              {/* 근거 섹션 */}
+              <div className="space-y-4">
+                <h3 className="font-semibold">근거 문장 {panel.evidence && panel.evidence.length > 0 ? `TOP ${Math.min(panel.evidence.length, 10)}` : ''}</h3>
+                {panel.evidence && panel.evidence.length > 0 ? (
+                  <div className="space-y-3">
+                    {panel.evidence.slice(0, 10).map((evidence, i) => (
+                      <div key={i} className="p-4 bg-[var(--neutral-50)] rounded-xl border border-[var(--neutral-200)] hover:border-[var(--accent-blue)] transition-colors">
+                        <div className="flex items-start justify-between mb-2">
+                          <span className="text-xs font-medium text-[var(--accent-blue)]">{evidence.source}</span>
+                          {evidence.similarity !== null && evidence.similarity !== undefined && (
+                            <span className="text-xs font-semibold text-[var(--accent-blue)]">
+                              유사도 {Math.round(evidence.similarity * 100)}%
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-[var(--neutral-700)] whitespace-pre-wrap leading-relaxed">{evidence.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--neutral-500)]">근거 데이터가 없습니다.</p>
+                )}
+              </div>
+
+              {/* 기본 특성 섹션 */}
+              <div className="space-y-4">
+                <h3 className="font-semibold">기본 특성</h3>
+                <div className="p-4 bg-gradient-to-br from-[var(--accent-blue)]/5 to-transparent rounded-xl border border-[var(--accent-blue)]/20">
+                  <div className="flex flex-wrap gap-2">
+                    {panel.gender && <PIChip type="tag">{panel.gender}</PIChip>}
+                    {panel.age > 0 && <PIChip type="tag">{panel.age}세</PIChip>}
+                    {panel.region && <PIChip type="tag">{panel.region}</PIChip>}
+                    {panel.income && <PIChip type="tag">소득: {panel.income}</PIChip>}
                   </div>
                 </div>
-
-                {panel.responses && Object.keys(panel.responses).length > 0 && (
-                  <div className="p-4 bg-gradient-to-br from-[var(--accent-blue)]/5 to-transparent rounded-xl border border-[var(--accent-blue)]/20">
-                    <h4 className="text-sm font-medium mb-2">응답 키워드</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.keys(panel.responses).map((key, i) => (
-                        <PIChip key={i} type="tag" selected>
-                          {key}
-                        </PIChip>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </TabsContent>

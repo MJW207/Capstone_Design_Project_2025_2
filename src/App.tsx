@@ -13,6 +13,40 @@ import { Search, BarChart3, GitCompare, History } from 'lucide-react';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 
+// 패널별 고유 응답 이력 (UI 데모용)
+const PANEL_RESPONSE_HISTORY: Record<string, Array<{ title: string; answer: string; date: string }>> = {
+  'P****001': [
+    { title: '주요 특성 요약', answer: '충남 거주 21세 남성, 3인 가구, 생산/노무직(건설·건축·토목·환경)', date: '2025.01.10' },
+    { title: '소득/가구', answer: '개인 100~199만원, 가구 400~499만원', date: '2025.01.08' },
+    { title: '자산·디바이스', answer: '현대 아반떼, 아이폰 SE, 냉장고/김치냉장고/세탁기/에어컨/제습기/일반청소기/비데/건조기/전기레인지/에어프라이기/노트북/태블릿/무선이어폰/스마트워치/스피커 보유', date: '2025.01.06' },
+    { title: '음주/흡연', answer: '흡연 경험 없음, 음용: 소주/맥주', date: '2025.01.04' },
+    { title: '환경 습관', answer: '일회용 비닐봉투 절약 노력 없음', date: '2025.01.02' },
+  ],
+  'P****002': [
+    { title: '직업/학력', answer: '충남 28세 여성, 사무직(경영·인사·총무), 대졸 1인 가구', date: '2025.01.15' },
+    { title: '소득', answer: '개인 200~299만원, 가구 200~299만원', date: '2025.01.14' },
+    { title: '소비/스트레스', answer: '스트레스 해소는 음식 섭취, 맛있는 음식 소비 선호, 배달 선호', date: '2025.01.13' },
+    { title: '도구/앱', answer: 'ChatGPT 업무 보조, 메신저 앱 최다 사용, 동남아 여행 계획', date: '2025.01.12' },
+    { title: '배송/중고', answer: '패션·뷰티 구매 시 빠른 배송, 버리기 아까운 물건은 중고 판매', date: '2025.01.11' },
+    { title: '기상 습관', answer: '여러 개 알람을 짧게 설정', date: '2025.01.10' },
+    { title: '운동/뷰티', answer: '유산소 운동, 스킨케어 월 3~5만원, 리뷰/후기 중시', date: '2025.01.09' },
+    { title: '성향/여행', answer: '맥시멀리스트, 큰 틀 후 현지 세부 결정', date: '2025.01.08' },
+    { title: '음주/흡연', answer: '음용: 소주/맥주/막걸리/양주/와인/사케, 흡연: 일반·궐련형 전자담배 경험(레종/에쎄/더원/아이스볼트 GT/말보로/팔리아멘트/아이코스)', date: '2025.01.07' },
+  ],
+  'P****003': [
+    { title: '직업/소득', answer: '충남 24세 여성, 사무직(경영·인사·총무), 개인/가구 200~299만원', date: '2025.01.06' },
+    { title: '자산/디바이스', answer: '아이폰 14 Pro, 냉장고/세탁기/에어컨/전기레인지/노트북/무선이어폰/스마트워치 보유', date: '2025.01.05' },
+    { title: '건강/음주', answer: '흡연 無, 최근 1년 금주', date: '2025.01.04' },
+    { title: '취향', answer: '물놀이 비선호, 1인 가구 사무직 라이프스타일', date: '2025.01.03' },
+  ],
+  'P****004': [
+    { title: '직업/소득', answer: '충남 29세 남성, 경영/관리직(무역·영업·판매·매장관리), 개인 300~399 / 가구 500~599만원', date: '2025.01.09' },
+    { title: '자산/디바이스', answer: '지프 패트리어트, 아이폰 11, 세탁기 보유', date: '2025.01.08' },
+    { title: '취향', answer: '여름철 최애 간식: 아이스크림', date: '2025.01.07' },
+    { title: '음주', answer: '막걸리/탁주 경험', date: '2025.01.06' },
+  ],
+};
+
 type AppView = 'start' | 'results';
 
 // Panel window instance
@@ -109,6 +143,20 @@ export default function App() {
       income: '300~400만원',
       tags: ['스킨케어', 'OTT', '여행', '피트니스', '뷰티', '건강'],
       isPinned: false,
+      // 고유 응답 이력 주입
+      responses: PANEL_RESPONSE_HISTORY[panelId] || [
+        { title: '최근 활동', answer: 'OTT 시청과 가벼운 운동을 주 3회 이상 수행', date: '2025.01.09' },
+        { title: '소비 성향', answer: '필요 시 빠른 배송 옵션을 선호', date: '2024.12.29' },
+        { title: '기기 사용', answer: '스마트폰·노트북 중심의 멀티 디바이스 사용', date: '2024.12.18' },
+      ],
+      // 패널별 요약 (하드코딩)
+      aiSummary: (
+        panelId === 'P****001' ? '충남 거주 기반의 합리적 소비 성향. 이동 편의·디바이스 활용도 높음.' :
+        panelId === 'P****002' ? '업무 스트레스 해소를 위해 맛·편의를 중시. 배달·빠른 배송 선호.' :
+        panelId === 'P****003' ? '뷰티·리뷰 중심 탐색이 강하고 신제품 수용도가 높음.' :
+        panelId === 'P****004' ? '건강관리 루틴 확립. 여행·콘텐츠 소비에서 자기주도성이 강함.' :
+        '콘텐츠 소비와 일상 관리의 균형형 패턴. 편의성에 우호적.'
+      ),
     };
     
     
@@ -262,7 +310,7 @@ export default function App() {
               />
             )}
             
-            {activeTab === 'cluster' && <ClusterLabPage locatedPanelId={locatedPanelId} />}
+            {activeTab === 'cluster' && <ClusterLabPage locatedPanelId={locatedPanelId} searchResults={searchResults} query={query} />}
             
             {activeTab === 'compare' && <ComparePage />}
           </div>

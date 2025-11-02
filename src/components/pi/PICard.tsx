@@ -11,17 +11,43 @@ interface PICardProps {
 }
 
 const variantStyles: Record<PICardVariant, string> = {
-  summary: 'bg-white border border-[var(--neutral-200)] rounded-[var(--radius-card)] p-5 pi-elevation-1 hover:pi-elevation-2 transition-shadow',
-  'summary-glow': 'bg-gradient-to-br from-white to-[var(--neutral-50)] border border-[var(--neutral-200)] rounded-[var(--radius-card)] p-5 pi-elevation-2 relative overflow-hidden',
-  panel: 'bg-white border border-[var(--neutral-200)] rounded-[var(--radius-card)] p-4 pi-elevation-1 hover:border-[var(--accent-blue)] hover:-translate-y-0.5 transition-all duration-[var(--duration-base)] cursor-pointer',
-  'panel-glass': 'pi-glass-enhanced rounded-[var(--radius-card)] p-4 pi-elevation-1 hover:border-[var(--accent-blue)]/50 hover:-translate-y-0.5 transition-all duration-[var(--duration-base)] cursor-pointer',
-  cluster: 'bg-gradient-to-br from-white to-[var(--neutral-50)] border border-[var(--neutral-200)] rounded-[var(--radius-card)] p-5 pi-elevation-2',
+  summary: 'border rounded-[var(--radius-card)] p-5 pi-elevation-1 hover:pi-elevation-2 transition-shadow',
+  'summary-glow': 'border rounded-[var(--radius-card)] p-5 pi-elevation-2 relative overflow-hidden',
+  panel: 'border rounded-[var(--radius-card)] p-4 pi-elevation-1 hover:border-[var(--brand-blue-500)] hover:-translate-y-0.5 transition-all duration-[var(--duration-base)] cursor-pointer',
+  'panel-glass': 'pi-glass-enhanced rounded-[var(--radius-card)] p-4 pi-elevation-1 hover:border-[var(--brand-blue-500)] hover:-translate-y-0.5 transition-all duration-[var(--duration-base)] cursor-pointer',
+  cluster: 'border rounded-[var(--radius-card)] p-5 pi-elevation-2',
 };
 
 export function PICard({ variant = 'summary', children, className, onClick }: PICardProps) {
+  // 다크 모드를 위한 동적 스타일
+  const getCardStyle = () => {
+    const baseStyle: React.CSSProperties = {
+      background: 'var(--surface-1)',
+      borderColor: 'var(--border-primary)',
+      color: 'var(--text-secondary)',
+    };
+
+    if (variant === 'summary-glow') {
+      return {
+        ...baseStyle,
+        background: 'var(--surface-1)',
+      };
+    }
+    
+    if (variant === 'cluster') {
+      return {
+        ...baseStyle,
+        background: 'var(--surface-1)',
+      };
+    }
+
+    return baseStyle;
+  };
+
   return (
     <div
       className={cn(variantStyles[variant], className)}
+      style={getCardStyle()}
       onClick={onClick}
     >
       {children}

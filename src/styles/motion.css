@@ -1,0 +1,83 @@
+/* 
+ * Motion & Feedback - Filter Drawer
+ */
+
+/* Chip selection animation */
+.pi-chip {
+  transform: scale(1);
+}
+
+.pi-chip:active {
+  transform: scale(0.98);
+}
+
+.pi-chip.is-selected {
+  animation: chip-pop 0.18s ease-out;
+}
+
+@keyframes chip-pop {
+  0% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Slider handle animation */
+.pi-age .slider-handle {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pi-age .slider-handle:active {
+  transform: scale(1.1);
+}
+
+/* Section fade-in */
+.pi-section {
+  animation: section-fade-in 0.3s ease-out;
+}
+
+@keyframes section-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tag input animation */
+.pi-tag {
+  animation: tag-appear 0.2s ease-out;
+}
+
+@keyframes tag-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Drawer slide-up animation */
+@keyframes drawer-slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.pi-drawer {
+  animation: drawer-slide-up 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+

@@ -1,0 +1,226 @@
+/* 
+ * 🌑 Dark Mode Override - Global Safety Net
+ * 
+ * 하드코딩된 색상이나 third-party 컴포넌트에 강제로 다크모드를 적용
+ * FOUC (Flash of Unstyled Content) 방지
+ */
+
+/* 기본 HTML 요소 강제 다크 모드 */
+.dark,
+.dark body,
+html.dark,
+html[data-theme="dark"],
+body[data-theme="dark"] {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+}
+
+/* 하드코딩된 흰색 배경 강제 변경 */
+.dark [style*="background: white"],
+.dark [style*="background: #fff"],
+.dark [style*="background-color: white"],
+.dark [style*="background-color: #fff"],
+.dark [style*="background: #ffffff"],
+html[data-theme="dark"] [style*="background: white"],
+html[data-theme="dark"] [style*="background: #fff"],
+html[data-theme="dark"] [style*="background-color: white"],
+html[data-theme="dark"] [style*="background-color: #fff"],
+html[data-theme="dark"] [style*="background: #ffffff"] {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+}
+
+/* 하드코딩된 검은색 텍스트 강제 변경 */
+.dark [style*="color: #000"],
+.dark [style*="color: black"],
+.dark [style*="color: #111827"],
+.dark [style*="color: #111"] {
+  color: var(--foreground) !important;
+}
+
+/* 흰색 텍스트가 어두운 배경에서 보이도록 */
+.dark [style*="color: white"],
+.dark [style*="color: #fff"] {
+  color: var(--foreground) !important;
+}
+
+/* 일반적인 클래스 패턴 */
+.dark .bg-white,
+.dark .bg-gray-50,
+.dark .bg-neutral-50 {
+  background-color: var(--card) !important;
+}
+
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-black {
+  color: var(--foreground) !important;
+}
+
+.dark .text-gray-600,
+.dark .text-gray-500 {
+  color: var(--muted-foreground) !important;
+}
+
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: var(--border) !important;
+}
+
+/* Filter Drawer 강제 다크 모드 */
+.dark .filter-drawer-container,
+.dark .filter-drawer-container * {
+  background: var(--surface-1) !important;
+  color: var(--text-secondary) !important;
+}
+
+.dark .filter-drawer-bg-layer-1 {
+  background: var(--surface-1) !important;
+  opacity: 0.8 !important;
+}
+
+.dark .filter-drawer-bg-layer-2 {
+  background: transparent !important;
+}
+
+.dark .filter-drawer-bg-layer-3 {
+  border-color: var(--border-primary) !important;
+}
+
+.dark .filter-drawer-header {
+  background: var(--bg-0) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .filter-drawer-title {
+  color: var(--text-primary) !important;
+}
+
+.dark .filter-drawer-subtitle {
+  color: var(--text-tertiary) !important;
+}
+
+.dark .filter-drawer-body {
+  background: var(--surface-1) !important;
+  color: var(--text-secondary) !important;
+}
+
+.dark .filter-drawer-section-label {
+  color: var(--text-secondary) !important;
+}
+
+.dark .filter-drawer-option-container {
+  background: var(--surface-2) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-secondary) !important;
+}
+
+.dark .filter-drawer-option-container.selected {
+  background: rgba(37, 99, 235, 0.25) !important;
+  border-color: rgba(37, 99, 235, 0.4) !important;
+}
+
+.dark .filter-drawer-option-text {
+  color: var(--text-secondary) !important;
+}
+
+.dark .filter-drawer-option-text.selected {
+  color: #93C5FD !important;
+}
+
+.dark .filter-drawer-age-card,
+.dark .filter-drawer-region-grid,
+.dark .filter-drawer-interests-card {
+  background: var(--surface-2) !important;
+  border-color: var(--border-primary) !important;
+}
+
+.dark .filter-drawer-input {
+  background: var(--surface-2) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .filter-drawer-input:focus {
+  border-color: var(--brand-blue-500) !important;
+  background: var(--surface-3) !important;
+}
+
+.dark .filter-drawer-footer {
+  background: var(--bg-0) !important;
+  border-color: var(--border-primary) !important;
+}
+
+.dark .filter-drawer-live-count {
+  background: rgba(37, 99, 235, 0.15) !important;
+  border-color: rgba(37, 99, 235, 0.3) !important;
+}
+
+.dark .filter-drawer-live-count-label {
+  color: var(--text-tertiary) !important;
+}
+
+.dark .filter-drawer-live-count-value {
+  color: var(--brand-blue-300) !important;
+  -webkit-text-fill-color: var(--brand-blue-300) !important;
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+}
+
+.dark .filter-drawer-live-count-total {
+  color: var(--text-tertiary) !important;
+}
+
+/* Input, Textarea 등 */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: var(--input) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* Placeholder */
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--muted-foreground) !important;
+}
+
+/* 버튼 */
+.dark button {
+  color: var(--foreground);
+}
+
+.dark button:not([class*="bg-"]):not([style*="background"]) {
+  background-color: transparent;
+}
+
+/* 링크 */
+.dark a {
+  color: var(--primary);
+}
+
+.dark a:hover {
+  color: var(--accent-blue);
+}
+
+/* 테이블 */
+.dark table {
+  background-color: var(--card);
+  color: var(--foreground);
+}
+
+.dark thead {
+  background-color: var(--muted) !important;
+}
+
+.dark tbody tr {
+  border-color: var(--border) !important;
+}
+
+.dark tbody tr:hover {
+  background-color: var(--muted) !important;
+}
+

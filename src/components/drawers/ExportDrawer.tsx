@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Download, Loader2 } from 'lucide-react';
 import { PIButton } from '../pi/PIButton';
 import { PISegmentedControl } from '../pi/PISegmentedControl';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
-import { searchApi } from '../../lib/utils';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface ExportDrawerProps {
   isOpen: boolean;
@@ -15,7 +14,7 @@ interface ExportDrawerProps {
   filters?: any; // 적용된 필터
 }
 
-export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters = {} }: ExportDrawerProps) {
+export function ExportDrawer({ isOpen, onClose, data = [], query = '' }: ExportDrawerProps) {
   const [format, setFormat] = useState<string>('csv');
   const [samplingMethod, setSamplingMethod] = useState<string>('random');
   const [sampleSize, setSampleSize] = useState<string>('100');
@@ -95,13 +94,6 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
     link.click();
   };
 
-  const downloadFile = (fileData: any, filename: string) => {
-    const blob = new Blob([fileData], { type: 'application/pdf' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-  };
 
   const downloadText = (data: any[], filename: string) => {
     const textContent = data.map(panel => 
@@ -150,16 +142,34 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-[480px] bg-white shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-[var(--duration-base)]">
+      <div 
+        className="fixed right-0 top-0 h-full w-[480px] drawer-content z-50 flex flex-col animate-in slide-in-from-right duration-[var(--duration-base)]"
+        style={{
+          background: 'var(--surface-1)',
+          color: 'var(--text-secondary)',
+          boxShadow: 'var(--shadow-3)',
+        }}
+      >
         {/* Header */}
-        <div className="relative px-6 py-5 border-b border-[var(--neutral-200)]">
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[var(--accent-blue)] to-transparent opacity-50" />
+        <div 
+          className="relative px-6 py-5 border-b drawer-header"
+          style={{
+            borderColor: 'var(--border-primary)',
+          }}
+        >
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[var(--brand-blue-500)] to-transparent opacity-50" />
           
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">내보내기</h2>
+            <h2 
+              className="text-lg font-semibold"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              내보내기
+            </h2>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-[var(--neutral-100)] rounded-lg transition-colors"
+              className="btn--ghost p-2 rounded-lg transition-fast"
+              style={{ color: 'var(--muted-foreground)' }}
             >
               <X className="w-5 h-5" />
             </button>
@@ -190,35 +200,35 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
               <label className="flex items-center gap-3 cursor-pointer">
                 <Checkbox
                   checked={includeQuery}
-                  onCheckedChange={(checked) => setIncludeQuery(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setIncludeQuery(checked)}
                 />
-                <span className="text-sm">쿼리/필터 정의</span>
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>쿼리/필터 정의</span>
               </label>
 
               <label className="flex items-center gap-3 cursor-pointer">
                 <Checkbox
                   checked={includeTable}
-                  onCheckedChange={(checked) => setIncludeTable(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setIncludeTable(checked)}
                 />
-                <span className="text-sm">결과 테이블</span>
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>결과 테이블</span>
               </label>
 
               <label className="flex items-center gap-3 cursor-pointer">
                 <Checkbox
                   checked={includeCharts}
-                  onCheckedChange={(checked) => setIncludeCharts(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setIncludeCharts(checked)}
                 />
-                <span className="text-sm">분포 그래프</span>
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>분포 그래프</span>
               </label>
 
               <label className="flex items-center gap-3 cursor-pointer">
                 <Checkbox
                   checked={includeClusters}
-                  onCheckedChange={(checked) => setIncludeClusters(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setIncludeClusters(checked)}
                 />
                 <div className="flex-1">
-                  <span className="text-sm">군집 결과</span>
-                  <p className="text-xs text-[var(--neutral-600)] mt-0.5">
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>군집 결과</span>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
                     UMAP, Silhouette, Heatmap, Top-Feature
                   </p>
                 </div>
@@ -227,9 +237,9 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
               <label className="flex items-center gap-3 cursor-pointer">
                 <Checkbox
                   checked={includeSnippets}
-                  onCheckedChange={(checked) => setIncludeSnippets(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setIncludeSnippets(checked)}
                 />
-                <span className="text-sm">대표 스니펫 (비식별)</span>
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>대표 스니펫 (비식별)</span>
               </label>
             </div>
           </div>
@@ -248,7 +258,14 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
             />
 
             {samplingMethod === 'stratified' && (
-              <p className="text-xs text-[var(--neutral-600)] p-3 bg-[var(--neutral-50)] rounded-lg">
+              <p 
+                className="text-xs p-3 rounded-lg"
+                style={{
+                  color: 'var(--text-tertiary)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
                 성별, 연령, 지역을 기준으로 층화 샘플링합니다.
               </p>
             )}
@@ -259,16 +276,35 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
                 type="number"
                 value={sampleSize}
                 onChange={(e) => setSampleSize(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-[var(--neutral-200)] bg-[var(--neutral-50)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]"
+                className="input w-full"
+                style={{
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-primary)',
+                  borderColor: 'var(--border-primary)',
+                }}
                 placeholder="100"
               />
             </div>
           </div>
 
           {/* Preview Info */}
-          <div className="p-4 bg-gradient-to-br from-[var(--neutral-50)] to-white rounded-xl border border-[var(--neutral-200)]">
-            <h4 className="text-sm font-semibold mb-2">미리보기</h4>
-            <div className="space-y-1 text-xs text-[var(--neutral-600)]">
+          <div 
+            className="p-4 rounded-xl border"
+            style={{
+              background: 'var(--surface-2)',
+              borderColor: 'var(--border-primary)',
+            }}
+          >
+            <h4 
+              className="text-sm font-semibold mb-2"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              미리보기
+            </h4>
+            <div 
+              className="space-y-1 text-xs"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               <p>- 형식: {format.toUpperCase()}</p>
               <p>- 전체 데이터: {data.length}명</p>
               <p>- 샘플: {Math.min(parseInt(sampleSize), data.length)}명 ({samplingMethod === 'random' ? '무작위' : '층화'})</p>
@@ -279,7 +315,13 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[var(--neutral-200)] flex items-center gap-3">
+        <div 
+          className="px-6 py-4 border-t flex items-center gap-3"
+          style={{
+            borderColor: 'var(--border-primary)',
+            background: 'var(--bg-0)',
+          }}
+        >
           <PIButton 
             variant="ghost" 
             onClick={onClose} 

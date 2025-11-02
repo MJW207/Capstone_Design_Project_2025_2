@@ -55,6 +55,7 @@
     },
     server: {
       port: 3000,
-      open: true,
+      open: false,  // 자동 브라우저 열기 비활성화
+      strictPort: false,  // 포트가 사용 중이면 다음 포트로 자동 이동
     },
   });

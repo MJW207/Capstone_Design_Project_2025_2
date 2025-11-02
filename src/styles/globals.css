@@ -312,9 +312,9 @@ html {
 
 /* Glass search bar enhanced */
 .pi-glass-enhanced {
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--glass);
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(17, 24, 39, 0.08);
+  border: 1px solid var(--glass-border-strong);
 }
 
 /* Focus ring gradient */

@@ -1,0 +1,80 @@
+/* 
+ * Summary Bar - Motion & Micro-interactions
+ */
+
+/* 카드 hover는 summary.css에 포함 */
+
+.hero__num,
+.num {
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.card:hover .hero__num {
+  text-shadow: 0 0 28px rgba(59, 130, 246, 0.35);
+}
+
+.tag {
+  transition: transform 0.15s ease, background-color 0.2s ease;
+}
+
+.tag:hover {
+  transform: scale(1.05);
+}
+
+.icon--zap {
+  animation: blink 3.5s infinite steps(2);
+}
+
+@keyframes blink {
+  0%,
+  96% {
+    opacity: 1;
+  }
+  98% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.progress .bar {
+  animation: progress-glow 2s ease-in-out infinite;
+}
+
+@keyframes progress-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  }
+}
+
+.mini {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mini:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.chip {
+  transition: all 0.15s ease;
+}
+
+.chip:hover {
+  transform: scale(1.05);
+}
+
+.hero__chips .pill {
+  transition: all 0.15s ease;
+}
+
+.hero__chips .pill:hover {
+  transform: scale(1.05);
+  opacity: 0.9;
+}
+

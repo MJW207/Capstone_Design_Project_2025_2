@@ -1,27 +1,68 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Info } from 'lucide-react';
 import { PIQuickActionChip } from '../pi/PIQuickActionChip';
 import { PIPresetMenu } from '../pi/PIPresetMenu';
 import { PIBookmarkMenu } from '../pi/PIBookmarkMenu';
 import { PICommandPalette } from '../pi/PICommandPalette';
+import { PIBookmarkPanel } from '../pi/PIBookmarkPanel';
+import { PIBookmarkButton } from '../pi/PIBookmarkButton';
+import { PIPresetButton } from '../pi/PIPresetButton';
+import { bookmarkManager } from '../../lib/bookmarkManager';
+import { presetManager } from '../../lib/presetManager';
+import { DarkModeToggle } from '../../lib/DarkModeSystem';
 
 interface StartPageProps {
   onSearch: (query: string) => void;
   onFilterOpen: () => void;
   onPresetApply?: (preset: any) => void;
   currentFilters?: any;
+  onPanelDetailOpen?: (panelId: string) => void;
 }
 
-export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilters = {} }: StartPageProps) {
+export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilters = {}, onPanelDetailOpen }: StartPageProps) {
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isPresetOpen, setIsPresetOpen] = useState(false);
   const [isBookmarkOpen, setIsBookmarkOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isBookmarkPanelOpen, setIsBookmarkPanelOpen] = useState(false);
+  const [bookmarkCount, setBookmarkCount] = useState(0);
+  const [presetCount, setPresetCount] = useState(0);
+
+  // 북마크 개수 로드
+  useEffect(() => {
+    const updateBookmarkCount = () => {
+      const bookmarks = bookmarkManager.loadBookmarks();
+      setBookmarkCount(bookmarks.length);
+    };
+    updateBookmarkCount();
+    // 북마크가 변경될 때마다 개수 업데이트 (간단한 polling 방식)
+    const interval = setInterval(updateBookmarkCount, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 프리셋 개수 로드
+  useEffect(() => {
+    const updatePresetCount = () => {
+      const presets = presetManager.loadPresets();
+      setPresetCount(presets.length);
+    };
+    updatePresetCount();
+    // 프리셋이 변경될 때마다 개수 업데이트 (간단한 polling 방식)
+    const interval = setInterval(updatePresetCount, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSearch = () => {
-    if (query.trim()) {
-      onSearch(query);
+    // 검색어가 없어도 검색 화면으로 전환
+    console.log('[StartPage] handleSearch called with query:', query.trim());
+    onSearch(query.trim());
+  };
+
+  const handleNavigateToBookmark = (panelId: string) => {
+    setIsBookmarkPanelOpen(false);
+    if (onPanelDetailOpen) {
+      onPanelDetailOpen(panelId);
     }
   };
 
@@ -45,13 +86,45 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFocused]);
 
+  // 별 생성 - useMemo로 한 번만 생성하여 위치 고정
+  const stars = useMemo(() => {
+    const starElements = [];
+    const starCount = 20; // 별 개수 (과하지 않게)
+    
+    for (let i = 0; i < starCount; i++) {
+      const size = Math.random() < 0.6 ? 'small' : Math.random() < 0.8 ? 'medium' : 'large';
+      const left = Math.random() * 100;
+      const top = Math.random() * 80; // 상단 80% 영역에만 배치
+      const delay = Math.random() * 2;
+      
+      starElements.push(
+        <div
+          key={i}
+          className={`star star-${size}`}
+          style={{
+            left: `${left}%`,
+            top: `${top}%`,
+            animationDelay: `${delay}s`,
+          }}
+        />
+      );
+    }
+    
+    return starElements;
+  }, []); // 빈 의존성 배열로 마운트 시 한 번만 생성
+
   return (
     <div 
       className="flex flex-col relative min-h-screen"
       style={{
-        background: '#F8FAFC',
+        background: 'var(--background)',
       }}
     >
+      {/* 별 반짝임 효과 */}
+      <div className="stars-container">
+        {stars}
+      </div>
+
       {/* Top 20% subtle radial gradient overlay */}
       <div 
         className="absolute inset-x-0 top-0 h-[20%] pointer-events-none"
@@ -61,10 +134,11 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
       />
 
       {/* Minimal Transparent Nav */}
-      <nav className="relative z-20 px-20 py-6">
-        <div className="text-base font-bold text-[#111827]">
+      <nav className="relative z-20 px-20 py-6 flex items-center justify-between">
+        <div className="text-base font-bold" style={{ color: 'var(--foreground)' }}>
           Panel Insight
         </div>
+        <DarkModeToggle variant="icon" size="sm" position="relative" />
       </nav>
 
       {/* Hero Section with Background */}
@@ -174,11 +248,10 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
 
           {/* Subtitle */}
           <p
-            className="text-center"
+            className="text-center text-tertiary"
             style={{
               fontSize: '16px',
               fontWeight: 500,
-              color: '#64748B',
               lineHeight: '140%',
               marginTop: '8px',
             }}
@@ -189,21 +262,16 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
           {/* Glass Search Bar */}
           <div className="w-full" style={{ marginTop: '32px' }}>
             <div
-              className={`
-                relative w-full transition-all duration-[120ms] ease-[cubic-bezier(0.33,1,0.68,1)]
-                ${isFocused ? 'pi-focus-ring-gradient' : ''}
-              `}
+              className={`relative w-full transition-all duration-[120ms] ease-[cubic-bezier(0.33,1,0.68,1)] glass ${isFocused ? 'pi-focus-ring-gradient' : ''}`}
               style={{
                 height: '56px',
                 borderRadius: '16px',
-                background: 'rgba(255, 255, 255, 0.65)',
-                backdropFilter: 'blur(16px)',
                 border: isFocused 
-                  ? '1px solid rgba(29, 78, 216, 0.3)' 
-                  : '1px solid rgba(17, 24, 39, 0.08)',
+                  ? '1px solid var(--border-accent)' 
+                  : '1px solid var(--border)',
                 boxShadow: isFocused
-                  ? '0 6px 16px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 24px rgba(29, 78, 216, 0.15)'
-                  : '0 6px 16px rgba(0, 0, 0, 0.06)',
+                  ? 'var(--shadow-2), 0 0 0 1px var(--glass-border-strong), 0 0 24px rgba(37, 99, 235, 0.15)'
+                  : 'var(--shadow-1)',
                 transform: isFocused ? 'translateY(-2px)' : 'translateY(0)',
               }}
               onMouseEnter={(e) => {
@@ -229,11 +297,12 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
                 placeholder="예) 서울 20대 여성, OTT 이용·스킨케어 관심 200명"
-                className="w-full h-full px-5 bg-transparent border-none outline-none"
+                className="w-full h-full px-5 bg-transparent border-none outline-none input"
                 style={{
                   fontSize: '14px',
                   fontWeight: 400,
-                  color: '#111827',
+                  background: 'transparent',
+                  border: 'none',
                 }}
               />
 
@@ -241,28 +310,40 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
                 <button
                   type="button"
-                  className="p-2 rounded-lg hover:bg-black/5 transition-all duration-[120ms] group"
+                  className="p-2 rounded-lg btn--ghost transition-fast group"
                   title="도움말"
+                  style={{
+                    padding: '8px',
+                    borderRadius: '8px',
+                  }}
                 >
-                  <Info className="w-[18px] h-[18px] text-[#475569] group-hover:text-[#111827] transition-colors" />
+                  <Info className="w-[18px] h-[18px] transition-colors" style={{ color: 'var(--muted-foreground)' }} />
                 </button>
                 
                 <button
                   type="button"
                   onClick={onFilterOpen}
-                  className="p-2 rounded-lg hover:bg-black/5 transition-all duration-[120ms] group"
+                  className="p-2 rounded-lg btn--ghost transition-fast group"
                   title="필터"
+                  style={{
+                    padding: '8px',
+                    borderRadius: '8px',
+                  }}
                 >
-                  <Filter className="w-[18px] h-[18px] text-[#475569] group-hover:text-[#111827] transition-colors" />
+                  <Filter className="w-[18px] h-[18px] transition-colors" style={{ color: 'var(--muted-foreground)' }} />
                 </button>
                 
                 <button
                   type="button"
                   onClick={handleSearch}
-                  className="p-2 rounded-lg hover:bg-black/5 transition-all duration-[120ms] group"
+                  className="p-2 rounded-lg btn--ghost transition-fast group"
                   title="검색"
+                  style={{
+                    padding: '8px',
+                    borderRadius: '8px',
+                  }}
                 >
-                  <Search className="w-[18px] h-[18px] text-[#475569] group-hover:text-[#111827] transition-colors" />
+                  <Search className="w-[18px] h-[18px] transition-colors" style={{ color: 'var(--muted-foreground)' }} />
                 </button>
               </div>
             </div>
@@ -270,13 +351,17 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
 
           {/* Quick Actions */}
           <div className="flex items-center gap-2" style={{ marginTop: '16px' }}>
-            <PIQuickActionChip 
-              type="preset" 
-              onClick={() => setIsPresetOpen(true)}
+            <PIPresetButton
+              onClick={() => {
+                setIsPresetOpen(true);
+              }}
+              presetCount={presetCount}
+              variant="chip"
             />
-            <PIQuickActionChip 
-              type="bookmark" 
-              onClick={() => setIsBookmarkOpen(true)}
+            <PIBookmarkButton
+              onClick={() => setIsBookmarkPanelOpen(!isBookmarkPanelOpen)}
+              bookmarkCount={bookmarkCount}
+              variant="chip"
             />
             <PIQuickActionChip 
               type="command" 
@@ -285,8 +370,12 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
           </div>
 
           {/* Keyboard Shortcuts Hint */}
-          <p className="text-center" style={{ fontSize: '12px', color: '#94A3B8', marginTop: '8px' }}>
-            <kbd className="px-2 py-0.5 bg-white/60 rounded border border-black/10 text-xs">/</kbd>
+          <p className="text-center text-disabled" style={{ fontSize: '12px', marginTop: '8px' }}>
+            <kbd className="px-2 py-0.5 rounded border text-xs" style={{
+              background: 'var(--surface-2)',
+              borderColor: 'var(--border)',
+              color: 'var(--text-secondary)'
+            }}>/</kbd>
             {' '}포커스
           </p>
         </div>
@@ -298,15 +387,24 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
         onClose={() => setIsPresetOpen(false)}
         onApply={onPresetApply}
         currentFilters={currentFilters}
+        anchorPosition="center"
       />
 
       <PIBookmarkMenu
         isOpen={isBookmarkOpen}
         onClose={() => setIsBookmarkOpen(false)}
         currentQuery={query}
+        currentFilters={currentFilters}
         onOpen={(bookmark) => {
-          setQuery(bookmark.query);
-          onSearch(bookmark.query);
+          if (bookmark.query) {
+            setQuery(bookmark.query);
+          }
+          // 북마크에 필터가 저장되어 있으면 적용
+          if (bookmark.filters && Object.keys(bookmark.filters).length > 0 && onPresetApply) {
+            onPresetApply({ filters: bookmark.filters, name: bookmark.title || bookmark.query });
+          } else if (bookmark.query) {
+            onSearch(bookmark.query);
+          }
         }}
       />
 
@@ -316,6 +414,12 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
         onFilterOpen={onFilterOpen}
         onExportOpen={() => console.log('Export')}
         onClusterLabOpen={() => console.log('Cluster Lab')}
+      />
+
+      {/* 북마크 패널 */}
+      <PIBookmarkPanel
+        isOpen={isBookmarkPanelOpen}
+        onNavigate={handleNavigateToBookmark}
       />
     </div>
   );

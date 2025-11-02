@@ -1,116 +1,116 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PIQuickMenuPopover } from './PIQuickMenuPopover';
-import { PISegmentedControl } from './PISegmentedControl';
 import { PITextField } from './PITextField';
 import { PIButton } from './PIButton';
-import { Zap } from 'lucide-react';
+import { Zap, Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-
-type PresetScope = '개인' | '팀';
-
-interface Preset {
-  id: string;
-  name: string;
-  scope: PresetScope;
-  date: string;
-  filters: any;
-}
-
+import { presetManager, type FilterPreset } from '../../lib/presetManager';
 interface PIPresetMenuProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply?: (preset: Preset) => void;
+  onApply?: (preset: { filters: any; name: string }) => void;
   currentFilters?: any;
+  onEdit?: (preset: FilterPreset) => void; // 프리셋 수정 요청 콜백
+  anchorPosition?: 'center' | 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
 }
 
-export function PIPresetMenu({ isOpen, onClose, onApply, currentFilters = {} }: PIPresetMenuProps) {
-  const [scope, setScope] = useState<PresetScope>('개인');
+export function PIPresetMenu({ isOpen, onClose, onApply, currentFilters = {}, onEdit, anchorPosition = 'center' }: PIPresetMenuProps) {
   const [newPresetName, setNewPresetName] = useState('');
-  const [presets, setPresets] = useState<Preset[]>([
-    {
-      id: '1',
-      name: '빠른 설문 보유 패널',
-      scope: '개인',
-      date: '2025.10.10',
-      filters: {
-        ageRange: [20, 39],
-        selectedRegions: ['서울', '경기'],
-        selectedGenders: ['여성'],
-        selectedIncomes: ['300~400', '400~600'],
-        quickpollOnly: true,
-      },
-    },
-    {
-      id: '2',
-      name: '20-30대 여성',
-      scope: '팀',
-      date: '2025.10.08',
-      filters: {
-        ageRange: [20, 30],
-        selectedRegions: ['서울', '부산', '대구'],
-        selectedGenders: ['여성'],
-        selectedIncomes: ['200~300', '300~400'],
-        quickpollOnly: false,
-      },
-    },
-  ]);
+  const [presets, setPresets] = useState<FilterPreset[]>([]);
+  
+  // localStorage에서 프리셋 로드 (presetManager 사용)
+  useEffect(() => {
+    if (isOpen) {
+      const loadedPresets = presetManager.loadPresets();
+      setPresets(loadedPresets);
+    }
+  }, [isOpen]);
 
   const handleSave = () => {
-    if (!newPresetName.trim()) return;
+    if (!newPresetName.trim()) {
+      toast.error('프리셋 이름을 입력해주세요');
+      return;
+    }
 
-    const newPreset: Preset = {
-      id: Date.now().toString(),
-      name: newPresetName,
-      scope,
-      date: new Date().toLocaleDateString('ko-KR', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit' 
-      }).replace(/\. /g, '.').replace('.', ''),
-      filters: currentFilters,
+    // 필터 형식 변환 (FilterDrawer 형식 -> presetManager 형식)
+    const filtersForPreset = {
+      gender: currentFilters.selectedGenders || [],
+      regions: currentFilters.selectedRegions || [],
+      income: currentFilters.selectedIncomes || [],
+      ageRange: currentFilters.ageRange || [15, 80],
+      quickpollOnly: currentFilters.quickpollOnly || false,
+      interests: currentFilters.interests || '',
     };
 
-    setPresets([newPreset, ...presets]);
+    // 빈 필터 체크
+    const hasActiveFilters = 
+      (filtersForPreset.gender && filtersForPreset.gender.length > 0) ||
+      (filtersForPreset.regions && filtersForPreset.regions.length > 0) ||
+      (filtersForPreset.income && filtersForPreset.income.length > 0) ||
+      (filtersForPreset.ageRange && (filtersForPreset.ageRange[0] > 15 || filtersForPreset.ageRange[1] < 80)) ||
+      filtersForPreset.quickpollOnly === true;
+
+    if (!hasActiveFilters) {
+      toast.error('저장할 필터가 없습니다');
+      return;
+    }
+
+    presetManager.addPreset(newPresetName, filtersForPreset, '개인');
+    const loadedPresets = presetManager.loadPresets();
+    setPresets(loadedPresets);
     setNewPresetName('');
     toast.success('프리셋이 저장되었습니다');
   };
 
-  const handleApply = (preset: Preset) => {
-    onApply?.(preset);
-    toast.success('프리셋 적용됨');
+  const handleApply = (preset: FilterPreset) => {
+    // presetManager 형식 -> FilterDrawer 형식으로 변환
+    const filtersForDrawer = {
+      selectedGenders: preset.filters.gender || [],
+      selectedRegions: preset.filters.regions || [],
+      selectedIncomes: preset.filters.income || [],
+      ageRange: preset.filters.ageRange || [15, 80],
+      quickpollOnly: preset.filters.quickpollOnly || false,
+      interests: Array.isArray(preset.filters.interests) 
+        ? preset.filters.interests 
+        : preset.filters.interests 
+          ? [preset.filters.interests] 
+          : [],
+      interestLogic: preset.filters.interestLogic || 'and',
+    };
+
+    // 프리셋 적용하고 검색 실행 (검색페이지와 동일한 로직)
+    onApply?.({
+      filters: filtersForDrawer,
+      name: preset.name,
+    });
     onClose();
   };
 
   const handleDelete = (id: string) => {
-    setPresets(presets.filter(p => p.id !== id));
-    toast.success('프리셋이 삭제되었습니다');
+    const preset = presets.find(p => p.id === id);
+    if (preset && confirm(`프리셋 "${preset.name}"을 삭제하시겠습니까?`)) {
+      presetManager.removePreset(id);
+      const loadedPresets = presetManager.loadPresets();
+      setPresets(loadedPresets);
+      toast.success('프리셋이 삭제되었습니다');
+    }
   };
 
-  const filteredPresets = presets.filter(p => p.scope === scope);
 
   return (
-    <PIQuickMenuPopover
-      isOpen={isOpen}
-      onClose={onClose}
-      title="프리셋"
-      headerRight={
-        <PISegmentedControl
-          value={scope}
-          onChange={(value) => setScope(value as PresetScope)}
-          options={[
-            { value: '개인', label: '개인' },
-            { value: '팀', label: '팀' },
-          ]}
-          size="sm"
-        />
-      }
-    >
+    <>
+      <PIQuickMenuPopover
+        isOpen={isOpen}
+        onClose={onClose}
+        title="프리셋"
+        anchorPosition={anchorPosition}
+      >
       {/* Save current filter */}
       <div 
         className="flex items-center gap-2 p-3 rounded-lg"
         style={{
-          background: 'rgba(255, 255, 255, 0.5)',
-          border: '1px solid rgba(17, 24, 39, 0.08)',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border-primary)',
         }}
       >
         <div className="flex-1">
@@ -131,45 +131,50 @@ export function PIPresetMenu({ isOpen, onClose, onApply, currentFilters = {} }: 
       </div>
 
       {/* Preset List */}
-      {filteredPresets.length === 0 ? (
+      {presets.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 gap-3">
           <div 
             className="w-12 h-12 rounded-full flex items-center justify-center"
             style={{
-              background: 'rgba(29, 78, 216, 0.08)',
+              background: 'rgba(37, 99, 235, 0.15)',
             }}
           >
-            <Zap className="w-6 h-6" style={{ color: '#2563EB' }} />
+            <Zap className="w-6 h-6" style={{ color: 'var(--brand-blue-300)' }} />
           </div>
           <div className="text-center">
-            <p style={{ fontSize: '12px', fontWeight: 400, color: '#64748B' }}>
+            <p style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>
               저장된 프리셋이 없습니다.
             </p>
-            <p style={{ fontSize: '12px', fontWeight: 400, color: '#64748B', marginTop: '4px' }}>
+            <p style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)', marginTop: '4px' }}>
               현재 필터를 저장하여 빠르게 재사용하세요.
             </p>
           </div>
         </div>
       ) : (
-        filteredPresets.map((preset) => (
+        presets.map((preset) => (
           <div
             key={preset.id}
-            className="flex items-center justify-between p-3 rounded-lg hover:bg-white/50 transition-colors"
+            className="flex items-center justify-between p-3 rounded-lg transition-colors"
             style={{
-              border: '1px solid rgba(17, 24, 39, 0.06)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border-primary)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--surface-3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--surface-2)';
             }}
           >
             <div className="flex-1 min-w-0">
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {preset.name}
               </div>
               <div 
                 className="flex items-center gap-2 mt-1"
-                style={{ fontSize: '12px', fontWeight: 400, color: '#64748B' }}
+                style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}
               >
-                <span>{preset.scope}</span>
-                <span>-</span>
-                <span>{preset.date}</span>
+                <span>{new Date(preset.timestamp).toLocaleDateString('ko-KR')}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -180,17 +185,38 @@ export function PIPresetMenu({ isOpen, onClose, onApply, currentFilters = {} }: 
               >
                 적용
               </PIButton>
-              <PIButton
-                variant="ghost"
-                size="small"
-                onClick={() => handleDelete(preset.id)}
+              <button
+                onClick={() => {
+                  if (onEdit) {
+                    onClose();
+                    onEdit(preset);
+                  }
+                }}
+                className="btn--ghost w-8 h-8 flex items-center justify-center rounded-lg transition-fast"
+                style={{ color: 'var(--muted-foreground)' }}
+                title="수정"
               >
-                삭제
-              </PIButton>
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleDelete(preset.id)}
+                className="btn--ghost w-8 h-8 flex items-center justify-center rounded-lg transition-fast"
+                style={{ color: 'var(--error-500)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+                title="삭제"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           </div>
         ))
       )}
     </PIQuickMenuPopover>
+    </>
   );
 }

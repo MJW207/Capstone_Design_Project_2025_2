@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, ExternalLink, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Loader2 } from 'lucide-react';
 import { PIBadge } from '../pi/PIBadge';
 import { PIChip } from '../pi/PIChip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -24,26 +24,164 @@ interface PanelEvidence {
   similarity?: number | null;
 }
 
-interface Panel {
+interface PanelData {
   id: string;
   name: string;
-  age: number;
   gender: string;
+  age: number;
   region: string;
-  income?: string;
-  responses: PanelResponse[] | any;  // 백엔드 응답 구조에 맞춰 배열 또는 객체
-  tags?: string[];
-  evidence?: PanelEvidence[];
-  aiSummary?: string;
+  income: string;
+  coverage: 'qw' | 'w';
+  tags: string[];
+  responses: PanelResponse[];
+  evidence: PanelEvidence[];
+  aiSummary: string;
   created_at: string;
-  coverage?: 'qw' | 'w' | string;
-  embedding?: number[];
 }
 
 export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawerProps) {
-  const [panel, setPanel] = useState<Panel | null>(null);
+  const [panel, setPanel] = useState<PanelData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 리사이즈 및 드래그 상태
+  const [size, setSize] = useState({ width: 520, height: window.innerHeight });
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isResizing, setIsResizing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState<string>('');
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+
+  // 초기 크기 및 위치를 중앙 모달로 설정
+  useEffect(() => {
+    if (isOpen) {
+      setSize({
+        width: Math.min(900, Math.floor(window.innerWidth * 0.7)),
+        height: Math.min(700, Math.floor(window.innerHeight * 0.8)),
+      });
+      setPosition({ x: 0, y: 0 }); // 중앙 정렬이므로 x, y는 0
+    }
+  }, [isOpen]);
+
+  // 리사이즈 핸들러
+  const handleMouseDown = useCallback((e: React.MouseEvent, direction: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeDirection(direction);
+    if (drawerRef.current) {
+      const rect = drawerRef.current.getBoundingClientRect();
+      resizeStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        width: rect.width,
+        height: rect.height,
+      };
+    }
+  }, []);
+
+  // 드래그 핸들러
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    // 리사이즈 핸들 클릭 시 드래그 방지
+    if ((e.target as HTMLElement).closest('[class*="resize"]') || 
+        (e.target as HTMLElement).closest('[data-resize-handle]')) {
+      return;
+    }
+    
+    // 헤더 영역에서만 드래그 가능
+    if (!(e.target as HTMLElement).closest('.panel-detail-header')) {
+      return;
+    }
+    
+    e.preventDefault();
+    setIsDragging(true);
+    if (drawerRef.current) {
+      const rect = drawerRef.current.getBoundingClientRect();
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // 리사이즈 처리
+      if (isResizing && resizeStartRef.current) {
+        const deltaX = e.clientX - resizeStartRef.current.x;
+        const deltaY = e.clientY - resizeStartRef.current.y;
+        
+        let newWidth = resizeStartRef.current.width;
+        let newHeight = resizeStartRef.current.height;
+        
+        const maxWidth = window.innerWidth * 0.95;
+        const minWidth = 400;
+        const maxHeight = window.innerHeight * 0.95;
+        const minHeight = 500;
+        
+        if (resizeDirection.includes('right')) {
+          newWidth = Math.max(minWidth, Math.min(maxWidth, resizeStartRef.current.width + deltaX));
+        }
+        if (resizeDirection.includes('left')) {
+          newWidth = Math.max(minWidth, Math.min(maxWidth, resizeStartRef.current.width - deltaX));
+        }
+        if (resizeDirection.includes('bottom')) {
+          newHeight = Math.max(minHeight, Math.min(maxHeight, resizeStartRef.current.height + deltaY));
+        }
+        if (resizeDirection.includes('top')) {
+          newHeight = Math.max(minHeight, Math.min(maxHeight, resizeStartRef.current.height - deltaY));
+        }
+        
+        if (resizeDirection.includes('right-bottom')) {
+          newWidth = Math.max(minWidth, Math.min(maxWidth, resizeStartRef.current.width + deltaX));
+          newHeight = Math.max(minHeight, Math.min(maxHeight, resizeStartRef.current.height + deltaY));
+        }
+        
+        setSize({ width: newWidth, height: newHeight });
+      }
+      
+      // 드래그 처리
+      if (isDragging && dragStartRef.current && drawerRef.current) {
+        const rect = drawerRef.current.getBoundingClientRect();
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        
+        // 중앙 기준으로 위치 계산
+        const newX = e.clientX - centerX - (dragStartRef.current.offsetX - rect.width / 2);
+        const newY = e.clientY - centerY - (dragStartRef.current.offsetY - rect.height / 2);
+        
+        // 화면 밖으로 나가지 않도록 제한
+        const maxX = (window.innerWidth - rect.width) / 2;
+        const maxY = (window.innerHeight - rect.height) / 2;
+        
+        setPosition({
+          x: Math.max(-maxX, Math.min(maxX, newX)),
+          y: Math.max(-maxY, Math.min(maxY, newY)),
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setIsDragging(false);
+      setResizeDirection('');
+      resizeStartRef.current = null;
+      dragStartRef.current = null;
+    };
+
+    if (isResizing || isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isResizing, isDragging, resizeDirection]);
 
   // 패널 데이터 로드
   useEffect(() => {
@@ -59,8 +197,8 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
     try {
       const panelData = await searchApi.getPanel(panelId);
       setPanel(panelData);
-    } catch (err) {
-      setError('패널 정보를 불러오는데 실패했습니다.');
+    } catch (err: any) {
+      setError(err.message || '패널 정보를 불러오는데 실패했습니다.');
       console.error('Panel load error:', err);
     } finally {
       setLoading(false);
@@ -69,13 +207,27 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
 
   if (!isOpen) return null;
 
+  // Loading State
   if (loading) {
     return (
       <>
-        <div className="fixed inset-0 bg-black/40 z-40" style={{ backdropFilter: 'blur(8px)' }} />
-        <div className="fixed right-0 top-0 h-full w-[520px] bg-white shadow-2xl z-50 flex items-center justify-center">
-          <div className="flex items-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin" />
+        <div 
+          className="fixed inset-0 z-40 modal-backdrop"
+          onClick={onClose}
+        />
+        <div 
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 drawer-content z-50 flex items-center justify-center rounded-2xl"
+          style={{
+            width: `${size.width}px`,
+            height: `${size.height}px`,
+            background: 'var(--surface-1)',
+            color: 'var(--text-secondary)',
+            boxShadow: 'var(--shadow-3)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3" style={{ color: 'var(--text-secondary)' }}>
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--brand-blue-300)' }} />
             <span>패널 정보 로딩 중...</span>
           </div>
         </div>
@@ -83,16 +235,32 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
     );
   }
 
+  // Error State
   if (error || !panel) {
     return (
       <>
-        <div className="fixed inset-0 bg-black/40 z-40" style={{ backdropFilter: 'blur(8px)' }} />
-        <div className="fixed right-0 top-0 h-full w-[520px] bg-white shadow-2xl z-50 flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-red-600 mb-4">{error || '패널을 찾을 수 없습니다.'}</p>
+        <div 
+          className="fixed inset-0 z-40 modal-backdrop"
+          onClick={onClose}
+        />
+        <div 
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 drawer-content z-50 flex items-center justify-center rounded-2xl"
+          style={{
+            width: `${size.width}px`,
+            height: `${size.height}px`,
+            background: 'var(--surface-1)',
+            color: 'var(--text-secondary)',
+            boxShadow: 'var(--shadow-3)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-center" style={{ color: 'var(--text-secondary)' }}>
+            <p style={{ color: 'var(--error-500)', marginBottom: '16px' }}>
+              {error || '패널을 찾을 수 없습니다.'}
+            </p>
             <button 
               onClick={onClose}
-              className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+              className="btn"
             >
               닫기
             </button>
@@ -104,32 +272,109 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
 
   return (
     <>
-      {/* Overlay with Enhanced Blur */}
+      {/* Overlay */}
       <div
-        className="fixed inset-0 bg-black/40 z-40"
-        style={{ backdropFilter: 'blur(8px)' }}
+        className="fixed inset-0 z-40 modal-backdrop"
         onClick={onClose}
       />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-[520px] bg-white shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-[var(--duration-base)]">
-        {/* Header with Gradient Border */}
-        <div className="relative px-6 py-5 border-b border-[var(--neutral-200)]">
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[var(--accent-blue)] to-transparent opacity-50" />
-          
+      {/* Modal - 중앙에 위치, 드래그 가능 */}
+      <div 
+        ref={drawerRef}
+        className="fixed drawer-content z-50 flex flex-col rounded-2xl overflow-hidden"
+        style={{
+          left: `calc(50% + ${position.x}px)`,
+          top: `calc(50% + ${position.y}px)`,
+          transform: 'translate(-50%, -50%)',
+          width: `${size.width}px`,
+          height: `${size.height}px`,
+          minWidth: '400px',
+          minHeight: '500px',
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          background: 'var(--surface-1)',
+          color: 'var(--text-secondary)',
+          boxShadow: 'var(--shadow-3)',
+          border: '1px solid var(--border-primary)',
+          cursor: isResizing ? (resizeDirection.includes('right') ? 'ew-resize' : resizeDirection.includes('left') ? 'ew-resize' : resizeDirection.includes('bottom') ? 'ns-resize' : resizeDirection.includes('top') ? 'ns-resize' : 'nwse-resize') : isDragging ? 'move' : 'default',
+          transition: isResizing || isDragging ? 'none' : 'all 0.2s ease',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 리사이즈 핸들들 - 모서리 및 가장자리 */}
+        {/* 오른쪽 */}
+        <div
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 hover:bg-[rgba(37,99,235,0.2)] transition-colors"
+          data-resize-handle="true"
+          onMouseDown={(e) => handleMouseDown(e, 'right')}
+          style={{
+            backgroundColor: isResizing && resizeDirection.includes('right') ? 'rgba(37, 99, 235, 0.3)' : 'transparent',
+          }}
+        />
+        {/* 하단 */}
+        <div
+          className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize z-20 hover:bg-[rgba(37,99,235,0.2)] transition-colors"
+          data-resize-handle="true"
+          onMouseDown={(e) => handleMouseDown(e, 'bottom')}
+          style={{
+            backgroundColor: isResizing && resizeDirection.includes('bottom') ? 'rgba(37, 99, 235, 0.3)' : 'transparent',
+          }}
+        />
+        {/* 오른쪽 하단 모서리 */}
+        <div
+          className="absolute right-0 bottom-0 w-6 h-6 cursor-nwse-resize z-30 hover:bg-[rgba(37,99,235,0.3)] transition-colors rounded-tl-lg"
+          data-resize-handle="true"
+          onMouseDown={(e) => handleMouseDown(e, 'right-bottom')}
+          style={{
+            backgroundColor: isResizing && resizeDirection.includes('right-bottom') ? 'rgba(37, 99, 235, 0.4)' : 'transparent',
+          }}
+        />
+        {/* 시각적 리사이즈 인디케이터 */}
+        {isResizing && (
+          <div className="absolute right-2 bottom-2 z-40 px-2 py-1 rounded text-xs font-mono" style={{
+            background: 'rgba(0, 0, 0, 0.7)',
+            color: '#fff',
+            pointerEvents: 'none'
+          }}>
+            {size.width} × {size.height}
+          </div>
+        )}
+        {/* Header - 드래그 가능 */}
+        <div 
+          className="drawer-header panel-detail-header relative px-6 py-5 border-b"
+          style={{
+            borderColor: 'var(--border-primary)',
+            cursor: isDragging ? 'move' : 'default',
+          }}
+          onMouseDown={handleDragStart}
+        >
           <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-semibold">{panel.name}</h2>
-                <PIBadge kind={panel.coverage === 'qw' ? 'coverage-qw' : 'coverage-w'}>
-                  {panel.coverage === 'qw' ? 'Q+W' : 'W'}
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h2 
+                  className="text-lg font-semibold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {panel.name || panel.id}
+                </h2>
+                <PIBadge kind={`coverage-${panel.coverage}`}>
+                  {panel.coverage.toUpperCase()}
                 </PIBadge>
               </div>
-              <p className="text-sm text-gray-600 mt-1">ID: {panel.id}</p>
+              <p 
+                className="text-sm"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                ID: {panel.id}
+              </p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-[var(--neutral-100)] rounded-lg transition-colors"
+              className="btn--ghost p-2 rounded-lg transition-fast"
+              style={{
+                color: 'var(--muted-foreground)',
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
             >
               <X className="w-5 h-5" />
             </button>
@@ -137,140 +382,267 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="overview" className="flex-1 flex flex-col">
-          <TabsList className="w-full justify-start px-6 border-b border-[var(--neutral-200)]">
-            <TabsTrigger value="overview">개요</TabsTrigger>
-            <TabsTrigger value="responses">응답이력</TabsTrigger>
-            <TabsTrigger value="tags">태그/근거</TabsTrigger>
+        <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
+          <TabsList 
+            className="w-full justify-start px-6 border-b"
+            style={{
+              borderColor: 'var(--border-primary)',
+              background: 'transparent',
+            }}
+          >
+            <TabsTrigger 
+              value="overview"
+              style={{
+                color: 'var(--text-tertiary)',
+              }}
+            >
+              개요
+            </TabsTrigger>
+            <TabsTrigger 
+              value="responses"
+              style={{
+                color: 'var(--text-tertiary)',
+              }}
+            >
+              응답이력
+            </TabsTrigger>
+            <TabsTrigger 
+              value="tags"
+              style={{
+                color: 'var(--text-tertiary)',
+              }}
+            >
+              태그/근거
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+          <TabsContent 
+            value="overview" 
+            className="flex-1 overflow-y-auto px-6 py-6 space-y-6"
+            style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
+          >
             {/* AI Summary */}
             {panel.aiSummary && (
-              <div className="p-4 bg-[rgba(37,99,235,0.06)] rounded-xl border border-[rgba(37,99,235,0.18)]">
-                <h3 className="text-sm font-semibold text-[#2563EB] mb-2">AI 요약</h3>
-                <p className="text-sm text-[var(--neutral-700)] leading-relaxed">{panel.aiSummary}</p>
+              <div 
+                className="p-4 rounded-xl"
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
+                <h3 
+                  className="font-semibold mb-2"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  AI 요약
+                </h3>
+                <p 
+                  className="text-sm leading-relaxed"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {panel.aiSummary}
+                </p>
               </div>
             )}
 
+            {/* Basic Info */}
             <div className="space-y-4">
-              <h3 className="font-semibold">기본 정보</h3>
+              <h3 
+                className="font-semibold"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                기본 정보
+              </h3>
               <div className="flex flex-wrap gap-2">
-                {panel.gender && <PIChip type="tag">{panel.gender}</PIChip>}
-                {panel.age > 0 && <PIChip type="tag">{panel.age}세</PIChip>}
-                {panel.region && <PIChip type="tag">{panel.region}</PIChip>}
-                {panel.income && <PIChip type="tag">소득: {panel.income}</PIChip>}
-                <PIChip type="tag">생성일: {new Date(panel.created_at).toLocaleDateString()}</PIChip>
+                {panel.gender && (
+                  <PIChip type="tag">{panel.gender}</PIChip>
+                )}
+                {panel.age > 0 && (
+                  <PIChip type="tag">{panel.age}세</PIChip>
+                )}
+                {panel.region && (
+                  <PIChip type="tag">{panel.region}</PIChip>
+                )}
+                {panel.income && (
+                  <PIChip type="tag">소득: {panel.income}</PIChip>
+                )}
+                <PIChip type="tag">
+                  생성일: {new Date(panel.created_at).toLocaleDateString('ko-KR')}
+                </PIChip>
               </div>
             </div>
 
-            {/* 응답 내용 요약 */}
-            {panel.responses && Array.isArray(panel.responses) && panel.responses.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="font-semibold">응답 내용 요약</h3>
-                <div className="space-y-3">
-                  {panel.responses.slice(0, 3).map((response, i) => (
-                    <div key={i} className="p-3 bg-[var(--neutral-50)] rounded-lg">
-                      <h4 className="text-sm font-medium text-[var(--neutral-700)] mb-1">{response.title || response.key}</h4>
-                      <p className="text-sm text-[var(--neutral-600)] line-clamp-2">{response.answer}</p>
-                    </div>
-                  ))}
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 gap-4">
+              <div 
+                className="p-4 rounded-lg"
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
+                <div 
+                  className="text-xs mb-1"
+                  style={{ color: 'var(--text-tertiary)' }}
+                >
+                  응답 수
+                </div>
+                <div 
+                  className="text-lg font-bold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {panel.responses?.length || 0}개
                 </div>
               </div>
-            )}
+              <div 
+                className="p-4 rounded-lg"
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
+                <div 
+                  className="text-xs mb-1"
+                  style={{ color: 'var(--text-tertiary)' }}
+                >
+                  태그 수
+                </div>
+                <div 
+                  className="text-lg font-bold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {panel.tags?.length || 0}개
+                </div>
+              </div>
+            </div>
           </TabsContent>
 
           {/* Responses Tab */}
-          <TabsContent value="responses" className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-            <h3 className="font-semibold">응답 이력</h3>
+          <TabsContent 
+            value="responses" 
+            className="flex-1 overflow-y-auto px-6 py-6 space-y-4"
+            style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
+          >
+            <h3 
+              className="font-semibold mb-4"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              응답 이력
+            </h3>
             
-            {panel.responses && Array.isArray(panel.responses) && panel.responses.length > 0 ? (
-              <div className="space-y-3">
-                {panel.responses.map((response, i) => (
-                  <div key={i} className="p-4 bg-white border border-[var(--neutral-200)] rounded-xl space-y-2 hover:border-[var(--accent-blue)] transition-colors">
-                    <div className="flex items-start justify-between">
-                      <h4 className="text-sm font-medium">{response.title || response.key}</h4>
-                      <span className="text-xs text-[var(--neutral-600)]">{response.date || new Date(panel.created_at).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-sm text-[var(--neutral-600)] whitespace-pre-wrap">{response.answer}</p>
+            {panel.responses && panel.responses.length > 0 ? (
+              panel.responses.map((response, i) => (
+                <div 
+                  key={i} 
+                  className="p-4 rounded-xl border transition-fast hover-lift"
+                  style={{
+                    background: 'var(--surface-2)',
+                    borderColor: 'var(--border-primary)',
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <h4 
+                      className="text-sm font-medium"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      {response.title}
+                    </h4>
+                    <span 
+                      className="text-xs"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
+                      {response.date}
+                    </span>
                   </div>
-                ))}
-              </div>
-            ) : panel.responses && !Array.isArray(panel.responses) && Object.keys(panel.responses).length > 0 ? (
-              // 기존 객체 형태 응답 (하위 호환성)
-              Object.entries(panel.responses).map(([key, value], i) => (
-                <div key={i} className="p-4 bg-white border border-[var(--neutral-200)] rounded-xl space-y-2 hover:border-[var(--accent-blue)] transition-colors">
-                  <div className="flex items-start justify-between">
-                    <h4 className="text-sm font-medium">{key}</h4>
-                    <span className="text-xs text-[var(--neutral-600)]">{new Date(panel.created_at).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-sm text-[var(--neutral-600)]">{String(value)}</p>
+                  <p 
+                    className="text-sm leading-relaxed whitespace-pre-wrap"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {response.answer}
+                  </p>
                 </div>
               ))
             ) : (
-              <div className="text-center py-8 text-[var(--neutral-500)]">
+              <div 
+                className="text-center py-8"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
                 <p>응답 이력이 없습니다.</p>
               </div>
             )}
           </TabsContent>
 
           {/* Tags/Evidence Tab */}
-          <TabsContent value="tags" className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-            <div className="space-y-6">
-              {/* 태그 섹션 */}
+          <TabsContent 
+            value="tags" 
+            className="flex-1 overflow-y-auto px-6 py-6 space-y-6"
+            style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
+          >
+            {/* Tags */}
+            {panel.tags && panel.tags.length > 0 && (
               <div className="space-y-4">
-                <h3 className="font-semibold">태그</h3>
-                {panel.tags && panel.tags.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {panel.tags.map((tag, i) => (
-                      <PIChip key={i} type="tag" selected>
-                        {tag}
-                      </PIChip>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-[var(--neutral-500)]">태그가 없습니다.</p>
-                )}
-              </div>
-
-              {/* 근거 섹션 */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">근거 문장 {panel.evidence && panel.evidence.length > 0 ? `TOP ${Math.min(panel.evidence.length, 10)}` : ''}</h3>
-                {panel.evidence && panel.evidence.length > 0 ? (
-                  <div className="space-y-3">
-                    {panel.evidence.slice(0, 10).map((evidence, i) => (
-                      <div key={i} className="p-4 bg-[var(--neutral-50)] rounded-xl border border-[var(--neutral-200)] hover:border-[var(--accent-blue)] transition-colors">
-                        <div className="flex items-start justify-between mb-2">
-                          <span className="text-xs font-medium text-[var(--accent-blue)]">{evidence.source}</span>
-                          {evidence.similarity !== null && evidence.similarity !== undefined && (
-                            <span className="text-xs font-semibold text-[var(--accent-blue)]">
-                              유사도 {Math.round(evidence.similarity * 100)}%
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-[var(--neutral-700)] whitespace-pre-wrap leading-relaxed">{evidence.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-[var(--neutral-500)]">근거 데이터가 없습니다.</p>
-                )}
-              </div>
-
-              {/* 기본 특성 섹션 */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">기본 특성</h3>
-                <div className="p-4 bg-gradient-to-br from-[var(--accent-blue)]/5 to-transparent rounded-xl border border-[var(--accent-blue)]/20">
-                  <div className="flex flex-wrap gap-2">
-                    {panel.gender && <PIChip type="tag">{panel.gender}</PIChip>}
-                    {panel.age > 0 && <PIChip type="tag">{panel.age}세</PIChip>}
-                    {panel.region && <PIChip type="tag">{panel.region}</PIChip>}
-                    {panel.income && <PIChip type="tag">소득: {panel.income}</PIChip>}
-                  </div>
+                <h3 
+                  className="font-semibold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  태그
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {panel.tags.map((tag, i) => (
+                    <PIChip key={i} type="tag" selected>
+                      #{tag}
+                    </PIChip>
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Evidence */}
+            {panel.evidence && panel.evidence.length > 0 && (
+              <div className="space-y-4">
+                <h3 
+                  className="font-semibold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  근거 데이터
+                </h3>
+                <div className="space-y-3">
+                  {panel.evidence.map((evidence, i) => (
+                    <div 
+                      key={i}
+                      className="p-4 rounded-xl border"
+                      style={{
+                        background: 'var(--surface-2)',
+                        borderColor: 'var(--border-primary)',
+                      }}
+                    >
+                      <div 
+                        className="text-xs mb-2"
+                        style={{ color: 'var(--text-tertiary)' }}
+                      >
+                        출처: {evidence.source}
+                      </div>
+                      <p 
+                        className="text-sm leading-relaxed whitespace-pre-wrap"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        {evidence.text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(!panel.tags || panel.tags.length === 0) && (!panel.evidence || panel.evidence.length === 0) && (
+              <div 
+                className="text-center py-8"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                <p>태그 및 근거 데이터가 없습니다.</p>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

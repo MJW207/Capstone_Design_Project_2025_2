@@ -36,36 +36,36 @@ export function PIQuickActionChip({ type, onClick, disabled = false }: PIQuickAc
       aria-label={ariaLabel}
       className="group relative h-8 flex items-center gap-2 px-3 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
       style={{
-        background: 'rgba(255, 255, 255, 0.70)',
+        background: 'var(--surface-2)',
         backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(17, 24, 39, 0.10)',
+        border: '1px solid var(--border-primary)',
         transitionDuration: '120ms',
         transitionTimingFunction: 'cubic-bezier(0.33, 1, 0.68, 1)',
       }}
       onMouseEnter={(e) => {
         if (!disabled) {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.75)';
-          e.currentTarget.style.borderColor = 'rgba(17, 24, 39, 0.16)';
+          e.currentTarget.style.background = 'var(--surface-3)';
+          e.currentTarget.style.borderColor = 'var(--border-accent)';
         }
       }}
       onMouseLeave={(e) => {
         if (!disabled) {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.70)';
-          e.currentTarget.style.borderColor = 'rgba(17, 24, 39, 0.10)';
+          e.currentTarget.style.background = 'var(--surface-2)';
+          e.currentTarget.style.borderColor = 'var(--border-primary)';
         }
       }}
     >
       <Icon 
         className="w-4 h-4 transition-colors" 
         style={{ 
-          color: '#0F172A',
+          color: 'var(--text-primary)',
           strokeWidth: 2,
         }} 
       />
       <span 
         className="text-sm transition-colors"
         style={{
-          color: '#0F172A',
+          color: 'var(--text-primary)',
           fontWeight: 500,
         }}
       >

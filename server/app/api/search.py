@@ -53,12 +53,19 @@ async def api_search_post(
             "error": f"임베딩 생성 실패: {str(embed_error)}"
         }
     
-    # 2. 필터 구성
+    # 2. 필터 구성 (벡터 검색 후 적용할 필터)
     vector_filters = {}
     if filters_dict.get("selectedGenders"):
         vector_filters["gender"] = filters_dict["selectedGenders"]
     if filters_dict.get("selectedRegions"):
         vector_filters["region"] = filters_dict["selectedRegions"]
+    if filters_dict.get("ageRange") and isinstance(filters_dict["ageRange"], list) and len(filters_dict["ageRange"]) == 2:
+        vector_filters["age_min"] = filters_dict["ageRange"][0]
+        vector_filters["age_max"] = filters_dict["ageRange"][1]
+    if filters_dict.get("selectedIncomes"):
+        vector_filters["income"] = filters_dict["selectedIncomes"]
+    if filters_dict.get("quickpollOnly"):
+        vector_filters["quickpoll_only"] = filters_dict["quickpollOnly"]
     
     # 3. 벡터 검색 실행
     search_limit = min(page * limit, 200)
@@ -74,13 +81,130 @@ async def api_search_post(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"벡터 검색 실패: {str(search_error)}")
     
-    # 4. 페이지네이션 적용
-    total_count = len(vector_rows)
+    # 4. 벡터 검색 결과 필터링 (나이, 소득 등 RawData와 JOIN 필요한 필터)
+    filtered_rows = vector_rows
+    
+    # 나이 필터나 소득 필터가 있으면 RawData와 JOIN 필요
+    needs_raw_data_filter = (
+        vector_filters.get("age_min") or 
+        vector_filters.get("age_max") or 
+        vector_filters.get("income") or
+        vector_filters.get("quickpoll_only")
+    )
+    
+    if needs_raw_data_filter and vector_rows:
+        from app.core.config import DBN, fq
+        
+        mb_sn_list = [row.get("mb_sn") for row in vector_rows if row.get("mb_sn")]
+        if mb_sn_list:
+            W1 = fq(DBN.RAW, "welcome_1st")
+            W2 = fq(DBN.RAW, "welcome_2nd")
+            QA = fq(DBN.RAW, "quick_answer")
+            
+            # RawData에서 나이, 소득, 퀵폴 정보 가져오기
+            raw_filter_sql = f"""
+            SELECT 
+                w1.mb_sn,
+                CASE 
+                    WHEN COALESCE(NULLIF(w1.birth_year, ''), NULL) IS NOT NULL
+                         AND w1.birth_year ~ '^[0-9]+$'
+                    THEN EXTRACT(YEAR FROM AGE(CURRENT_DATE, MAKE_DATE(w1.birth_year::int, 1, 1)))::int
+                    ELSE NULL 
+                END AS age_raw,
+                (w2."data"->>'income_personal')::numeric AS income_personal,
+                (w2."data"->>'income_household')::numeric AS income_household,
+                CASE WHEN qa.mb_sn IS NOT NULL THEN true ELSE false END AS has_quickpoll
+            FROM {W1} w1
+            LEFT JOIN {W2} w2 ON w1.mb_sn = w2.mb_sn
+            LEFT JOIN {QA} qa ON w1.mb_sn = qa.mb_sn
+            WHERE w1.mb_sn = ANY(:mb_sn_list)
+            """
+            
+            result = await session.execute(text(raw_filter_sql), {"mb_sn_list": mb_sn_list})
+            raw_data_map = {}
+            for row in result:
+                raw_data_map[row[0]] = {
+                    "age_raw": int(row[1] or 0) if row[1] is not None else 0,
+                    "income_personal": float(row[2] or 0) if row[2] is not None else 0,
+                    "income_household": float(row[3] or 0) if row[3] is not None else 0,
+                    "has_quickpoll": row[4] or False
+                }
+            
+            # 필터 적용
+            filtered_rows = []
+            for row in vector_rows:
+                mb_sn = row.get("mb_sn")
+                raw_info = raw_data_map.get(mb_sn, {})
+                
+                # 나이 필터 체크
+                if vector_filters.get("age_min"):
+                    age = raw_info.get("age_raw", 0)
+                    if age < vector_filters["age_min"]:
+                        continue
+                
+                if vector_filters.get("age_max"):
+                    age = raw_info.get("age_raw", 0)
+                    if age > vector_filters["age_max"]:
+                        continue
+                
+                # 소득 필터 체크 (소득 범위 문자열을 숫자로 변환)
+                if vector_filters.get("income"):
+                    income_ranges = vector_filters["income"]
+                    if isinstance(income_ranges, list):
+                        income_personal = raw_info.get("income_personal", 0)
+                        income_household = raw_info.get("income_household", 0)
+                        income = income_personal or income_household
+                        
+                        # 소득 범위 문자열 파싱 (예: "200~300" -> 2000000~3000000)
+                        matched = False
+                        for income_range_str in income_ranges:
+                            if "~" in income_range_str:
+                                parts = income_range_str.replace("~", " ").replace("만원", "").split()
+                                if len(parts) == 2:
+                                    try:
+                                        min_income = int(parts[0]) * 10000
+                                        max_income = int(parts[1]) * 10000
+                                        if min_income <= income <= max_income:
+                                            matched = True
+                                            break
+                                    except (ValueError, TypeError):
+                                        pass
+                            elif income_range_str.startswith("~"):
+                                # "~200" 형태
+                                try:
+                                    max_income = int(income_range_str.replace("~", "").replace("만원", "")) * 10000
+                                    if income <= max_income:
+                                        matched = True
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
+                            elif income_range_str.endswith("~"):
+                                # "600~" 형태
+                                try:
+                                    min_income = int(income_range_str.replace("~", "").replace("만원", "")) * 10000
+                                    if income >= min_income:
+                                        matched = True
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
+                        
+                        if not matched:
+                            continue
+                
+                # 퀵폴 필터 체크
+                if vector_filters.get("quickpoll_only"):
+                    if not raw_info.get("has_quickpoll", False):
+                        continue
+                
+                filtered_rows.append(row)
+    
+    # 5. 페이지네이션 적용 (필터링 후)
+    total_count = len(filtered_rows)
     start_idx = (page - 1) * limit
     end_idx = start_idx + limit
-    paginated_rows = vector_rows[start_idx:end_idx]
+    paginated_rows = filtered_rows[start_idx:end_idx]
     
-    # 5. 벡터 검색 결과에서 demographics JSONB를 우선 사용, 부족한 정보만 RawData에서 조인
+    # 6. 벡터 검색 결과에서 demographics JSONB를 우선 사용, 부족한 정보만 RawData에서 조인
     detailed_rows = []
     
     if paginated_rows:

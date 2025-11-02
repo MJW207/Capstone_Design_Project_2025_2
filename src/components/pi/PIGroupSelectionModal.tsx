@@ -73,32 +73,54 @@ export function PIGroupSelectionModal({
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-4xl max-h-[80vh] bg-white rounded-xl shadow-2xl overflow-hidden">
+      <div 
+        className="relative w-full max-w-4xl max-h-[80vh] modal-content rounded-xl overflow-hidden"
+        style={{
+          background: 'var(--surface-1)',
+          color: 'var(--text-secondary)',
+          boxShadow: 'var(--shadow-3)',
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--neutral-200)]">
-          <h2 className="text-lg font-semibold text-[var(--primary-500)]">
+        <div 
+          className="flex items-center justify-between p-6 border-b drawer-header"
+          style={{
+            borderColor: 'var(--border-primary)',
+          }}
+        >
+          <h2 
+            className="text-lg font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[var(--neutral-100)] rounded-lg transition-colors"
+            className="btn--ghost p-2 rounded-lg transition-fast"
+            style={{ color: 'var(--muted-foreground)' }}
           >
-            <X className="w-5 h-5 text-[var(--neutral-600)]" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Search and Filter */}
-        <div className="p-6 border-b border-[var(--neutral-200)] space-y-4">
+        <div 
+          className="p-6 border-b space-y-4"
+          style={{
+            borderColor: 'var(--border-primary)',
+            background: 'var(--surface-1)',
+          }}
+        >
           <PITextField
             placeholder="그룹명, 설명, 태그로 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            leadingIcons={[<Search className="w-4 h-4" />]}
+            leadingIcon={<Search className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />}
           />
           
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-[var(--neutral-600)]" />
-            <span className="text-sm text-[var(--neutral-600)]">타입:</span>
+            <Filter className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+            <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>타입:</span>
             <div className="flex gap-1">
               {[
                 { value: 'all', label: '전체' },
@@ -108,11 +130,18 @@ export function PIGroupSelectionModal({
                 <button
                   key={option.value}
                   onClick={() => setFilterType(option.value as any)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    filterType === option.value
-                      ? 'bg-[var(--accent-blue)] text-white'
-                      : 'bg-[var(--neutral-100)] text-[var(--neutral-600)] hover:bg-[var(--neutral-200)]'
+                  className={`chip px-3 py-1.5 rounded-lg text-sm font-medium transition-fast ${
+                    filterType === option.value ? 'chip--selected' : ''
                   }`}
+                  style={
+                    filterType === option.value
+                      ? {
+                          background: 'rgba(37, 99, 235, 0.25)',
+                          color: '#93C5FD',
+                          borderColor: 'rgba(37, 99, 235, 0.4)',
+                        }
+                      : {}
+                  }
                 >
                   {option.label}
                 </button>
@@ -122,18 +151,30 @@ export function PIGroupSelectionModal({
         </div>
 
         {/* Groups List */}
-        <div className="max-h-96 overflow-y-auto p-6">
+        <div 
+          className="max-h-96 overflow-y-auto p-6"
+          style={{
+            background: 'var(--surface-1)',
+          }}
+        >
           <div className="grid grid-cols-1 gap-4">
             {filteredGroups.map((group) => (
-              <PICard
+              <div
                 key={group.id}
-                className={`p-4 cursor-pointer transition-all hover:shadow-md ${
-                  selectedGroup?.id === group.id 
-                    ? 'ring-2 ring-[var(--accent-blue)] bg-[var(--accent-blue)]/5' 
-                    : 'hover:bg-[var(--neutral-50)]'
+                className={`p-4 cursor-pointer transition-fast card ${
+                  selectedGroup?.id === group.id ? 'ring-2 ring-[var(--brand-blue-500)]' : ''
                 }`}
+                style={
+                  selectedGroup?.id === group.id
+                    ? {
+                        background: 'rgba(37, 99, 235, 0.15)',
+                        borderColor: 'rgba(37, 99, 235, 0.3)',
+                      }
+                    : {}
+                }
                 onClick={() => onSelect(group)}
               >
+                <PICard>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     {/* Header */}
@@ -142,10 +183,16 @@ export function PIGroupSelectionModal({
                         className="w-3 h-3 rounded-full flex-shrink-0"
                         style={{ background: group.color }}
                       />
-                      <h3 className="font-semibold text-[var(--primary-500)]">
+                      <h3 
+                        className="font-semibold"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
                         {group.label}
                       </h3>
-                      <span className="text-sm text-[var(--neutral-600)]">
+                      <span 
+                        className="text-sm"
+                        style={{ color: 'var(--text-tertiary)' }}
+                      >
                         {group.count.toLocaleString()}명
                       </span>
                       <span 
@@ -165,7 +212,10 @@ export function PIGroupSelectionModal({
                     </div>
 
                     {/* Description */}
-                    <p className="text-sm text-[var(--neutral-600)] mb-3 line-clamp-2">
+                    <p 
+                      className="text-sm mb-3 line-clamp-2"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
                       {group.description}
                     </p>
 
@@ -177,7 +227,10 @@ export function PIGroupSelectionModal({
                         </PIHashtag>
                       ))}
                       {group.tags.length > 6 && (
-                        <span className="text-xs text-[var(--neutral-500)]">
+                        <span 
+                          className="text-xs"
+                          style={{ color: 'var(--text-tertiary)' }}
+                        >
                           +{group.tags.length - 6}개
                         </span>
                       )}
@@ -187,22 +240,31 @@ export function PIGroupSelectionModal({
                   {/* Selection Indicator */}
                   {selectedGroup?.id === group.id && (
                     <div className="ml-4 flex-shrink-0">
-                      <div className="w-6 h-6 rounded-full bg-[var(--accent-blue)] flex items-center justify-center">
-                        <Check className="w-4 h-4 text-white" />
+                      <div 
+                        className="w-6 h-6 rounded-full flex items-center justify-center"
+                        style={{
+                          background: 'var(--brand-blue-500)',
+                        }}
+                      >
+                        <Check className="w-4 h-4" style={{ color: '#fff' }} />
                       </div>
                     </div>
                   )}
                 </div>
               </PICard>
+              </div>
             ))}
           </div>
 
           {filteredGroups.length === 0 && (
             <div className="text-center py-12">
-              <div className="text-[var(--neutral-400)] mb-2">
+              <div 
+                className="mb-2"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
                 <Search className="w-12 h-12 mx-auto" />
               </div>
-              <p className="text-[var(--neutral-600)]">
+              <p style={{ color: 'var(--text-secondary)' }}>
                 검색 조건에 맞는 그룹이 없습니다
               </p>
             </div>
@@ -210,7 +272,13 @@ export function PIGroupSelectionModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-[var(--neutral-200)]">
+        <div 
+          className="flex items-center justify-end gap-3 p-6 border-t drawer-header"
+          style={{
+            borderColor: 'var(--border-primary)',
+            background: 'var(--bg-0)',
+          }}
+        >
           <PIButton variant="ghost" onClick={onClose}>
             취소
           </PIButton>

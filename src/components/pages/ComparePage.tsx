@@ -316,9 +316,13 @@ export function ComparePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--neutral-50)]">
+    <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       {/* SECTION-0: Compare Bar */}
-      <div className="sticky top-0 z-40 bg-white border-b border-[var(--neutral-200)]" style={{ height: '72px' }}>
+      <div className="sticky top-0 z-40 border-b" style={{ 
+        height: '72px', 
+        background: 'var(--card)', 
+        borderColor: 'var(--border)' 
+      }}>
         <div className="mx-auto px-20 h-full flex items-center justify-between">
           {/* Left: Controls */}
           <div className="flex items-center gap-4">
@@ -630,8 +634,12 @@ export function ComparePage() {
               />
 
               {/* Header - Sticky */}
-              <div className="flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10" style={{ padding: '12px 0', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--primary-500)' }}>차이 분석</h3>
+              <div className="flex items-center justify-between sticky top-0 backdrop-blur-md z-10" style={{ 
+                padding: '12px 0', 
+                marginBottom: '16px',
+                background: 'var(--card)'
+              }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--foreground)' }}>차이 분석</h3>
                 <PISegmentedControl
                   value={diffSortBy}
                   onChange={(v) => setDiffSortBy(v as 'delta' | 'lift' | 'smd')}
@@ -649,7 +657,12 @@ export function ComparePage() {
                   <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
                     <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--neutral-600)' }}>분포 차이 (Delta%p)</h4>
                     <select 
-                      className="text-xs px-2 py-1 rounded border border-[var(--neutral-200)] bg-white text-[var(--neutral-600)]"
+                      className="text-xs px-2 py-1 rounded border"
+                      style={{
+                        borderColor: 'var(--border)',
+                        background: 'var(--card)',
+                        color: 'var(--muted-foreground)'
+                      }}
                       defaultValue="delta"
                     >
                       <option value="delta">Delta%p ↓</option>
@@ -988,8 +1001,12 @@ export function ComparePage() {
 
       {/* FOOTER: Sticky Action Bar */}
       <div
-        className="sticky bottom-0 z-30 bg-white border-t border-[var(--neutral-200)] shadow-[0_-4px_12px_rgba(0,0,0,0.08)]"
-        style={{ height: '56px' }}
+        className="sticky bottom-0 z-30 border-t shadow-[0_-4px_12px_rgba(0,0,0,0.08)]"
+        style={{ 
+          height: '56px',
+          background: 'var(--card)',
+          borderColor: 'var(--border)'
+        }}
       >
         <div className="mx-auto px-20 h-full flex items-center justify-between">
           <div className="text-sm text-[var(--neutral-600)]">
@@ -1049,7 +1066,9 @@ export function ComparePage() {
       {isSaveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsSaveModalOpen(false)} />
-          <div className="relative w-[80vw] max-w-[800px] h-[60vw] max-h-[600px] bg-white rounded-xl shadow-2xl p-6 flex flex-col">
+          <div className="relative w-[80vw] max-w-[800px] h-[60vw] max-h-[600px] rounded-xl shadow-2xl p-6 flex flex-col" style={{
+            background: 'var(--card)'
+          }}>
             {/* Header with close button */}
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h3 className="text-lg font-semibold text-[var(--primary-500)]">

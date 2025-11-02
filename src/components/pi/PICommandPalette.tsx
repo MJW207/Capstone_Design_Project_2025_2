@@ -163,7 +163,7 @@ export function PICommandPalette({
       <div
         className="fixed inset-0 z-50"
         style={{
-          background: 'rgba(0, 0, 0, 0.32)',
+          background: 'rgba(0, 0, 0, 0.4)',
           backdropFilter: 'blur(6px)',
         }}
         onClick={onClose}
@@ -180,22 +180,24 @@ export function PICommandPalette({
           maxWidth: 'calc(100vw - 32px)',
           minWidth: '560px',
           maxHeight: '560px',
-          background: 'rgba(255, 255, 255, 0.70)',
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.35)',
+          background: 'var(--surface-1)',
+          border: '1px solid var(--border-primary)',
           borderRadius: '16px',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+          boxShadow: 'var(--shadow-2)',
+          color: 'var(--text-primary)',
           animationDuration: '180ms',
           animationTimingFunction: 'cubic-bezier(0.33, 1, 0.68, 1)',
         }}
       >
         {/* Search Input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b"
+        <div 
+          className="flex items-center gap-3 px-4 py-3 border-b"
           style={{
-            borderColor: 'rgba(17, 24, 39, 0.08)',
+            borderColor: 'var(--border-primary)',
+            background: 'var(--surface-1)',
           }}
         >
-          <Search className="w-5 h-5" style={{ color: '#64748B' }} />
+          <Search className="w-5 h-5" style={{ color: 'var(--muted-foreground)' }} />
           <input
             type="text"
             placeholder="명령 검색 (예: 필터 열기, 내보내기, Cluster Lab...)"
@@ -208,17 +210,17 @@ export function PICommandPalette({
             style={{
               fontSize: '14px',
               fontWeight: 400,
-              color: '#0F172A',
+              color: 'var(--text-primary)',
             }}
             autoFocus
           />
           <kbd 
             className="px-2 py-1 rounded text-xs"
             style={{
-              background: 'rgba(17, 24, 39, 0.06)',
-              color: '#64748B',
+              background: 'var(--surface-2)',
+              color: 'var(--text-secondary)',
               fontFamily: 'monospace',
-              border: '1px solid rgba(17, 24, 39, 0.08)',
+              border: '1px solid var(--border-primary)',
             }}
           >
             Cmd+K
@@ -230,15 +232,25 @@ export function PICommandPalette({
           className="flex-1 overflow-y-auto p-2"
           style={{
             maxHeight: '460px',
+            background: 'var(--surface-1)',
           }}
         >
           {Object.keys(groupedCommands).length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-4">
-              <div style={{ fontSize: '14px', fontWeight: 400, color: '#64748B' }}>
+              <div style={{ 
+                fontSize: '14px', 
+                fontWeight: 500, 
+                color: 'var(--text-primary)',
+              }}>
                 일치하는 명령이 없습니다.
               </div>
               <div className="flex flex-col gap-2">
-                <div style={{ fontSize: '12px', fontWeight: 400, color: '#64748B', textAlign: 'center' }}>
+                <div style={{ 
+                  fontSize: '12px', 
+                  fontWeight: 500, 
+                  color: 'var(--text-secondary)', 
+                  textAlign: 'center' 
+                }}>
                   추천 명령:
                 </div>
                 <div className="flex gap-2">
@@ -246,12 +258,21 @@ export function PICommandPalette({
                     <button
                       key={cmd.id}
                       onClick={cmd.action}
-                      className="px-3 py-1.5 rounded-lg hover:bg-white/80 transition-colors"
+                      className="px-3 py-1.5 rounded-lg transition-colors"
                       style={{
                         fontSize: '12px',
                         fontWeight: 500,
-                        color: '#64748B',
-                        border: '1px solid rgba(17, 24, 39, 0.08)',
+                        color: 'var(--text-primary)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border-primary)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--surface-3)';
+                        e.currentTarget.style.borderColor = 'var(--primary-500)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'var(--surface-2)';
+                        e.currentTarget.style.borderColor = 'var(--border-primary)';
                       }}
                     >
                       {cmd.name}
@@ -269,8 +290,9 @@ export function PICommandPalette({
                     style={{
                       fontSize: '11px',
                       fontWeight: 600,
-                      color: '#64748B',
+                      color: 'var(--text-tertiary)',
                       letterSpacing: '0.05em',
+                      marginBottom: '4px',
                     }}
                   >
                     {group}
@@ -286,35 +308,47 @@ export function PICommandPalette({
                           onClick={cmd.action}
                           className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left"
                           style={{
-                            background: isSelected ? 'rgba(255, 255, 255, 0.8)' : 'transparent',
-                            border: isSelected ? '1px solid rgba(29, 78, 216, 0.2)' : '1px solid transparent',
-                            boxShadow: isSelected ? '0 0 0 2px rgba(29, 78, 216, 0.1)' : 'none',
+                            background: isSelected ? 'var(--surface-3)' : 'transparent',
+                            border: isSelected ? '1px solid var(--primary-500)' : '1px solid transparent',
+                            boxShadow: isSelected ? '0 0 0 2px rgba(37, 99, 235, 0.1)' : 'none',
                           }}
                           onMouseEnter={() => setSelectedIndex(globalIndex)}
+                          onMouseLeave={() => {
+                            // 선택 상태 유지 (키보드 네비게이션을 위해)
+                          }}
                         >
                           <div 
                             className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                             style={{
                               background: isSelected 
                                 ? 'linear-gradient(135deg, #1D4ED8 0%, #7C3AED 100%)'
-                                : 'rgba(17, 24, 39, 0.06)',
+                                : 'var(--surface-2)',
                             }}
                           >
                             <cmd.icon 
                               className="w-4 h-4" 
                               style={{ 
-                                color: isSelected ? '#FFFFFF' : '#64748B',
+                                color: isSelected ? '#FFFFFF' : 'var(--muted-foreground)',
                                 strokeWidth: 2,
                               }} 
                             />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
+                            <div style={{ 
+                              fontSize: '14px', 
+                              fontWeight: 600, 
+                              color: isSelected ? 'var(--text-primary)' : 'var(--text-primary)'
+                            }}>
                               {cmd.name}
                             </div>
                             <div 
                               className="truncate"
-                              style={{ fontSize: '12px', fontWeight: 400, color: '#64748B' }}
+                              style={{ 
+                                fontSize: '12px', 
+                                fontWeight: 400, 
+                                color: 'var(--muted-foreground)',
+                                marginTop: '2px',
+                              }}
                             >
                               {cmd.description}
                             </div>
@@ -323,10 +357,12 @@ export function PICommandPalette({
                             <kbd 
                               className="px-2 py-1 rounded text-xs flex-shrink-0"
                               style={{
-                                background: 'rgba(17, 24, 39, 0.06)',
-                                color: '#64748B',
+                                background: 'var(--surface-2)',
+                                color: 'var(--text-secondary)',
                                 fontFamily: 'monospace',
-                                border: '1px solid rgba(17, 24, 39, 0.08)',
+                                border: '1px solid var(--border-primary)',
+                                fontSize: '11px',
+                                fontWeight: 500,
                               }}
                             >
                               {cmd.shortcut}

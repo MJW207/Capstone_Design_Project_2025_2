@@ -578,33 +578,60 @@ async def search_panels_by_embedding(
             "query_embedding": embedding_str
         }
         
-        # 추가 필터 적용
-        if filters:
-            # 성별 필터
-            if gender := filters.get("gender"):
-                if isinstance(gender, list):
-                    gender_conditions = []
-                    for idx, g in enumerate(gender):
-                        gender_conditions.append(f"demographics->>'gender' = :g{idx}")
-                        params[f"g{idx}"] = g
-                    if gender_conditions:
-                        base_sql += " AND (" + " OR ".join(gender_conditions) + ")"
-                else:
-                    base_sql += " AND demographics->>'gender' = :gender"
-                    params["gender"] = gender
-            
-            # 지역 필터
-            if region := filters.get("region"):
-                if isinstance(region, list):
-                    region_conditions = []
-                    for idx, r in enumerate(region):
-                        region_conditions.append(f"demographics->>'region' = :r{idx}")
-                        params[f"r{idx}"] = r
-                    if region_conditions:
-                        base_sql += " AND (" + " OR ".join(region_conditions) + ")"
-                else:
-                    base_sql += " AND demographics->>'region' = :region"
-                    params["region"] = region
+        # 추가 필터 적용 (RawData 테이블과 JOIN 필요)
+        # 벡터 검색 결과에 대해 필터를 적용하려면 RawData 테이블과 JOIN 필요
+        # 하지만 성능을 위해 벡터 검색 후 Python에서 필터링하는 것이 더 효율적일 수 있음
+        # 일단 demographics JSONB에서 가능한 필터만 적용
+        
+        # 성별 필터 (demographics JSONB에서)
+        if filters and (gender := filters.get("gender")):
+            if isinstance(gender, list):
+                gender_conditions = []
+                for idx, g in enumerate(gender):
+                    # 성별 정규화
+                    g_lower = str(g).lower()
+                    gender_map = {"m": "남성", "f": "여성", "male": "남성", "female": "여성", "남": "남성", "여": "여성"}
+                    g_normalized = gender_map.get(g_lower, g)
+                    
+                    gender_conditions.append(
+                        f"(demographics->>'gender' = :g{idx}_1 OR demographics->>'gender' = :g{idx}_2 OR "
+                        f"LOWER(COALESCE(demographics->>'gender', '')) = :g{idx}_3)"
+                    )
+                    params[f"g{idx}_1"] = g_normalized
+                    params[f"g{idx}_2"] = g_lower
+                    params[f"g{idx}_3"] = g_lower
+                if gender_conditions:
+                    base_sql += " AND (" + " OR ".join(gender_conditions) + ")"
+            else:
+                g_lower = str(gender).lower()
+                gender_map = {"m": "남성", "f": "여성", "male": "남성", "female": "여성", "남": "남성", "여": "여성"}
+                g_normalized = gender_map.get(g_lower, gender)
+                base_sql += " AND (demographics->>'gender' = :g1 OR demographics->>'gender' = :g2 OR LOWER(COALESCE(demographics->>'gender', '')) = :g3)"
+                params["g1"] = g_normalized
+                params["g2"] = g_lower
+                params["g3"] = g_lower
+        
+        # 지역 필터 (demographics JSONB에서)
+        if filters and (region := filters.get("region")):
+            if isinstance(region, list):
+                region_conditions = []
+                for idx, r in enumerate(region):
+                    region_conditions.append(f"LOWER(COALESCE(demographics->>'region', demographics->>'location', '')) LIKE :r{idx}")
+                    params[f"r{idx}"] = f"%{str(r).lower()}%"
+                if region_conditions:
+                    base_sql += " AND (" + " OR ".join(region_conditions) + ")"
+            else:
+                base_sql += " AND LOWER(COALESCE(demographics->>'region', demographics->>'location', '')) LIKE :r"
+                params["r"] = f"%{str(region).lower()}%"
+        
+        # 나이 필터는 demographics에서 나이 정보가 있을 경우에만 적용 가능
+        # 실제로는 벡터 검색 후 RawData와 JOIN해서 나이 계산 필요
+        if filters and (age_min := filters.get("age_min")):
+            base_sql += " AND (demographics->>'age')::int >= :age_min"
+            params["age_min"] = int(age_min)
+        if filters and (age_max := filters.get("age_max")):
+            base_sql += " AND (demographics->>'age')::int <= :age_max"
+            params["age_max"] = int(age_max)
         
         # 거리 오름차순으로 정렬하고 LIMIT (코사인 거리 기준, 작을수록 유사)
         base_sql += " ORDER BY distance ASC LIMIT :limit"

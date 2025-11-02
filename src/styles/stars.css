@@ -1,0 +1,110 @@
+/* 별 반짝임 애니메이션 */
+.stars-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.star {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+.star::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
+/* 작은 별 (1-2px) */
+.star-small {
+  width: 1px;
+  height: 1px;
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+/* 중간 별 (2-3px) */
+.star-medium {
+  width: 2px;
+  height: 2px;
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
+}
+
+/* 큰 별 (3-4px) */
+.star-large {
+  width: 3px;
+  height: 3px;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 1);
+}
+
+/* 반짝임 애니메이션 */
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* 각 별마다 다른 딜레이와 지속 시간 */
+.star:nth-child(1) { animation-delay: 0s; animation-duration: 2.5s; }
+.star:nth-child(2) { animation-delay: 0.5s; animation-duration: 3s; }
+.star:nth-child(3) { animation-delay: 1s; animation-duration: 2.8s; }
+.star:nth-child(4) { animation-delay: 1.5s; animation-duration: 3.2s; }
+.star:nth-child(5) { animation-delay: 0.3s; animation-duration: 2.6s; }
+.star:nth-child(6) { animation-delay: 0.8s; animation-duration: 3.1s; }
+.star:nth-child(7) { animation-delay: 1.3s; animation-duration: 2.9s; }
+.star:nth-child(8) { animation-delay: 1.8s; animation-duration: 3.3s; }
+.star:nth-child(9) { animation-delay: 0.2s; animation-duration: 2.7s; }
+.star:nth-child(10) { animation-delay: 0.7s; animation-duration: 3.4s; }
+.star:nth-child(11) { animation-delay: 1.2s; animation-duration: 2.4s; }
+.star:nth-child(12) { animation-delay: 1.7s; animation-duration: 3.5s; }
+.star:nth-child(13) { animation-delay: 0.4s; animation-duration: 2.3s; }
+.star:nth-child(14) { animation-delay: 0.9s; animation-duration: 3.6s; }
+.star:nth-child(15) { animation-delay: 1.4s; animation-duration: 2.2s; }
+.star:nth-child(16) { animation-delay: 1.9s; animation-duration: 3.7s; }
+.star:nth-child(17) { animation-delay: 0.1s; animation-duration: 2.8s; }
+.star:nth-child(18) { animation-delay: 0.6s; animation-duration: 3.8s; }
+.star:nth-child(19) { animation-delay: 1.1s; animation-duration: 2.1s; }
+.star:nth-child(20) { animation-delay: 1.6s; animation-duration: 3.9s; }
+
+/* 다크 모드일 때만 별이 더 잘 보이도록 */
+.dark .star {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+.dark .star-small {
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.7);
+}
+
+.dark .star-medium {
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+}
+
+.dark .star-large {
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+}
+
+/* 라이트 모드일 때는 더 은은하게 */
+.light .star {
+  background: rgba(100, 150, 255, 0.4);
+  box-shadow: 0 0 2px rgba(100, 150, 255, 0.3);
+}
+

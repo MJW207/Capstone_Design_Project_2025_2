@@ -147,21 +147,26 @@ export function PIHistoryDrawer({
       {/* Drawer */}
       <div 
         ref={drawerRef}
-        className={`relative bg-white rounded-xl shadow-2xl transition-all duration-300 flex flex-col ${
+        className={`relative rounded-xl shadow-2xl transition-all duration-300 flex flex-col ${
           isFullscreen 
             ? 'w-full h-full rounded-none' 
             : ''
         }`}
-        style={!isFullscreen ? {
-          width: `${drawerSize.width}px`,
-          height: `${drawerSize.height}px`
-        } : {}}
+        style={{
+          ...(!isFullscreen ? {
+            width: `${drawerSize.width}px`,
+            height: `${drawerSize.height}px`
+          } : {}),
+          background: 'var(--surface-1)',
+          color: 'var(--text-secondary)',
+          border: '1px solid var(--border-primary)',
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--neutral-200)] flex-shrink-0">
+        <div className="flex items-center justify-between p-6 border-b flex-shrink-0" style={{ borderColor: 'var(--border-primary)' }}>
           <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-[var(--accent-blue)]" />
-            <h2 className="text-lg font-semibold text-[var(--primary-500)]">
+            <Clock className="w-5 h-5" style={{ color: 'var(--brand-blue-300)' }} />
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
               히스토리
             </h2>
           </div>
@@ -194,12 +199,17 @@ export function PIHistoryDrawer({
         </div>
 
         {/* Search and Filter */}
-        <div className="flex-shrink-0 p-6 border-b border-[var(--neutral-200)] space-y-4">
+        <div className="flex-shrink-0 p-6 border-b space-y-4" style={{ borderColor: 'var(--border-primary)' }}>
           <Input
             placeholder="히스토리 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full"
+            style={{
+              background: 'var(--surface-2)',
+              borderColor: 'var(--border-primary)',
+              color: 'var(--text-primary)',
+            }}
           />
           
           <div className="flex gap-1 overflow-x-auto">
@@ -213,14 +223,31 @@ export function PIHistoryDrawer({
               <button
                 key={option.value}
                 onClick={() => setSelectedType(option.value as any)}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  selectedType === option.value
-                    ? 'bg-[var(--accent-blue)] text-white'
-                    : 'bg-[var(--neutral-100)] text-[var(--neutral-600)] hover:bg-[var(--neutral-200)]'
-                }`}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+                style={{
+                  background: selectedType === option.value 
+                    ? 'rgba(37, 99, 235, 0.2)' 
+                    : 'var(--surface-2)',
+                  color: selectedType === option.value 
+                    ? 'var(--text-primary)' 
+                    : 'var(--text-secondary)',
+                  border: `1px solid ${selectedType === option.value 
+                    ? 'rgba(37, 99, 235, 0.4)' 
+                    : 'var(--border-primary)'}`,
+                }}
+                onMouseEnter={(e) => {
+                  if (selectedType !== option.value) {
+                    e.currentTarget.style.background = 'var(--surface-3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (selectedType !== option.value) {
+                    e.currentTarget.style.background = 'var(--surface-2)';
+                  }
+                }}
               >
                 {option.label}
-                <span className="text-xs opacity-75">({option.count})</span>
+                <span style={{ color: selectedType === option.value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>({option.count})</span>
               </button>
             ))}
           </div>
@@ -231,8 +258,8 @@ export function PIHistoryDrawer({
           <ScrollArea className="h-full p-6">
             {filteredItems.length === 0 ? (
               <div className="text-center py-12">
-                <Clock className="w-12 h-12 text-[var(--neutral-400)] mx-auto mb-4" />
-                <p className="text-[var(--neutral-600)]">
+                <Clock className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--text-tertiary)' }} />
+                <p style={{ color: 'var(--text-secondary)' }}>
                   {searchQuery ? '검색 결과가 없습니다' : '히스토리가 없습니다'}
                 </p>
               </div>
@@ -241,54 +268,69 @@ export function PIHistoryDrawer({
                 {filteredItems.map((item) => (
                 <div
                   key={item.id}
-                  className="p-4 rounded-lg border border-[var(--neutral-200)] hover:border-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/5 cursor-pointer transition-all group"
+                  className="p-4 rounded-lg border cursor-pointer transition-all group"
+                  style={{
+                    borderColor: 'var(--border-primary)',
+                    background: 'var(--surface-1)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(37, 99, 235, 0.4)';
+                    e.currentTarget.style.background = 'rgba(37, 99, 235, 0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-primary)';
+                    e.currentTarget.style.background = 'var(--surface-1)';
+                  }}
                   onClick={() => handleItemClick(item)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       {/* Header */}
                       <div className="flex items-center gap-2 mb-2">
-                        <div className={`p-1.5 rounded-lg ${getTypeColor(item.type)}`}>
+                        <div className="p-1.5 rounded-lg" style={{ 
+                          background: 'rgba(37, 99, 235, 0.15)',
+                          color: 'var(--brand-blue-300)'
+                        }}>
                           {getTypeIcon(item.type)}
                         </div>
                         <PIBadge variant="secondary" size="sm">
                           {getTypeLabel(item.type)}
                         </PIBadge>
-                        <span className="text-xs text-[var(--neutral-500)]">
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                           {formatTimestamp(item.timestamp)}
                         </span>
                       </div>
 
                       {/* Title */}
-                      <h3 className="font-semibold text-[var(--primary-500)] mb-1 truncate">
+                      <h3 className="font-semibold mb-1 truncate" style={{ color: 'var(--text-primary)' }}>
                         {item.title}
                       </h3>
 
                       {/* Description */}
                       {item.description && (
-                        <p className="text-sm text-[var(--neutral-600)] mb-2 line-clamp-2">
+                        <p className="text-sm mb-2 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
                           {item.description}
                         </p>
                       )}
 
                       {/* Special info based on type */}
                       {item.type === 'query' && (
-                        <div className="text-xs text-[var(--neutral-500)]">
+                        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                           쿼리: "{item.query}" • {item.resultCount.toLocaleString()}개 결과
                         </div>
                       )}
                       {item.type === 'panel' && (
-                        <div className="text-xs text-[var(--neutral-500)]">
+                        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                           ID: {item.panelId}
                         </div>
                       )}
                       {item.type === 'cluster' && (
-                        <div className="text-xs text-[var(--neutral-500)]">
+                        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                           {item.clusterData.count.toLocaleString()}명 ({item.clusterData.percentage}%)
                         </div>
                       )}
                       {item.type === 'comparison' && (
-                        <div className="text-xs text-[var(--neutral-500)]">
+                        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                           {item.groupA.name} vs {item.groupB.name} • {item.analysisType} 분석
                         </div>
                       )}
@@ -298,17 +340,31 @@ export function PIHistoryDrawer({
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={(e) => handleCopy(item, e)}
-                        className="p-1.5 hover:bg-[var(--neutral-100)] rounded transition-colors"
+                        className="p-1.5 rounded transition-colors"
+                        style={{ color: 'var(--text-secondary)' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--surface-2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                        }}
                         title="복사"
                       >
-                        <Copy className="w-3.5 h-3.5 text-[var(--neutral-600)]" />
+                        <Copy className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={(e) => handleRemove(item.id, e)}
-                        className="p-1.5 hover:bg-red-50 rounded transition-colors"
+                        className="p-1.5 rounded transition-colors"
+                        style={{ color: 'var(--error-500)' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                        }}
                         title="제거"
                       >
-                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -320,7 +376,7 @@ export function PIHistoryDrawer({
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 p-6 border-t border-[var(--neutral-200)]">
+        <div className="flex-shrink-0 p-6 border-t" style={{ borderColor: 'var(--border-primary)' }}>
           <PIButton
             variant="ghost"
             size="small"

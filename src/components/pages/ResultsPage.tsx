@@ -9,6 +9,14 @@ import { PIBadge } from '../pi/PIBadge';
 import { PISegmentedControl } from '../pi/PISegmentedControl';
 import { PIClusterBadge, ClusterType } from '../pi/PIClusterBadge';
 import { PISelectionBar } from '../pi/PISelectionBar';
+import { PIBookmarkStar } from '../pi/PIBookmarkStar';
+import { PIPresetLoadButton } from '../pi/PIPresetLoadButton';
+import { PIBookmarkPanel } from '../pi/PIBookmarkPanel';
+import { PIBookmarkButton } from '../pi/PIBookmarkButton';
+import { SummaryBar } from '../summary/SummaryBar';
+import type { SummaryData } from '../summary/types';
+import { bookmarkManager } from '../../lib/bookmarkManager';
+import { presetManager, type FilterPreset } from '../../lib/presetManager';
 import { toast } from 'sonner';
 import { historyManager } from '../../lib/history';
 import { searchApi } from '../../lib/utils';
@@ -23,6 +31,9 @@ interface ResultsPageProps {
   onQueryChange?: (query: string) => void;
   onSearch?: (query: string) => void;
   onDataChange?: (data: Panel[]) => void;
+  onFiltersChange?: (filters: any) => void;
+  onTotalResultsChange?: (total: number) => void;
+  onPresetEdit?: (preset: any) => void;
 }
 
 interface Panel {
@@ -47,11 +58,16 @@ export function ResultsPage({
   onQueryChange,
   onSearch,
   onDataChange,
+  onFiltersChange,
+  onTotalResultsChange,
+  onPresetEdit,
 }: ResultsPageProps) {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
   const [appliedFilters, setAppliedFilters] = useState<string[]>([]);
   const [selectedPanels, setSelectedPanels] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = 최신순, asc = 오래된순
+  const [bookmarkedPanels, setBookmarkedPanels] = useState<Set<string>>(new Set());
+  const [isBookmarkPanelOpen, setIsBookmarkPanelOpen] = useState(false);
   
   // 로컬 더미 + 페이지네이션 상태
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -63,6 +79,90 @@ export function ResultsPage({
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [pageSize] = useState(20); // 페이지당 결과 수 (20개로 변경)
+
+  // 북마크 로드 및 업데이트
+  const updateBookmarks = () => {
+    const bookmarks = bookmarkManager.loadBookmarks();
+    const panelIds = new Set(bookmarks.map(b => b.panelId));
+    setBookmarkedPanels(panelIds);
+  };
+
+  useEffect(() => {
+    updateBookmarks();
+  }, []);
+
+  // 북마크 패널이 열릴 때마다 북마크 목록 새로고침
+  useEffect(() => {
+    if (isBookmarkPanelOpen) {
+      updateBookmarks();
+    }
+  }, [isBookmarkPanelOpen]);
+
+  // 북마크 개수 업데이트
+  const bookmarkCount = bookmarkedPanels.size;
+
+  // 북마크 토글
+  const handleToggleBookmark = (panelId: string, panel: Panel) => {
+    const isBookmarked = bookmarkedPanels.has(panelId);
+    
+    if (isBookmarked) {
+      bookmarkManager.removeBookmark(panelId);
+      setBookmarkedPanels(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(panelId);
+        return newSet;
+      });
+      toast.success('북마크가 해제되었습니다');
+    } else {
+      bookmarkManager.addBookmark({
+        panelId,
+        timestamp: Date.now(),
+        metadata: {
+          gender: panel.gender,
+          age: panel.age,
+          region: panel.region,
+        },
+      });
+      setBookmarkedPanels(prev => new Set(prev).add(panelId));
+      toast.success('북마크에 저장되었습니다');
+    }
+  };
+
+  // 프리셋 로드 핸들러 - 프리셋 필터 값을 적용하고 검색 실행
+  const handlePresetLoad = (preset: FilterPreset) => {
+    // 프리셋 필터 값을 FilterDrawer 형식으로 변환
+    const filtersForDrawer = {
+      selectedGenders: preset.filters.gender || [],
+      selectedRegions: preset.filters.regions || [],
+      selectedIncomes: preset.filters.income || [],
+      ageRange: preset.filters.ageRange || [15, 80],
+      quickpollOnly: preset.filters.quickpollOnly || false,
+      interests: Array.isArray(preset.filters.interests) 
+        ? preset.filters.interests 
+        : preset.filters.interests 
+          ? [preset.filters.interests] 
+          : [],
+      interestLogic: preset.filters.interestLogic || 'and',
+    };
+    
+    // 필터 적용
+    if (onFiltersChange) {
+      onFiltersChange(filtersForDrawer);
+    }
+    
+    // 검색 실행 (query가 있으면 그대로, 없으면 빈 쿼리로라도 검색)
+    if (query && query.trim()) {
+      searchPanels(1);
+    } else {
+      // 검색어가 없어도 필터만으로 검색 실행 (필요시)
+      toast.success(`프리셋 "${preset.name}"이 적용되었습니다`);
+    }
+  };
+
+  // 북마크 패널로 이동
+  const handleNavigateToBookmark = (panelId: string) => {
+    onPanelDetailOpen(panelId);
+  };
 
   // 서버 검색 (텍스트 일치 + 페이지네이션)
   const searchPanels = async (pageNum: number = currentPage) => {
@@ -84,17 +184,26 @@ export function ResultsPage({
     setError(null);
     
     const searchStartTime = Date.now();
+    // 필터 객체 준비 (propFilters 사용)
+    const filtersToSend = {
+      selectedGenders: propFilters.selectedGenders || [],
+      selectedRegions: propFilters.selectedRegions || [],
+      selectedIncomes: propFilters.selectedIncomes || [],
+      ageRange: propFilters.ageRange || [],
+      quickpollOnly: propFilters.quickpollOnly || false,
+    };
+    
     console.log('[DEBUG Frontend] API 호출 시작...');
     console.log('[DEBUG Frontend] 호출 파라미터:', {
       query: query.trim(),
-      filters: {},
+      filters: filtersToSend,
       page: pageNum,
       limit: pageSize
     });
     
     try {
       const apiCallStart = Date.now();
-      const response = await searchApi.searchPanels(query.trim(), {}, pageNum, pageSize);
+      const response = await searchApi.searchPanels(query.trim(), filtersToSend, pageNum, pageSize);
       const apiCallDuration = Date.now() - apiCallStart;
       
       console.log('[DEBUG Frontend] API 호출 완료:', {
@@ -140,7 +249,7 @@ export function ResultsPage({
       setWOnlyCount(results.filter((p: Panel) => p.coverage === 'w').length);
       
       // 히스토리 저장 (전체 개수 사용)
-      const historyItem = historyManager.createQueryHistory(query.trim(), {}, total);
+      const historyItem = historyManager.createQueryHistory(query.trim(), filtersToSend, total);
       historyManager.save(historyItem);
       
       const totalDuration = Date.now() - searchStartTime;
@@ -180,7 +289,7 @@ export function ResultsPage({
     }
   };
 
-  // 쿼리 변경 시 검색 실행 (첫 페이지로)
+  // 쿼리 또는 필터 변경 시 검색 실행 (첫 페이지로)
   useEffect(() => {
     if (query && query.trim()) {
       setCurrentPage(1);
@@ -192,7 +301,7 @@ export function ResultsPage({
       setTotalPages(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, propFilters]);
 
   // 검색 결과가 변경될 때 상위 컴포넌트에 전달
   useEffect(() => {
@@ -269,16 +378,94 @@ export function ResultsPage({
     });
   }, [panels, sortOrder]);
 
+  // 퀵 인사이트 데이터 계산
+  const quickInsightData = useMemo(() => {
+    if (totalResults === 0 || panels.length === 0) {
+      return null;
+    }
+
+    // 전체 결과에서 통계 계산
+    const qRatio = totalResults > 0 ? Math.round((qwCount / totalResults) * 100) : 0;
+    const wRatio = totalResults > 0 ? Math.round((wOnlyCount / totalResults) * 100) : 0;
+
+    // 성별 통계 (여성 비율)
+    const genders = panels.map((p: Panel) => {
+      const genderStr = (p as any).gender || '';
+      if (typeof genderStr === 'string') {
+        const lower = genderStr.toLowerCase();
+        if (lower.includes('여') || lower.includes('f') || lower === '여성' || lower === 'female') {
+          return 'F';
+        } else if (lower.includes('남') || lower.includes('m') || lower === '남성' || lower === 'male') {
+          return 'M';
+        }
+      }
+      return null;
+    }).filter(Boolean) as string[];
+    
+    const femaleCount = genders.filter(g => g === 'F').length;
+    const genderTop = genders.length > 0 ? Math.round((femaleCount / genders.length) * 100) : 50;
+
+    // 지역 통계
+    const regions = panels.map((p: Panel) => (p as any).region || '').filter(Boolean);
+    const regionCount: Record<string, number> = {};
+    regions.forEach(region => {
+      regionCount[region] = (regionCount[region] || 0) + 1;
+    });
+    const topRegions = Object.entries(regionCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([region]) => region) as [string, string, string];
+    
+    // 태그 통계 (임시로 더미 데이터, 실제로는 응답 데이터에서 추출해야 함)
+    const topTags: [string, string, string] = ['태그1', '태그2', '태그3'];
+
+    return {
+      total: totalResults,
+      q_cnt: qwCount,
+      q_ratio: qRatio,
+      w_cnt: wOnlyCount,
+      w_ratio: wRatio,
+      gender_top: genderTop,
+      top_regions: topRegions.length === 3 ? topRegions : ['서울', '경기', '인천'] as [string, string, string],
+      top_tags: topTags,
+    };
+  }, [totalResults, panels, qwCount, wOnlyCount]);
+
   // 분포 데이터 계산 (현재 페이지 패널 기준)
   
 
   return (
-    <div className="min-h-screen bg-[var(--neutral-50)]">
-      {/* Fixed Search Bar */}
-      <div className="sticky top-0 z-20 bg-white border-b border-[var(--neutral-200)] px-20 py-4">
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <PITextField
+    <div className="page-full min-h-screen" style={{ background: 'var(--background)' }}>
+      {/* 북마크 패널 */}
+      <PIBookmarkPanel 
+        isOpen={isBookmarkPanelOpen}
+        onNavigate={(panelId) => {
+          handleNavigateToBookmark(panelId);
+          setIsBookmarkPanelOpen(false);
+        }} 
+      />
+      
+      {/* 상단 검색바/툴바 - 완전 통합된 디자인 */}
+      <section className="bar-full sticky top-0 z-20" style={{ 
+        background: 'var(--card)', 
+        borderBottom: '1px solid var(--border)',
+        padding: '12px 20px',
+        marginBottom: '12px'
+      }}>
+        {/* 통합된 검색 바 - 실제 검색 헤더 높이에 맞춤 (40px) */}
+        <div 
+          className="flex items-center gap-0 rounded-xl overflow-hidden"
+          style={{
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border-primary)',
+            height: '40px',
+            width: '100%',
+          }}
+        >
+          {/* 검색 입력 필드 */}
+          <div className="flex-1 flex items-center" style={{ height: '100%', minWidth: 0 }}>
+            <input
+              type="text"
               placeholder="검색어 수정..."
               value={query}
               onChange={(e) => onQueryChange?.(e.target.value)}
@@ -287,15 +474,114 @@ export function ResultsPage({
                   handleSearchClick();
                 }
               }}
-              trailingIcons={[
-                <Filter key="filter" className="w-5 h-5 cursor-pointer" onClick={onFilterOpen} />,
-                <Search key="search" className="w-5 h-5 cursor-pointer" onClick={handleSearchClick} />,
-              ]}
+              className="w-full h-full border-none outline-none bg-transparent"
+              style={{
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                fontSize: '14px',
+                padding: '0 16px',
+                height: '100%',
+              }}
             />
+            <style>{`
+              input::placeholder {
+                color: var(--text-tertiary);
+              }
+            `}</style>
           </div>
-          <PIButton variant="secondary" size="medium" icon={<Filter className="w-4 h-4" />} onClick={onFilterOpen}>
-            필터
-          </PIButton>
+          
+          {/* 내부 아이콘 버튼들 */}
+          <div className="flex items-center gap-0.5" style={{ height: '100%', padding: '0 4px', flexShrink: 0 }}>
+            <button
+              onClick={handleSearchClick}
+              className="flex items-center justify-center rounded-lg transition-all"
+              style={{
+                width: '32px',
+                height: '32px',
+                color: 'var(--text-secondary)',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--surface-3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+              title="검색"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
+          
+          {/* 구분선 */}
+          <div style={{ 
+            width: '1px', 
+            height: '24px', 
+            background: 'var(--border-primary)',
+            margin: '0 2px',
+            flexShrink: 0,
+          }} />
+          
+          {/* 통합된 버튼 그룹 - 검색 필드와 같은 높이 (40px) */}
+          <div className="flex items-center gap-0.5" style={{ height: '100%', paddingRight: '2px', flexShrink: 0 }}>
+            <PIPresetLoadButton
+              onLoad={handlePresetLoad}
+              onEdit={(preset) => {
+                // 프리셋 클릭 또는 수정 버튼 클릭 시 필터창 열기
+                if (onPresetEdit) {
+                  onPresetEdit(preset);
+                }
+              }}
+            />
+            <PIBookmarkButton
+              onClick={() => setIsBookmarkPanelOpen(!isBookmarkPanelOpen)}
+              bookmarkCount={bookmarkCount}
+            />
+            <button
+              onClick={onFilterOpen}
+              className="flex items-center gap-1.5 px-3 rounded-lg transition-all h-full"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                fontSize: '13px',
+                fontWeight: 600,
+                padding: '0 12px',
+                height: '100%',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--surface-3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              필터
+            </button>
+            <button
+              onClick={onExportOpen}
+              className="flex items-center gap-1.5 px-3 rounded-lg transition-all h-full"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                fontSize: '13px',
+                fontWeight: 600,
+                padding: '0 12px',
+                height: '100%',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--surface-3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <Download className="w-3.5 h-3.5" />
+              내보내기
+            </button>
+          </div>
         </div>
         
         {/* Applied Filter Chips */}
@@ -311,102 +597,93 @@ export function ResultsPage({
             </PIChip>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="px-20 py-8 space-y-6">
-        {/* Summary Strip - Refactored with Quick Insight */}
-        <div className="grid grid-cols-12 gap-6">
-          {/* Total Results - 12 cols */}
-          <div className="col-span-12">
-            <PICard variant="summary" className="relative overflow-hidden bg-gradient-to-br from-white via-white to-purple-50/30 h-[240px]">
-              {/* Top Gradient Hairline */}
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#C7B6FF] to-[#A5C8FF]" />
-              
-              {/* Decorative Background Pattern */}
-              <div className="absolute inset-0 opacity-5">
-                <div className="absolute top-4 right-4 w-24 h-24 rounded-full bg-gradient-to-br from-[var(--accent-blue)] to-[#7C3AED]" />
-                <div className="absolute bottom-4 right-8 w-16 h-16 rounded-full bg-gradient-to-br from-[#7C3AED] to-[var(--accent-blue)]" />
-              </div>
-              
-              <div className="h-full flex flex-col justify-between relative z-10">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7C3AED] to-[var(--accent-blue)] flex items-center justify-center shadow-md">
-                      <Search className="w-4 h-4 text-white" />
-                    </div>
-                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      총 결과
-                    </p>
-                  </div>
-                  <div className="mt-6">
-                    <p 
-                      className="font-bold bg-gradient-to-r from-[#7C3AED] to-[var(--accent-blue)] bg-clip-text text-transparent"
-                      style={{ fontSize: '64px', lineHeight: '1', letterSpacing: '-0.02em' }}
-                    >
-                      {loading ? (
-                        <Loader2 className="w-16 h-16 animate-spin" />
-                      ) : (
-                        totalResults.toLocaleString()
-                      )}
-                    </p>
-                    <p style={{ fontSize: '15px', fontWeight: 500, color: 'var(--neutral-600)', marginTop: '8px' }}>
-                      패널 검색됨
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Mini Stats */}
-                <div className="flex gap-2">
-                  <div className="flex-1 px-3 py-2.5 rounded-lg bg-gradient-to-br from-[var(--accent-blue)]/10 to-[var(--accent-blue)]/5 border border-[var(--accent-blue)]/20">
-                    <p className="text-xs text-[var(--neutral-600)]">Q+W</p>
-                    <p style={{ fontSize: '16px', fontWeight: 700 }} className="text-[var(--accent-blue)]">
-                      {loading ? '...' : qwCount.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex-1 px-3 py-2.5 rounded-lg bg-gradient-to-br from-[var(--neutral-200)]/30 to-[var(--neutral-100)]/20 border border-[var(--neutral-200)]">
-                    <p className="text-xs text-[var(--neutral-600)]">W only</p>
-                    <p style={{ fontSize: '16px', fontWeight: 700 }} className="text-[var(--neutral-600)]">
-                      {loading ? '...' : wOnlyCount.toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </PICard>
-          </div>
-          
-        </div>
+      {/* Summary Bar - Compact 4-Row Layout */}
+      {(() => {
+        // SummaryData 변환
+        const summaryData: SummaryData = {
+          total: loading ? 0 : totalResults,
+          qCount: loading ? 0 : qwCount,
+          wOnlyCount: loading ? 0 : wOnlyCount,
+          femaleRate: quickInsightData
+            ? quickInsightData.gender_top / 100 // 0~1로 변환
+            : undefined,
+          avgAge: undefined, // quickInsightData에 age_med 속성이 없음 (추후 추가 가능)
+          regionsTop:
+            quickInsightData && quickInsightData.top_regions
+              ? quickInsightData.top_regions.map((region) => {
+                  // 지역 비율 계산 (현재 페이지 기준, 추후 전체 데이터 기준으로 개선 가능)
+                  const regionCount = panels.filter(
+                    (p: Panel) => (p as any).region === region
+                  ).length;
+                  const rate =
+                    panels.length > 0
+                      ? Math.round((regionCount / panels.length) * 100)
+                      : 0;
+                  return {
+                    name: region,
+                    count: regionCount,
+                    rate,
+                  };
+                })
+              : [],
+          tagsTop: quickInsightData?.top_tags || [],
+          // latestDate와 medianDate는 현재 데이터가 없음
+          // previousTotal도 현재 추적하지 않음
+        };
 
-        {/* View Switch with Sort Control */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">검색 결과</h2>
-          <div className="flex items-center gap-4">
-            {/* Sort Control */}
-            <PISegmentedControl
-              options={[
-                { value: 'desc', label: '최신순' },
-                { value: 'asc', label: '오래된순' },
-              ]}
-              value={sortOrder}
-              onChange={(v) => setSortOrder(v as 'desc' | 'asc')}
-            />
-            {/* View Mode Toggle */}
-            <PISegmentedControl
-              options={[
-                { value: 'table', label: '테이블' },
-                { value: 'cards', label: '카드' },
-              ]}
-              value={viewMode}
-              onChange={(v) => setViewMode(v as 'table' | 'cards')}
-            />
+        return (
+          <SummaryBar
+            data={summaryData}
+            onFilterClick={onFilterOpen}
+            onExportClick={onExportOpen}
+            onPresetClick={() => {
+              // 프리셋 메뉴 열기 (추후 구현)
+            }}
+            onCompareClick={() => {
+              // 비교 기능 (추후 구현)
+            }}
+            filterCount={
+              appliedFilters.length > 0 ? appliedFilters.length : 0
+            }
+          />
+        );
+      })()}
+
+      {/* 하단: 검색 결과 영역 (전체 너비) */}
+      <main style={{ marginTop: '24px', paddingTop: '16px' }}>
+          {/* View Switch with Sort Control */}
+          <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>검색 결과</h2>
+            <div className="flex items-center gap-4">
+              {/* Sort Control */}
+              <PISegmentedControl
+                options={[
+                  { value: 'desc', label: '최신순' },
+                  { value: 'asc', label: '오래된순' },
+                ]}
+                value={sortOrder}
+                onChange={(v) => setSortOrder(v as 'desc' | 'asc')}
+              />
+              {/* View Mode Toggle */}
+              <PISegmentedControl
+                options={[
+                  { value: 'table', label: '테이블' },
+                  { value: 'cards', label: '카드' },
+                ]}
+                value={viewMode}
+                onChange={(v) => setViewMode(v as 'table' | 'cards')}
+              />
+            </div>
           </div>
-        </div>
 
         {/* Loading State */}
         {loading && (
           <div className="flex items-center justify-center py-12">
             <div className="flex items-center gap-3">
-              <Loader2 className="w-6 h-6 animate-spin" />
-              <span className="text-lg">검색 중...</span>
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--brand-blue-300)' }} />
+              <span className="text-lg" style={{ color: 'var(--text-primary)' }}>검색 중...</span>
             </div>
           </div>
         )}
@@ -424,10 +701,10 @@ export function ResultsPage({
           </div>
         )}
 
-        {/* Results - Cards View */}
-        {!loading && !error && viewMode === 'cards' && (
-          <div className="grid grid-cols-4 gap-4">
-            {sortedPanels.map((panel) => (
+          {/* Results - Cards View */}
+          {!loading && !error && viewMode === 'cards' && (
+            <div className="cards-grid">
+              {sortedPanels.map((panel) => (
               <PICard
                 key={panel.id}
                 variant="panel"
@@ -436,11 +713,32 @@ export function ResultsPage({
                 <div className="space-y-3">
                   {/* Header */}
                   <div className="flex items-start justify-between">
-                    <div className="space-y-0.5">
-                      <span className="text-sm font-medium text-[var(--neutral-600)]">{panel.name}</span>
-                      <p className="text-xs text-[var(--neutral-600)]">생성일: {new Date(panel.created_at).toLocaleDateString()}</p>
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="p-1 rounded-lg transition-colors flex-shrink-0"
+                          style={{
+                            background: 'transparent'
+                          }}
+                          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => {
+                            e.currentTarget.style.background = 'rgba(250, 204, 21, 0.1)';
+                          }}
+                          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <PIBookmarkStar
+                            panelId={panel.id}
+                            isBookmarked={bookmarkedPanels.has(panel.id)}
+                            onToggle={(id) => handleToggleBookmark(id, panel)}
+                            size="sm"
+                          />
+                        </div>
+                        <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{panel.name}</span>
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>생성일: {new Date(panel.created_at).toLocaleDateString()}</p>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -450,10 +748,19 @@ export function ResultsPage({
                             toast.error('클립보드 복사 실패');
                           });
                         }}
-                        className="p-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                        className="p-1.5 rounded-lg transition-colors"
+                        style={{
+                          background: 'transparent'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--muted)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                        }}
                         title="패널 ID 복사"
                       >
-                        <Copy className="w-4 h-4" style={{ color: '#64748B' }} />
+                        <Copy className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />
                       </button>
                       <PIBadge kind={panel.coverage === 'qw' ? 'coverage-qw' : 'coverage-w'}>
                         {panel.coverage === 'qw' ? 'Q+W' : 'W'}
@@ -470,13 +777,13 @@ export function ResultsPage({
 
                   {/* Response Snippets */}
                   {panel.responses && (
-                    <div className="pt-2 border-t border-[var(--neutral-200)]">
+                    <div className="pt-2 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
                       <div className="space-y-2">
                         {Object.entries(panel.responses).slice(0, 2).map(([key, value]) => (
                           <div key={key} className="flex gap-2">
-                            <Quote className="w-3 h-3 text-[var(--accent-blue)] flex-shrink-0 mt-0.5" />
+                            <Quote className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--brand-blue-300)' }} />
                             <div className="flex-1">
-                              <p className="text-xs text-[var(--neutral-600)] italic line-clamp-2">
+                              <p className="text-xs italic line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
                                 {String(value)}
                               </p>
                             </div>
@@ -487,15 +794,21 @@ export function ResultsPage({
                   )}
                 </div>
               </PICard>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
 
-        {/* Results - Table View */}
-        {!loading && !error && viewMode === 'table' && (
-          <div className="bg-white rounded-[var(--radius-card)] border border-[var(--neutral-200)] overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-[var(--neutral-50)] border-b border-[var(--neutral-200)]">
+          {/* Results - Table View */}
+          {!loading && !error && viewMode === 'table' && (
+            <div className="rounded-[var(--radius-card)] border overflow-hidden" style={{ 
+              background: 'var(--surface-1)', 
+              borderColor: 'var(--border-primary)' 
+            }}>
+              <table className="w-full">
+              <thead className="border-b" style={{
+                background: 'var(--bg-0)',
+                borderColor: 'var(--border-primary)'
+              }}>
                 <tr>
                   <th className="px-4 py-3 w-12">
                     <input
@@ -511,15 +824,23 @@ export function ResultsPage({
                       className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--primary-500)]">이름</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--primary-500)]">성별</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--primary-500)]">나이</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--primary-500)]">지역</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--primary-500)]">응답</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>이름</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>성별</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>나이</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>지역</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>응답</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold w-12" style={{ color: 'var(--text-tertiary)' }}>북마크</th>
                   <th className="px-4 py-3 text-left">
                     <button
                       onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
-                      className="flex items-center gap-1 text-xs font-semibold text-[var(--primary-500)] hover:text-[var(--accent-blue)] transition-colors"
+                      className="flex items-center gap-1 text-xs font-semibold transition-colors"
+                      style={{ color: 'var(--text-tertiary)' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--brand-blue-300)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--text-tertiary)';
+                      }}
                       title="응답일 기준으로 정렬합니다."
                     >
                       응답일
@@ -530,14 +851,24 @@ export function ResultsPage({
                       )}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-[var(--primary-500)]">액션</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>액션</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedPanels.map((panel, index) => (
                   <tr
                     key={panel.id}
-                    className="border-b border-[var(--neutral-200)] hover:bg-[var(--neutral-50)] transition-all"
+                    className="border-b transition-all"
+                    style={{ 
+                      borderColor: 'var(--border-secondary)',
+                      background: 'var(--surface-1)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--surface-2)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'var(--surface-1)';
+                    }}
                   >
                     <td className="px-4 py-3">
                       <input
@@ -555,14 +886,21 @@ export function ResultsPage({
                       />
                     </td>
                     <td 
-                      className="px-4 py-3 text-sm cursor-pointer hover:text-[var(--accent-blue)] transition-colors"
+                      className="px-4 py-3 text-sm cursor-pointer transition-colors"
+                      style={{ color: 'var(--text-secondary)' }}
                       onClick={() => onPanelDetailOpen(panel.id)}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--brand-blue-300)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                      }}
                     >
                       {panel.name}
                     </td>
-                    <td className="px-4 py-3 text-sm">{panel.gender}</td>
-                    <td className="px-4 py-3 text-sm">{panel.age}</td>
-                    <td className="px-4 py-3 text-sm">{panel.region}</td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{panel.gender}</td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{panel.age}</td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{panel.region}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 flex-wrap">
                         {panel.responses && Object.keys(panel.responses).slice(0, 2).map((key, i) => (
@@ -572,7 +910,15 @@ export function ResultsPage({
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-4 py-3 text-center">
+                      <PIBookmarkStar
+                        panelId={panel.id}
+                        isBookmarked={bookmarkedPanels.has(panel.id)}
+                        onToggle={(id) => handleToggleBookmark(id, panel)}
+                        size="sm"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
                       {new Date(panel.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
@@ -582,20 +928,34 @@ export function ResultsPage({
                             e.stopPropagation();
                             onLocatePanel?.(panel.id);
                           }}
-                          className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                          className="p-1.5 rounded-lg transition-colors btn--ghost"
+                          style={{ color: 'var(--brand-blue-300)' }}
                           title="지도에서 위치 표시 (L)"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(37, 99, 235, 0.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
                         >
-                          <MapPin className="w-4 h-4" style={{ color: '#2563EB' }} />
+                          <MapPin className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onPanelDetailOpen(panel.id);
                           }}
-                          className="p-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                          className="p-1.5 rounded-lg transition-colors btn--ghost"
+                          style={{ color: 'var(--muted-foreground)' }}
                           title="새 창으로 열기 (W)"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--surface-2)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
                         >
-                          <ExternalLink className="w-4 h-4" style={{ color: '#64748B' }} />
+                          <ExternalLink className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => {
@@ -606,46 +966,53 @@ export function ResultsPage({
                               toast.error('클립보드 복사 실패');
                             });
                           }}
-                          className="p-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                          className="p-1.5 rounded-lg transition-colors btn--ghost"
+                          style={{ color: 'var(--muted-foreground)' }}
                           title="패널 ID 복사"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--surface-2)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
                         >
-                          <Copy className="w-4 h-4" style={{ color: '#64748B' }} />
+                          <Copy className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-        {/* Pagination - 항상 표시, 내보내기 버튼 위에 고정 배치(문서 흐름 내) */}
-        {!loading && !error && (
-          <div className="pt-8 flex items-center justify-center">
-            <PIPagination
-              count={Math.max(1, totalPages)}
-              page={currentPage}
-              onChange={handlePageChange}
-              siblingCount={1}
-              boundaryCount={1}
-              disabled={loading}
-            />
-          </div>
-        )}
+          {/* Pagination - 항상 표시, 내보내기 버튼 위에 고정 배치(문서 흐름 내) */}
+          {!loading && !error && (
+            <div className="pt-8 flex items-center justify-center">
+              <PIPagination
+                count={Math.max(1, totalPages)}
+                page={currentPage}
+                onChange={handlePageChange}
+                siblingCount={1}
+                boundaryCount={1}
+                disabled={loading}
+              />
+            </div>
+          )}
 
-        {/* Action Buttons */}
-        <div className="flex items-center justify-center pt-6">
-          <PIButton
-            variant="secondary"
-            size="large"
-            icon={<Download className="w-5 h-5" />}
-            onClick={onExportOpen}
-          >
-            내보내기
-          </PIButton>
-        </div>
-      </div>
+          {/* Action Buttons */}
+          <div className="flex items-center justify-center pt-6">
+            <PIButton
+              variant="secondary"
+              size="large"
+              icon={<Download className="w-5 h-5" />}
+              onClick={onExportOpen}
+            >
+              내보내기
+            </PIButton>
+          </div>
+        </main>
       
       {/* Selection Bar */}
       {selectedPanels.length > 0 && (

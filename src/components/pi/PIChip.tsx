@@ -28,14 +28,14 @@ export function PIChip({
   const typeStyles = {
     filter: selected
       ? 'bg-[var(--primary-500)] text-white border border-[var(--primary-500)]'
-      : 'bg-white border border-[var(--neutral-300)] text-[var(--primary-500)] hover:border-[var(--primary-500)]',
+      : 'bg-[var(--surface-2)] border border-[var(--border-primary)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]',
     tag: selected
-      ? 'pi-glass border border-[var(--accent-blue)]/30 bg-[var(--accent-blue)]/10'
-      : 'bg-[var(--neutral-100)] text-[var(--primary-500)] hover:bg-[var(--neutral-200)]',
+      ? 'bg-[rgba(37,99,235,0.15)] border border-[rgba(37,99,235,0.3)] text-[var(--brand-blue-300)]'
+      : 'bg-[var(--surface-2)] border border-[var(--border-primary)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] hover:border-[var(--border-accent)]',
     'tag-soft': selected
-      ? 'bg-[var(--surface-glass-enhanced)] backdrop-blur-md border border-gradient-to-r from-[var(--accent-blue)]/30 to-[#7C3AED]/30 scale-[1.02]'
-      : 'bg-[var(--surface-glass)] backdrop-blur-md border border-[var(--surface-glass-border-subtle)] hover:border-[var(--accent-blue)]/20',
-    metric: 'bg-gradient-to-r from-[var(--accent-blue)] to-[var(--accent-blue)]/80 text-white',
+      ? 'bg-[rgba(37,99,235,0.1)] backdrop-blur-md border border-[rgba(37,99,235,0.3)] scale-[1.02] text-[var(--brand-blue-300)]'
+      : 'bg-[var(--surface-2)] backdrop-blur-md border border-[var(--border-primary)] hover:border-[rgba(37,99,235,0.2)] text-[var(--text-secondary)]',
+    metric: 'bg-gradient-to-r from-[var(--brand-blue-500)] to-[var(--brand-purple-600)] text-white',
   };
 
   return (
@@ -57,7 +57,7 @@ export function PIChip({
             e.stopPropagation();
             onRemove();
           }}
-          className="ml-1 hover:bg-black/10 rounded-full p-0.5 transition-colors"
+          className="ml-1 hover:bg-[rgba(255,255,255,0.1)] rounded-full p-0.5 transition-colors"
         >
           <X className="w-3 h-3" />
         </button>

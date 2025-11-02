@@ -1,0 +1,45 @@
+/* 페이지 루트: 최대폭 제한 제거하고 패딩만 유지 */
+.page-full {
+  width: 100%;
+  max-width: none;         /* ❗ 어떤 max-width도 허용하지 않음 */
+  margin: 0;
+  padding: 16px 24px;
+}
+
+/* 3열 그리드: 좌측 지표(고정) + 인사이트(고정) + 콘텐츠(가변 1fr) */
+.grid-3col {
+  display: grid;
+  grid-template-columns: 220px 280px 1fr;  /* 좌측 두 패널은 고정, 오른쪽은 꽉 채움 */
+  gap: 16px;
+  align-items: start;
+}
+
+/* 카드/리스트 영역은 내부에서 다시 그리드로 꽉 채움 */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+/* 검색바/툴바 등 상단 바는 가로 100% */
+.bar-full { 
+  width: 100%; 
+}
+
+.bar-full, .bar-full * { 
+  min-width: 0; 
+}
+
+/* 반응형: 좁아지면 2열 → 1열 */
+@media (max-width: 1280px) {
+  .grid-3col { 
+    grid-template-columns: 220px 1fr; 
+  }
+}
+
+@media (max-width: 960px) {
+  .grid-3col { 
+    grid-template-columns: 1fr; 
+  }
+}
+

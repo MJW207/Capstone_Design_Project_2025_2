@@ -67,7 +67,7 @@ export function PIPagination({ count, page, onChange, siblingCount = 1, boundary
   return (
     <div className="flex items-center gap-2">
       <PIButton
-        variant="outline"
+        variant="ghost"
         size="small"
         disabled={disabled || page <= 1}
         onClick={() => onChange(Math.max(1, page - 1))}
@@ -78,14 +78,14 @@ export function PIPagination({ count, page, onChange, siblingCount = 1, boundary
       {items.map((item, idx) => {
         if (item === 'start-ellipsis' || item === 'end-ellipsis') {
           return (
-            <span key={`${item}-${idx}`} className="px-2 text-[var(--neutral-600)]">…</span>
+            <span key={`${item}-${idx}`} className="px-2" style={{ color: 'var(--text-tertiary)' }}>…</span>
           );
         }
         const isActive = item === page;
         return (
           <PIButton
             key={item}
-            variant={isActive ? 'default' : 'outline'}
+            variant={isActive ? 'primary' : 'ghost'}
             size="small"
             onClick={() => onChange(item)}
             disabled={disabled}
@@ -96,7 +96,7 @@ export function PIPagination({ count, page, onChange, siblingCount = 1, boundary
       })}
 
       <PIButton
-        variant="outline"
+        variant="ghost"
         size="small"
         disabled={disabled || page >= count}
         onClick={() => onChange(Math.min(count, page + 1))}

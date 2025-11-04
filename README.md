@@ -255,27 +255,69 @@ panel-insight/
 │   ├── components/               # React components
 │   │   ├── drawers/             # Modal 및 drawer components
 │   │   ├── pages/               # Main page components
-│   │   └── pi/                  # Panel Insight 전용 components
+│   │   ├── pi/                  # Panel Insight 전용 components
+│   │   ├── filter/              # 필터 컴포넌트
+│   │   ├── results/             # 결과 표시 컴포넌트
+│   │   ├── summary/             # 요약 정보 컴포넌트
+│   │   └── ui/                  # 공통 UI 컴포넌트
 │   ├── lib/                     # Utility functions 및 API calls
 │   ├── types/                   # TypeScript type definitions
 │   └── styles/                  # Global styles
+│
 ├── server/                       # Backend source code
 │   ├── app/                     # FastAPI application
 │   │   ├── main.py             # Main application entry point
 │   │   ├── api/                 # API 엔드포인트
 │   │   │   ├── search.py       # 벡터 검색 API
+│   │   │   ├── search_rag.py   # RAG 의미 검색 API
 │   │   │   ├── panels.py       # 패널 상세정보 API
+│   │   │   ├── clustering.py  # 클러스터링 API
 │   │   │   └── health.py       # Health check API
 │   │   ├── db/                  # 데이터베이스 레이어
 │   │   │   ├── dao_panels.py   # 패널 DAO
 │   │   │   ├── dao_embeddings.py # 벡터 검색 DAO
 │   │   │   └── session.py      # DB 세션 관리
-│   │   ├── embeddings.py        # HuggingFace 임베딩 생성
 │   │   ├── clustering/          # 클러스터링 알고리즘
-│   │   └── core/                # 설정 및 공통 모듈
+│   │   │   ├── feature_pipeline.py # 피처 전처리
+│   │   │   ├── compare.py      # 그룹 비교 분석
+│   │   │   └── artifacts.py    # 세션 아티팩트 관리
+│   │   ├── services/            # 비즈니스 로직
+│   │   │   └── embedding_service.py # 임베딩 서비스
+│   │   ├── core/                # 설정 및 공통 모듈
+│   │   ├── embeddings.py        # HuggingFace 임베딩 생성
+│   │   └── schemas.py           # Pydantic 스키마
+│   ├── configs/                 # 설정 파일
+│   │   ├── categories.yml
+│   │   └── keywords.yml
 │   ├── sql/                     # SQL 스크립트
+│   │   ├── database_schema.sql
+│   │   ├── panel_embeddings_data.sql
+│   │   ├── bridge_views.sql
+│   │   ├── indexes.sql
+│   │   └── ...
+│   ├── tests/                   # 테스트 파일
+│   │   ├── test_compare.py
+│   │   ├── test_preproc.py
+│   │   ├── test_db_connection.py
+│   │   └── ...
+│   ├── scripts/                 # 유틸리티 스크립트
+│   │   ├── check_server.py
+│   │   └── create_sample_data.py
+│   ├── data/                    # 데이터 파일
+│   │   └── preprocessed_sample.csv
 │   └── requirements.txt         # Python dependencies
-└── README.md                    
+│
+├── notebooks/                   # Jupyter 노트북
+│   └── panel_search_system_final.ipynb  # 자연어 검색 프로세스 초안
+│
+├── scripts/                     # 프로젝트 스크립트
+│   └── close_ports.bat
+│
+├── index.html                   # Vite 진입점
+├── package.json                 # Frontend 의존성
+├── tsconfig.json                # TypeScript 설정
+├── vite.config.ts               # Vite 설정
+└── README.md                    # 프로젝트 문서                    
 
 ## 주요 컴포넌트
 

@@ -166,3 +166,12 @@ async def search_rag(
         raise HTTPException(status_code=500, detail=f"RAG search failed: {str(e)}")
 
 
+
+
+
+
+
+
+
+
+

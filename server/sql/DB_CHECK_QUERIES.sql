@@ -112,3 +112,12 @@ FROM "RawData".quick_answer;
 
 
 
+
+
+
+
+
+
+
+
+

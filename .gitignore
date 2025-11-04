@@ -1,20 +1,3 @@
-# Dependencies
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Production builds
-dist/
-build/
-
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
 # Python
 __pycache__/
 *.py[cod]
@@ -24,21 +7,60 @@ __pycache__/
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build
+build/
+dist/
+*.local
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
+*~
 .DS_Store
-Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
 # Logs
 *.log
+logs/
 
-# Temporary files
-temp_repo/
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary
+temp_update/
+runs/
+*.tmp
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Scripts (temporary)
+organize_folders.bat
+
+# Markdown files (except README.md)
+*.md
+!README.md

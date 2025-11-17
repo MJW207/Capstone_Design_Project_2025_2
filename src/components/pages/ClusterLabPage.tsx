@@ -1509,12 +1509,18 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
   }, [locatedPanelId]);
 
   return (
-    <div className="min-h-screen bg-[var(--neutral-50)] pb-20">
+    <div 
+      className="min-h-screen pb-20"
+      style={{
+        background: colors.bg.primary,
+      }}
+    >
       {/* Page Header */}
       <div 
-        className="border-b border-[var(--neutral-200)] px-20 py-6"
+        className="border-b px-20 py-6"
         style={{
-          background: isDark ? colors.surface.primary : 'white',
+          background: isDark ? colors.bg.primary : 'white',
+          borderColor: colors.border.primary,
         }}
       >
         <div className="flex items-start justify-between">
@@ -1581,9 +1587,10 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
 
       {/* Local Search Bar (UI-only, no API) */}
       <div 
-        className="px-20 py-4 border-b border-[var(--neutral-200)]"
+        className="px-20 py-4 border-b"
         style={{
-          background: isDark ? colors.surface.primary : 'white',
+          background: isDark ? colors.bg.primary : 'white',
+          borderColor: colors.border.primary,
         }}
       >
         <input
@@ -1599,6 +1606,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
             color: colors.text.primary,
           }}
         />
+        <style>{`
+          input::placeholder {
+            color: ${isDark ? 'rgba(255, 255, 255, 0.6)' : colors.text.tertiary};
+            opacity: 1;
+          }
+        `}</style>
         <div style={{ marginTop: 8, fontSize: 12, color: colors.text.secondary }}>검색 결과: {filtered.length}건</div>
       </div>
 
@@ -1655,14 +1668,14 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
               >
                 <h3 
                   className="font-semibold mb-2"
-                  style={{ color: isDark ? '#FCA5A5' : '#991B1B' }}
+                  style={{ color: isDark ? '#FEE2E2' : '#991B1B' }}
                 >
                   클러스터링 오류
                 </h3>
                 <pre 
                   className="text-sm whitespace-pre-wrap font-mono p-4 rounded border overflow-auto max-h-96"
                   style={{
-                    color: isDark ? '#FCA5A5' : '#B91C1C',
+                    color: isDark ? '#FEE2E2' : '#B91C1C',
                     background: isDark ? 'rgba(30, 41, 59, 0.8)' : 'white',
                     borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#FEE2E2',
                   }}
@@ -1991,7 +2004,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             y1={height - margin} 
                             x2={width - margin} 
                             y2={height - margin} 
-                            stroke={isDark ? 'rgba(255, 255, 255, 0.2)' : '#D1D5DB'} 
+                            stroke={isDark ? 'rgba(255, 255, 255, 0.3)' : '#D1D5DB'} 
                             strokeWidth="2" 
                           />
                           {(() => {
@@ -2009,14 +2022,14 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   y1={height - margin} 
                                   x2={xScale(val)} 
                                   y2={height - margin + 6} 
-                                  stroke={isDark ? 'rgba(255, 255, 255, 0.2)' : '#D1D5DB'} 
+                                  stroke={isDark ? 'rgba(255, 255, 255, 0.3)' : '#D1D5DB'} 
                                   strokeWidth="1" 
                                 />
                                 <text 
                                   x={xScale(val)} 
                                   y={height - margin + 20} 
                                   textAnchor="middle" 
-                                  fill={isDark ? 'rgba(255, 255, 255, 0.6)' : '#6B7280'} 
+                                  fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'} 
                                   fontSize="12"
                                 >
                                   {val.toFixed(1)}
@@ -2031,7 +2044,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             y1={margin} 
                             x2={margin} 
                             y2={height - margin} 
-                            stroke={isDark ? 'rgba(255, 255, 255, 0.2)' : '#D1D5DB'} 
+                            stroke={isDark ? 'rgba(255, 255, 255, 0.3)' : '#D1D5DB'} 
                             strokeWidth="2" 
                           />
                           {(() => {
@@ -2049,14 +2062,14 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   y1={yScale(val)} 
                                   x2={margin} 
                                   y2={yScale(val)} 
-                                  stroke={isDark ? 'rgba(255, 255, 255, 0.2)' : '#D1D5DB'} 
+                                  stroke={isDark ? 'rgba(255, 255, 255, 0.3)' : '#D1D5DB'} 
                                   strokeWidth="1" 
                                 />
                                 <text 
                                   x={margin - 12} 
                                   y={yScale(val) + 4} 
                                   textAnchor="end" 
-                                  fill={isDark ? 'rgba(255, 255, 255, 0.6)' : '#6B7280'} 
+                                  fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'} 
                                   fontSize="12"
                                 >
                                   {val.toFixed(1)}
@@ -2082,8 +2095,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                     cx={cx}
                                     cy={cy}
                                     r={4}
-                                    fill="#94A3B8"
-                                    opacity={0.3}
+                                    fill={isDark ? 'rgba(255, 255, 255, 0.4)' : '#94A3B8'}
+                                    opacity={isDark ? 0.4 : 0.3}
                                     onMouseEnter={() => {
                                       const pointIndex = filteredData.findIndex(p => normalizePanelId(p.panelId) === normalizedId);
                                       if (pointIndex >= 0) setHoveredPointIndex(pointIndex);
@@ -2390,7 +2403,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                     width={safeWidth}
                                     height={safeHeight}
                                     fill={isDark ? `rgba(17, 24, 39, ${opacity})` : `rgba(255, 255, 255, ${opacity})`}
-                                    stroke={isHighlighted ? '#F59E0B' : (isDark ? 'rgba(255, 255, 255, 0.2)' : '#E5E7EB')}
+                                    stroke={isHighlighted ? '#F59E0B' : (isDark ? 'rgba(255, 255, 255, 0.3)' : '#E5E7EB')}
                                     strokeWidth={isHovered ? "1" : "0.5"}
                                     rx="6"
                                     filter={isHovered ? "drop-shadow(0 4px 12px rgba(0,0,0,0.15))" : "drop-shadow(0 2px 4px rgba(0,0,0,0.1))"}
@@ -2422,7 +2435,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                       <text
                                         x={safeX + 6}
                                         y={safeY + (panelInfo ? 55 : 35)}
-                                        fill={isDark ? 'rgba(255, 255, 255, 0.7)' : '#6B7280'}
+                                        fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'}
                                         fontSize="12"
                                       >
                                         군집: {clusterDisplayName}
@@ -2433,7 +2446,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                           <text
                                             x={safeX + 6}
                                             y={safeY + 70}
-                                            fill={isDark ? 'rgba(255, 255, 255, 0.6)' : '#9CA3AF'}
+                                            fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#9CA3AF'}
                                             fontSize="11"
                                           >
                                             {panelInfo.age && `나이: ${panelInfo.age}세`}
@@ -2443,7 +2456,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                             <text
                                               x={safeX + 6}
                                               y={safeY + 85}
-                                              fill={isDark ? 'rgba(255, 255, 255, 0.6)' : '#9CA3AF'}
+                                              fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#9CA3AF'}
                                               fontSize="11"
                                             >
                                               지역: {panelInfo.region}
@@ -2455,7 +2468,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                       <text
                                         x={safeX + 6}
                                         y={safeY + (panelInfo ? 95 : 55)}
-                                        fill={isDark ? 'rgba(255, 255, 255, 0.5)' : '#9CA3AF'}
+                                        fill={isDark ? 'rgba(255, 255, 255, 0.8)' : '#9CA3AF'}
                                         fontSize="10"
                                       >
                                         ({point.x.toFixed(2)}, {point.y.toFixed(2)})
@@ -2489,7 +2502,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       <div key={cluster.id} className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full" style={{ background: clusterColors[idx % clusterColors.length] }} />
                         <span style={{ fontSize: '12px', fontWeight: 500, color: colors.text.secondary }}>{clusterDisplayName}</span>
-                        <span style={{ fontSize: '11px', fontWeight: 400, color: '#94A3B8', marginLeft: '4px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 400, color: colors.text.tertiary, marginLeft: '4px' }}>
                           ({cluster.size}명)
                         </span>
                         {searchedCount > 0 && (
@@ -3046,7 +3059,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                 : '0 6px 16px rgba(0, 0, 0, 0.08)',
             }}
           >
-            <div className="px-5 py-4 border-b border-[var(--neutral-200)]">
+            <div 
+              className="px-5 py-4 border-b"
+              style={{
+                borderColor: isDark ? colors.border.primary : colors.border.primary,
+              }}
+            >
               <h3 style={{ fontSize: '14px', fontWeight: 600, color: colors.text.primary }}>
                 모델 상태
               </h3>
@@ -3110,7 +3128,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                 : '0 6px 16px rgba(0, 0, 0, 0.08)',
             }}
           >
-            <div className="px-5 py-4 border-b border-[var(--neutral-200)]">
+            <div 
+              className="px-5 py-4 border-b"
+              style={{
+                borderColor: isDark ? colors.border.primary : colors.border.primary,
+              }}
+            >
               <h3 style={{ fontSize: '14px', fontWeight: 600, color: colors.text.primary }}>
                 품질 지표
               </h3>

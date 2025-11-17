@@ -548,9 +548,9 @@ export function useThemeColors() {
     },
     // Text
     text: {
-      primary: isDark ? '#F9FAFB' : '#111827',
-      secondary: isDark ? '#D1D5DB' : '#475569',
-      tertiary: isDark ? '#9CA3AF' : '#64748B',
+      primary: isDark ? '#FFFFFF' : '#111827',
+      secondary: isDark ? '#E5E7EB' : '#475569',
+      tertiary: isDark ? '#D1D5DB' : '#64748B',
     },
     // Borders
     border: {

@@ -149,11 +149,47 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
    ```
 
 3. **Backend 의존성 설치**
+   
+   **방법 1: 전체 설치 (권장)**
    ```bash
    cd server
    pip install -r requirements.txt
    cd ..
    ```
+   
+   **방법 2: 가상환경 사용 (권장)**
+   ```bash
+   # 가상환경 생성
+   python -m venv venv
+   
+   # 가상환경 활성화
+   # Windows:
+   venv\Scripts\activate
+   # Linux/macOS:
+   source venv/bin/activate
+   
+   # 의존성 설치
+   cd server
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   cd ..
+   ```
+   
+   **설치되는 주요 패키지 카테고리**:
+   - **Web Framework**: FastAPI, Uvicorn
+   - **Database**: PostgreSQL (psycopg), pgvector, SQLAlchemy
+   - **Configuration**: python-dotenv, pydantic-settings
+   - **Data Processing**: pandas, numpy, scipy, pyyaml, pyarrow
+   - **Machine Learning & Clustering**: scikit-learn, HDBSCAN, UMAP
+   - **Embeddings**: sentence-transformers, torch (HuggingFace)
+   - **ChromaDB 검색**: anthropic, langchain-upstage, langchain-chroma, chromadb
+   - **HTTP Client**: httpx
+   - **Testing**: pytest
+   
+   **주의사항**:
+   - Python 3.13+ 필요
+   - 일부 패키지(특히 torch)는 용량이 크므로 설치 시간이 걸릴 수 있습니다
+   - ChromaDB는 로컬 파일 시스템 기반이므로 추가 설정이 필요하지 않습니다
 
 4. **환경 변수 설정**
    

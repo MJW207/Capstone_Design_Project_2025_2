@@ -1,7 +1,5 @@
 import { PIBadge } from './PIBadge';
 import { PIHashtag, getHashtagColor } from './PIHashtag';
-import { PIButton } from './PIButton';
-import { Save } from 'lucide-react';
 import { useDarkMode, useThemeColors } from '../../lib/DarkModeSystem';
 
 interface PIClusterProfileCardProps {
@@ -13,7 +11,6 @@ interface PIClusterProfileCardProps {
   snippets: string[];
   size?: number;
   silhouette?: number;
-  onSave?: () => void;
 }
 
 export function PIClusterProfileCard({
@@ -25,7 +22,6 @@ export function PIClusterProfileCard({
   snippets,
   size,
   silhouette,
-  onSave,
 }: PIClusterProfileCardProps) {
   const { isDark } = useDarkMode();
   const colors = useThemeColors();
@@ -159,14 +155,6 @@ export function PIClusterProfileCard({
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="px-5 py-3 border-t" style={{ borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(17, 24, 39, 0.08)' }}>
-        <PIButton variant="ghost" size="small" onClick={onSave} className="w-full">
-          <Save className="w-3 h-3 mr-1" />
-          라벨 저장
-        </PIButton>
       </div>
     </div>
   );

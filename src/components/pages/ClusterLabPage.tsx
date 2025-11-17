@@ -11,64 +11,18 @@ import { PIModelBadge, ModelStatus } from '../../ui/pi/PIModelBadge';
 // SVG 기반 UMAP 차트로 변경 (Recharts 제거)
 import { toast } from 'sonner';
 import { historyManager } from '../../lib/history';
-import { Loader2, BarChart3, Search } from 'lucide-react';
+import { Loader2, BarChart3 } from 'lucide-react';
 import { API_URL } from '../../lib/config';
 import { PIProfilingView } from '../../ui/profiling-ui-kit/components/PIProfilingView';
 import { useDarkMode, useThemeColors } from '../../lib/DarkModeSystem';
 import { ClusterDetailDrawer } from '../drawers/ClusterDetailDrawer';
 import { PanelDetailDrawer } from '../drawers/PanelDetailDrawer';
-
-// Hardcoded demo items for UI-only search/detail demo (no API wiring)
-const DUMMY_ITEMS: Array<{ mb_sn: string; feature: string }> = [
-  { mb_sn: 'w348505857922572', feature: '충남에 거주하는 21세 남성으로 미혼이며 3인 가구... 현대 아반떼, 아이폰 SE, 소주/맥주 경험.' },
-  { mb_sn: 'w231298760068942', feature: '충남 28세 여성 1인 가구, 사무직, 아이폰 14 Pro, 맛있는 음식 소비 선호.' },
-  { mb_sn: 'w372958646970048', feature: '충남 24세 여성 1인 가구, 사무직, 최근 1년 금주, 차량 없음.' },
-  { mb_sn: 'w348952936743336', feature: '충남 29세 남성 2인 가구, 경영/관리직, 아이스크림 선호, 막걸리 경험.' },
-  { mb_sn: 'w233669292338149', feature: '충남 28세 남성 1인 가구, 아반떼, 아이폰 15, 소주/맥주/사케 등 음용 경험.' },
-  { mb_sn: 'w131392797522833', feature: '충남 26세 여성 기혼 2인 가구, 경영/관리직, 간헐적 단식, 맥시멀리스트 성향.' },
-  { mb_sn: 'w460303834949635', feature: '충남 24세 여성 3인 가구, 전문직, 다양한 가전 보유, 알람 1개, 외식 주 2~3회.' },
-  { mb_sn: 'w7462586643341', feature: '충남 28세 여성 기혼 4인 가구, 교직, 전통시장 연 1회 이상.' },
-  { mb_sn: 'w127220954132814', feature: '경기 65세 남성 기혼, 자영업, 카니발, 갤럭시 S21, 다양한 주류 경험.' },
-  { mb_sn: 'w311229782857060', feature: '경기 31세 남성 미혼 4인 가구, 개인소득 100미만, 스킨케어 소비 3~5만원.' },
-  { mb_sn: 'w105519727379516', feature: '경기 23세 남성 3인 가구 재학, 아이오닉, 다수 AI 챗봇 사용, OTT 4개 이상.' },
-  { mb_sn: 'w323083651924250', feature: '경기 57세 남성 기타, 운동으로 건강 관리, 다양한 술 경험.' },
-];
-
-// Mock UMAP data with panel attributes
-const mockUmapData = [
-  // Cluster 0 (건강관리형) - 우상단 영역
-  { x: 2.0, y: 1.5, cluster: 0, panelId: 'P001', gender: 'female', region: 'seoul', income: 'high', age: 30 },
-  { x: 2.2, y: 1.8, cluster: 0, panelId: 'P002', gender: 'female', region: 'seoul', income: 'high', age: 28 },
-  { x: 1.8, y: 1.2, cluster: 0, panelId: 'P003', gender: 'male', region: 'busan', income: 'high', age: 35 },
-  
-  // Cluster 1 (트렌디소비형) - 좌상단 영역
-  { x: -1.5, y: 1.0, cluster: 1, panelId: 'P004', gender: 'female', region: 'seoul', income: 'medium', age: 25 },
-  { x: -1.2, y: 0.8, cluster: 1, panelId: 'P005', gender: 'female', region: 'incheon', income: 'medium', age: 22 },
-  { x: -1.8, y: 1.2, cluster: 1, panelId: 'P006', gender: 'male', region: 'seoul', income: 'medium', age: 27 },
-  
-  // Cluster 2 (가성비추구형) - 좌하단 영역
-  { x: -1.0, y: -1.5, cluster: 2, panelId: 'P007', gender: 'male', region: 'daegu', income: 'low', age: 45 },
-  { x: -0.8, y: -1.8, cluster: 2, panelId: 'P008', gender: 'female', region: 'gwangju', income: 'low', age: 50 },
-  { x: -1.2, y: -1.2, cluster: 2, panelId: 'P009', gender: 'male', region: 'daejeon', income: 'low', age: 42 },
-  
-  // Cluster 3 (가족중심형) - 우하단 영역
-  { x: 1.5, y: -1.0, cluster: 3, panelId: 'P010', gender: 'female', region: 'seoul', income: 'high', age: 38 },
-  { x: 1.8, y: -1.3, cluster: 3, panelId: 'P011', gender: 'male', region: 'busan', income: 'high', age: 40 },
-  { x: 1.2, y: -0.8, cluster: 3, panelId: 'P012', gender: 'female', region: 'incheon', income: 'medium', age: 35 },
-  
-  // Cluster 4 (문화향유형) - 중앙 영역
-  { x: 0.0, y: 0.5, cluster: 4, panelId: 'P013', gender: 'male', region: 'seoul', income: 'medium', age: 32 },
-  { x: -0.3, y: 0.8, cluster: 4, panelId: 'P014', gender: 'female', region: 'busan', income: 'high', age: 29 },
-  { x: 0.3, y: 0.2, cluster: 4, panelId: 'P015', gender: 'male', region: 'daegu', income: 'medium', age: 33 },
-  
-  // Noise points (분산된 위치)
-  { x: 2.5, y: -0.5, cluster: -1, panelId: 'P016', gender: 'female', region: 'seoul', income: 'high', age: 24 },
-  { x: -2.0, y: -2.0, cluster: -1, panelId: 'P017', gender: 'male', region: 'gwangju', income: 'low', age: 55 },
-  { x: 0.5, y: 2.0, cluster: -1, panelId: 'P018', gender: 'female', region: 'incheon', income: 'medium', age: 26 },
-];
+import { CLUSTER_COLORS, getClusterColor as getClusterColorUtil } from '../../ui/profiling-ui-kit/components/comparison/utils';
 
 
-const clusterColors = ['#2563EB', '#16A34A', '#F59E0B', '#EF4444', '#8B5CF6'];
+
+// 19개 군집용 고유 색상 (utils.ts에서 import)
+const clusterColors = CLUSTER_COLORS;
 
 // 클러스터 프로필용 피처 한글 이름 매핑
 const featureDisplayNameMap: Record<string, string> = {
@@ -217,7 +171,7 @@ const getColorByAttribute = (point: any, colorBy: string) => {
       return incomeColors[point.income] || '#94A3B8';
     case 'cluster':
     default:
-      return point.cluster === -1 ? '#94A3B8' : clusterColors[point.cluster % clusterColors.length];
+      return point.cluster === -1 ? '#94A3B8' : getClusterColorUtil(point.cluster);
   }
 };
 
@@ -369,7 +323,11 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
   const [lastClusterResponse, setLastClusterResponse] = useState<any>(null);
   // UMAP 컨테이너 크기 추적
   const umapContainerRef = useRef<HTMLDivElement>(null);
-  const [umapSize, setUmapSize] = useState({ width: 800, height: 800 });
+  // 검색 결과가 없을 때는 더 큰 UMAP 크기 사용
+  const defaultUmapSize = (!searchResults || searchResults.length === 0) 
+    ? { width: 1400, height: 1400 } 
+    : { width: 1000, height: 1000 };
+  const [umapSize, setUmapSize] = useState(defaultUmapSize);
 
   const [clusterProfiles, setClusterProfiles] = useState<Array<{
     cluster: number;
@@ -1274,8 +1232,10 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
             const rect = umapContainerRef.current.getBoundingClientRect();
             // 패딩 제외한 실제 차트 영역 계산
             const padding = 48; // p-6 = 24px * 2
-            const newWidth = Math.max(400, rect.width - padding);
-            const newHeight = Math.max(400, rect.height - padding);
+            // 검색 결과가 없을 때는 더 큰 최소 크기 사용
+            const minSize = (!searchResults || searchResults.length === 0) ? 1200 : 600;
+            const newWidth = Math.max(minSize, rect.width - padding);
+            const newHeight = Math.max(minSize, rect.height - padding);
             
             // 크기가 변경된 경우에만 업데이트 (무한 루프 방지)
             setUmapSize(prev => {
@@ -1308,7 +1268,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
       window.removeEventListener('resize', updateSize);
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [searchResults]);
 
   // 벡터 검색 상태 확인
   useEffect(() => {
@@ -1497,9 +1457,6 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
     updateSearchedPanelMapping();
   }, [searchResults, clusteringMeta?.session_id]);
 
-  const filtered = (q || '').trim() === ''
-    ? DUMMY_ITEMS
-    : DUMMY_ITEMS.filter((it) => it.feature.toLowerCase().includes(q.toLowerCase()));
 
   useEffect(() => {
     if (locatedPanelId) {
@@ -1631,7 +1588,6 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
             opacity: 1;
           }
         `}</style>
-        <div style={{ marginTop: 8, fontSize: 12, color: colors.text.secondary }}>검색 결과: {filtered.length}건</div>
       </div>
 
       {/* Locator Strip (Sticky) */}
@@ -1649,15 +1605,6 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
         <div className="px-20 pt-8">
           <PIOutdatedBanner
             userRole={userRole}
-            onRefresh={() => {
-              setModelStatus('synced');
-              setShowOutdatedBanner(false);
-              toast.success('모델이 새로고침되었습니다');
-            }}
-            onRequestRetrain={() => {
-              toast.success('재학습 요청이 전송되었습니다');
-              setShowOutdatedBanner(false);
-            }}
             onDismiss={() => setShowOutdatedBanner(false)}
           />
         </div>
@@ -1717,8 +1664,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           </div>
         )}
 
-        {/* Empty State - 검색 결과 없음 */}
-        {!loading && !error && (!searchResults || searchResults.length === 0) && clusters.length === 0 && !showProfile && (
+        {/* Empty State - 검색 결과 없음 (클러스터도 없을 때만 표시) */}
+        {!loading && !error && (!searchResults || searchResults.length === 0) && clusters.length === 0 && umapData.length === 0 && !showProfile && (
           <div className="flex items-center justify-center py-16" style={{ minHeight: '400px' }}>
             <div className="text-center max-w-md">
               <div className="mb-6">
@@ -1728,25 +1675,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                   <BarChart3 size={32} style={{ color: colors.text.tertiary }} />
                 </div>
                 <h3 className="text-xl font-semibold mb-2" style={{ color: colors.text.primary }}>
-                  패널이 검색되지 않았습니다
+                  군집 데이터를 불러오는 중...
                 </h3>
                 <p className="text-sm mb-6" style={{ color: colors.text.secondary }}>
-                  군집 분석을 하려면 먼저 검색 결과가 필요합니다.<br />
-                  검색 결과 페이지에서 패널을 검색한 후 다시 시도해주세요.
+                  전체 패널에 대한 군집 분석을 준비하고 있습니다.
                 </p>
               </div>
-              {onNavigateToResults && (
-                <PIButton 
-                  onClick={onNavigateToResults}
-                  style={{
-                    background: 'var(--brand-blue-500)',
-                    color: 'white',
-                  }}
-                >
-                  <Search className="w-4 h-4 mr-2" />
-                  검색 결과로 돌아가기
-                </PIButton>
-              )}
             </div>
           </div>
         )}
@@ -1943,10 +1877,10 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       }
                     });
                     
-                    // 클러스터 색상 가져오기
+                    // 클러스터 색상 가져오기 (utils.ts의 getClusterColor 사용)
                     const getClusterColor = (clusterId: number) => {
                       const clusterIdx = clusters.findIndex(c => c.id === clusterId);
-                      return clusterIdx >= 0 ? clusterColors[clusterIdx % clusterColors.length] : '#6B7280';
+                      return clusterIdx >= 0 ? getClusterColorUtil(clusterIdx) : '#6B7280';
                     };
                     
                     return (
@@ -1995,7 +1929,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             
                             {/* 각 군집별 그라데이션 정의 */}
                             {clusters.map((cluster, idx) => {
-                              const clusterColor = clusterColors[idx % clusterColors.length];
+                              const clusterColor = getClusterColorUtil(idx);
                               const gradientId = `glow-gradient-${cluster.id}`;
                               const brightColor = clusterColor; // 원본 색상 사용
                               
@@ -2525,7 +2459,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                     
                     return (
                       <div key={cluster.id} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ background: clusterColors[idx % clusterColors.length] }} />
+                        <div className="w-3 h-3 rounded-full" style={{ background: getClusterColorUtil(idx) }} />
                         <span style={{ fontSize: '12px', fontWeight: 500, color: colors.text.secondary }}>{clusterDisplayName}</span>
                         <span style={{ fontSize: '11px', fontWeight: 400, color: colors.text.tertiary, marginLeft: '4px' }}>
                           ({cluster.size}명)
@@ -2916,7 +2850,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       setSelectedClusterForTable(cluster.id);
                     } else {
                       // 일반 클릭 시 상세정보 드로어 열기
-                      const clusterColor = clusterColors[index % clusterColors.length];
+                      const clusterColor = getClusterColorUtil(index);
                       
                       // 해당 군집의 검색된 패널 목록 추출
                       const clusterSearchedPanels = umapData
@@ -2957,18 +2891,103 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                 >
                   <PIClusterProfileCard
                     id={`C${cluster.id + 1}`}
-                    color={clusterColors[index % clusterColors.length]}
+                    color={getClusterColorUtil(index)}
                     name={clusterName}
                     description={`${cluster.size}명의 패널이 포함된 군집 (${percentage.toFixed(2)}%)`}
                     tags={clusterTags.length > 0 ? clusterTags : ['분석 중...']}
                     size={cluster.size}
                     silhouette={clusteringMeta?.silhouette_score}
                     snippets={clusterSnippets.length > 0 ? clusterSnippets : ['분석 중...']}
-                    onSave={() => toast.success(`${clusterName} 라벨이 저장되었습니다`)}
                   />
                 </div>
                 );
               })}
+              
+              {/* 노이즈 카드 추가 */}
+              {(() => {
+                const totalSamples = clusteringMeta?.n_samples || labels.length || 1;
+                const noiseCount = clusteringMeta?.n_noise || umapData.filter(d => d.cluster === -1).length || 0;
+                const noisePercentage = totalSamples > 0 ? parseFloat(((noiseCount / totalSamples) * 100).toFixed(2)) : 0.0;
+                
+                // 노이즈 포인트가 없으면 표시하지 않음
+                if (noiseCount === 0) return null;
+                
+                // 노이즈 포인트의 통계 정보 계산 (가능한 경우)
+                const noisePoints = umapData.filter(d => d.cluster === -1);
+                const noiseTags: string[] = [];
+                const noiseSnippets: string[] = [];
+                
+                // 노이즈 비율에 따른 태그
+                if (noisePercentage >= 10) {
+                  noiseTags.push('높은 노이즈 비율');
+                  noiseSnippets.push(`전체의 ${noisePercentage.toFixed(2)}%가 노이즈로 분류되었습니다`);
+                } else if (noisePercentage >= 5) {
+                  noiseTags.push('보통 노이즈 비율');
+                  noiseSnippets.push(`전체의 ${noisePercentage.toFixed(2)}%가 노이즈로 분류되었습니다`);
+                } else {
+                  noiseTags.push('낮은 노이즈 비율');
+                  noiseSnippets.push(`전체의 ${noisePercentage.toFixed(2)}%가 노이즈로 분류되었습니다`);
+                }
+                
+                // 노이즈 포인트가 적으면 좋은 신호
+                if (noisePercentage < 5) {
+                  noiseSnippets.push('노이즈 비율이 낮아 안정적인 클러스터링 결과입니다');
+                } else if (noisePercentage >= 10) {
+                  noiseSnippets.push('노이즈 비율이 높아 클러스터 해석에 주의가 필요합니다');
+                }
+                
+                return (
+                  <div
+                    key="noise"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      // 노이즈 포인트 클릭 시 상세정보 표시 (선택사항)
+                      const noiseSearchedPanels = noisePoints
+                        .filter(p => highlightedPanelIds.has(normalizePanelId(p.panelId || '')))
+                        .map(p => {
+                          const normalizedId = normalizePanelId(p.panelId || '');
+                          const panelInfo = searchedPanelInfo[normalizedId] || searchedPanelInfo[p.panelId || ''];
+                          return {
+                            panelId: p.panelId || '',
+                            cluster: -1,
+                            umap_x: p.x,
+                            umap_y: p.y,
+                            isSearchResult: true,
+                            gender: panelInfo?.gender || '',
+                            age: panelInfo?.age || 0,
+                            region: panelInfo?.region || ''
+                          };
+                        });
+                      
+                      setSelectedClusterForDetail({
+                        id: -1,
+                        name: '노이즈',
+                        size: noiseCount,
+                        percentage: noisePercentage,
+                        color: '#94A3B8',
+                        tags: noiseTags,
+                        snippets: noiseSnippets,
+                        insights: [],
+                        features: [],
+                        silhouette: undefined,
+                        description: `${noiseCount}명의 패널이 노이즈로 분류되었습니다 (${noisePercentage.toFixed(2)}%)`,
+                        searchedPanels: noiseSearchedPanels
+                      });
+                      setIsClusterDetailOpen(true);
+                    }}
+                  >
+                    <PIClusterProfileCard
+                      id="Noise"
+                      color="#94A3B8"
+                      name="노이즈"
+                      description={`${noiseCount}명의 패널이 포함된 노이즈 (${noisePercentage.toFixed(2)}%)`}
+                      tags={noiseTags.length > 0 ? noiseTags : ['노이즈']}
+                      size={noiseCount}
+                      snippets={noiseSnippets.length > 0 ? noiseSnippets : ['어느 군집에도 명확하게 속하지 않는 패널입니다']}
+                    />
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -3125,15 +3144,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       return `${diffDays}일 전`;
                     })()
                   : '2시간 전'}
-                onRefresh={() => {
-                  if (clusteringMeta?.session_id || (searchResults && searchResults.length >= 2)) {
-                    runClustering();
-                  } else {
-                    toast.success('모델을 새로고침했습니다');
-                  }
-                }}
-                onRequestRetrain={() => toast.success('재학습 요청이 전송되었습니다')}
-                onViewHistory={() => toast.info('이전 버전 기능 개발 중')}
+                noiseCount={clusteringMeta?.n_noise || umapData.filter(d => d.cluster === -1).length || 0}
               />
             </div>
           </div>
@@ -3181,6 +3192,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       return Math.max(0, Math.min(1, 1 - cv)); // 0~1 범위로 정규화
                     })()
                   : 0.78}
+                noiseCount={clusteringMeta?.n_noise || umapData.filter(d => d.cluster === -1).length || 0}
+                totalCount={clusteringMeta?.n_samples || labels.length || 0}
               />
             </div>
           </div>

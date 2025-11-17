@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Download, Save, ArrowRight, TrendingUp, FileText, Image, X } from 'lucide-react';
+import { Download, ArrowRight, TrendingUp, FileText, Image } from 'lucide-react';
 import { PICard } from '../../ui/pi/PICard';
 import { PIButton } from '../../ui/pi/PIButton';
 import { PIBadge } from '../../ui/pi/PIBadge';
@@ -13,6 +13,7 @@ import { historyManager } from '../../lib/history';
 import { API_URL } from '../../lib/config';
 import { ComparePageEmptyState } from './ComparePageEmptyState';
 import { useDarkMode, useThemeColors } from '../../lib/DarkModeSystem';
+import { CLUSTER_COLORS } from '../../ui/profiling-ui-kit/components/comparison/utils';
 
 type GroupSource = 'all' | 'search';
 
@@ -63,7 +64,6 @@ export function ComparePage() {
   // Modal states
   const [isGroupAModalOpen, setIsGroupAModalOpen] = useState(false);
   const [isGroupBModalOpen, setIsGroupBModalOpen] = useState(false);
-  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
   // 실제 클러스터 데이터 상태
   const [clusterGroups, setClusterGroups] = useState<CompareGroup[]>([]);
@@ -72,7 +72,8 @@ export function ComparePage() {
   const [comparisonData, setComparisonData] = useState<ClusterComparisonData | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [hasClusters, setHasClusters] = useState(false);
-  const clusterColors = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#EC4899', '#10B981', '#F97316', '#8B5CF6'];
+  // 19개 군집용 고유 색상 (utils.ts에서 import)
+  const clusterColors = CLUSTER_COLORS;
 
   // 클러스터 목록 가져오기
   useEffect(() => {
@@ -344,65 +345,6 @@ export function ComparePage() {
     fetchComparison();
   }, [selectedGroupA, selectedGroupB, sessionId]);
 
-  // Mock data - Cluster groups (fallback)
-  const mockClusterGroups: CompareGroup[] = [
-    {
-      id: 'C1',
-      type: 'cluster',
-      label: 'C1 - 건강관리형',
-      count: 520,
-      percentage: 24.3,
-      color: '#2563EB',
-      description: '건강, 웰빙, 운동에 관심이 많고 자기계발에 적극적인 그룹. 프리미엄 건강식품과 피트니스 서비스에 높은 구매의향.',
-      tags: ['건강', '운동', '프리미엄', '자기계발', '웰빙', '영양제'],
-      evidence: ['주 3회 이상 운동하며 건강식품 정기구독', '피트니스 앱 사용 및 건강관리 적극적'],
-      qualityWarnings: [],
-    },
-    {
-      id: 'C2',
-      type: 'cluster',
-      label: 'C2 - 트렌디소비형',
-      count: 430,
-      percentage: 20.1,
-      color: '#7C3AED',
-      description: '최신 트렌드에 민감하며 패션, 뷰티에 관심 많음. SNS 활동 활발하고 브랜드 이미지 중시.',
-      tags: ['패션', '뷰티', 'SNS', '트렌드', '브랜드', '스타일'],
-      qualityWarnings: [],
-    },
-    {
-      id: 'C3',
-      type: 'cluster',
-      label: 'C3 - 가성비추구형',
-      count: 380,
-      percentage: 17.8,
-      color: '#16A34A',
-      description: '합리적 소비를 추구하며 가격 대비 성능을 중시. 쿠폰과 할인 정보에 적극적.',
-      tags: ['가성비', '합리적', '할인', '쿠폰', '비교', '리뷰'],
-      qualityWarnings: ['low-coverage'],
-    },
-    {
-      id: 'C4',
-      type: 'cluster',
-      label: 'C4 - 가족중심형',
-      count: 410,
-      percentage: 19.2,
-      color: '#F59E0B',
-      description: '가족과 자녀를 위한 소비에 집중. 교육, 육아 관련 제품과 서비스에 관심.',
-      tags: ['가족', '육아', '교육', '자녀', '안전', '품질'],
-      qualityWarnings: [],
-    },
-    {
-      id: 'C5',
-      type: 'cluster',
-      label: 'C5 - 문화향유형',
-      count: 400,
-      percentage: 18.7,
-      color: '#EC4899',
-      description: 'OTT, 음악, 전시회 등 문화 콘텐츠 소비가 많음. 취미생활에 시간과 비용 투자.',
-      tags: ['OTT', '문화', '취미', '여행', '공연', '전시'],
-      qualityWarnings: ['low-sample'],
-    },
-  ];
 
   // Mock difference data - 건강관리형 vs 트렌디소비형
   const differenceData: DifferenceData[] = [
@@ -925,14 +867,6 @@ export function ComparePage() {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
-            <PIButton 
-              variant="ghost" 
-              size="small"
-              onClick={() => setIsSaveModalOpen(true)}
-            >
-              <Save className="w-4 h-4 mr-1" />
-              이 비교 저장
-            </PIButton>
             <PIButton 
               variant="ghost" 
               size="small"
@@ -1474,95 +1408,6 @@ export function ComparePage() {
         selectedGroup={selectedGroupB}
       />
 
-      {/* Save Comparison Modal */}
-      {isSaveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsSaveModalOpen(false)} />
-          <div className="relative w-[80vw] max-w-[800px] h-[60vw] max-h-[600px] rounded-xl shadow-2xl p-6 flex flex-col" style={{
-            background: 'var(--card)'
-          }}>
-            {/* Header with close button */}
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h3 className="text-lg font-semibold text-[var(--primary-500)]">
-                비교 저장
-              </h3>
-              <button
-                onClick={() => setIsSaveModalOpen(false)}
-                className="p-2 hover:bg-[var(--neutral-100)] rounded-lg transition-colors"
-                title="닫기"
-              >
-                <X className="w-5 h-5 text-[var(--neutral-600)]" />
-              </button>
-            </div>
-            
-            <div className="flex-1 space-y-4 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-medium text-[var(--neutral-600)] mb-2">
-                  저장 이름
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: 건강관리형 vs 트렌디소비형"
-                  className="w-full px-3 py-2 border border-[var(--neutral-200)] rounded-lg focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--neutral-600)] mb-2">
-                  설명 (선택사항)
-                </label>
-                <textarea
-                  placeholder="이 비교에 대한 설명을 입력하세요"
-                  className="w-full px-3 py-2 border border-[var(--neutral-200)] rounded-lg focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent h-24 resize-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--neutral-600)] mb-2">
-                  태그 (선택사항)
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: 건강, 트렌드, 소비패턴"
-                  className="w-full px-3 py-2 border border-[var(--neutral-200)] rounded-lg focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--neutral-600)] mb-2">
-                  분석 유형
-                </label>
-                <div className="flex gap-2">
-                  <label className="flex items-center">
-                    <input type="checkbox" defaultChecked className="mr-2" />
-                    <span className="text-sm">차이 분석 (Delta%p)</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input type="checkbox" className="mr-2" />
-                    <span className="text-sm">리프트 분석</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input type="checkbox" className="mr-2" />
-                    <span className="text-sm">SMD 분석</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-[var(--neutral-200)] flex-shrink-0">
-              <PIButton variant="ghost" onClick={() => setIsSaveModalOpen(false)}>
-                취소
-              </PIButton>
-              <PIButton 
-                variant="primary" 
-                onClick={() => {
-                  toast.success('비교가 저장되었습니다');
-                  setIsSaveModalOpen(false);
-                }}
-              >
-                저장
-              </PIButton>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

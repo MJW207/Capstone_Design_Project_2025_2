@@ -1,6 +1,5 @@
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { PIBadge } from './PIBadge';
-import { PIButton } from './PIButton';
 
 export type ModelStatus = 'synced' | 'outdated' | 'loading' | 'error';
 export type UserRole = 'viewer' | 'admin';
@@ -14,9 +13,7 @@ interface PIModelStatusCardProps {
   clusterCount?: number;
   silhouette?: number;
   lastUpdated?: string;
-  onRefresh?: () => void;
-  onRequestRetrain?: () => void;
-  onViewHistory?: () => void;
+  noiseCount?: number;
 }
 
 const statusConfig = {
@@ -51,9 +48,7 @@ export function PIModelStatusCard({
   clusterCount = 5,
   silhouette = 0.62,
   lastUpdated = '2시간 전',
-  onRefresh,
-  onRequestRetrain,
-  onViewHistory,
+  noiseCount = 0,
 }: PIModelStatusCardProps) {
   const config = statusConfig[status];
 
@@ -129,6 +124,15 @@ export function PIModelStatusCard({
 
         <div>
           <div style={{ fontSize: '11px', fontWeight: 500, color: '#64748B', marginBottom: '4px' }}>
+            노이즈
+          </div>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A' }}>
+            {noiseCount.toLocaleString()}명 ({panelCount > 0 ? ((noiseCount / panelCount) * 100).toFixed(2) : '0.00'}%)
+          </div>
+        </div>
+
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 500, color: '#64748B', marginBottom: '4px' }}>
             최신 반영
           </div>
           <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A' }}>
@@ -155,29 +159,6 @@ export function PIModelStatusCard({
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <div className="px-6 py-4 border-t flex items-center gap-2"
-        style={{ borderColor: 'rgba(17, 24, 39, 0.08)' }}
-      >
-        {userRole === 'viewer' ? (
-          <>
-            <PIButton variant="ghost" size="sm" onClick={onRefresh} className="flex-1">
-              <RefreshCw className="w-4 h-4 mr-1" />
-              새로고침
-            </PIButton>
-          </>
-        ) : (
-          <>
-            <PIButton variant="primary" size="sm" onClick={onRequestRetrain}>
-              재학습 요청
-            </PIButton>
-            <PIButton variant="secondary" size="sm" onClick={onViewHistory}>
-              이전 버전 보기
-            </PIButton>
-          </>
-        )}
-      </div>
     </div>
   );
 }

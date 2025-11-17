@@ -1,19 +1,14 @@
-import { Clock, RefreshCw, X } from 'lucide-react';
-import { PIButton } from './PIButton';
+import { Clock, X } from 'lucide-react';
 
 export type UserRole = 'viewer' | 'admin';
 
 interface PIOutdatedBannerProps {
   userRole?: UserRole;
-  onRefresh?: () => void;
-  onRequestRetrain?: () => void;
   onDismiss?: () => void;
 }
 
 export function PIOutdatedBanner({
   userRole = 'viewer',
-  onRefresh,
-  onRequestRetrain,
   onDismiss,
 }: PIOutdatedBannerProps) {
   return (
@@ -37,28 +32,15 @@ export function PIOutdatedBanner({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        {userRole === 'viewer' ? (
-          <PIButton variant="ghost" size="small" onClick={onRefresh}>
-            <RefreshCw className="w-4 h-4 mr-1" />
-            새로고침
-          </PIButton>
-        ) : (
-          <PIButton variant="secondary" size="small" onClick={onRequestRetrain}>
-            재학습 요청
-          </PIButton>
-        )}
-        
-        {onDismiss && (
-          <button
-            onClick={onDismiss}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition-colors"
-            style={{ color: '#D97706' }}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+      {onDismiss && (
+        <button
+          onClick={onDismiss}
+          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition-colors"
+          style={{ color: '#D97706' }}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 }

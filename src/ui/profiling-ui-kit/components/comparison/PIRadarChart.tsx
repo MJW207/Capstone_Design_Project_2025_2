@@ -3,7 +3,7 @@
  * 두 클러스터의 주요 특성을 다차원으로 비교하는 라다 차트
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ContinuousComparison, BinaryComparison } from './types';
 import { prepareRadarData } from './dataPrep';
 import { getFeatureNameKR, formatFeatureValue, getClusterColor } from './utils';
@@ -29,6 +29,8 @@ export function PIRadarChart({
   clusterBId
 }: PIRadarChartProps) {
   const { isDark } = useDarkMode();
+  const [hoveredCluster, setHoveredCluster] = useState<'A' | 'B' | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
   // 데이터 준비
   const radarData = useMemo(() => {
@@ -250,8 +252,34 @@ export function PIRadarChart({
             fill={clusterBFill}
             stroke={clusterBColor}
             strokeWidth="2"
-            opacity="0.6"
-          />
+            opacity={hoveredCluster === 'B' ? 0.8 : 0.6}
+            style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
+            onMouseEnter={(e) => {
+              setHoveredCluster('B');
+              const rect = e.currentTarget.getBoundingClientRect();
+              const svg = e.currentTarget.ownerSVGElement;
+              if (svg) {
+                const svgRect = svg.getBoundingClientRect();
+                setTooltipPosition({
+                  x: e.clientX - svgRect.left,
+                  y: e.clientY - svgRect.top,
+                });
+              }
+            }}
+            onMouseMove={(e) => {
+              const svg = e.currentTarget.ownerSVGElement;
+              if (svg) {
+                const svgRect = svg.getBoundingClientRect();
+                setTooltipPosition({
+                  x: e.clientX - svgRect.left,
+                  y: e.clientY - svgRect.top,
+                });
+              }
+            }}
+            onMouseLeave={() => setHoveredCluster(null)}
+          >
+            <title>{groupBLabel}</title>
+          </path>
           
           {/* 클러스터 A 폴리곤 (앞에) */}
           <path
@@ -259,8 +287,69 @@ export function PIRadarChart({
             fill={clusterAFill}
             stroke={clusterAColor}
             strokeWidth="2"
-            opacity="0.6"
-          />
+            opacity={hoveredCluster === 'A' ? 0.8 : 0.6}
+            style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
+            onMouseEnter={(e) => {
+              setHoveredCluster('A');
+              const svg = e.currentTarget.ownerSVGElement;
+              if (svg) {
+                const svgRect = svg.getBoundingClientRect();
+                setTooltipPosition({
+                  x: e.clientX - svgRect.left,
+                  y: e.clientY - svgRect.top,
+                });
+              }
+            }}
+            onMouseMove={(e) => {
+              const svg = e.currentTarget.ownerSVGElement;
+              if (svg) {
+                const svgRect = svg.getBoundingClientRect();
+                setTooltipPosition({
+                  x: e.clientX - svgRect.left,
+                  y: e.clientY - svgRect.top,
+                });
+              }
+            }}
+            onMouseLeave={() => setHoveredCluster(null)}
+          >
+            <title>{groupALabel}</title>
+          </path>
+          
+          {/* 호버 툴팁 */}
+          {hoveredCluster && (
+            <g>
+              <rect
+                x={tooltipPosition.x - 60}
+                y={tooltipPosition.y - 35}
+                width={120}
+                height={30}
+                fill={isDark ? 'rgba(17, 24, 39, 0.95)' : 'rgba(31, 41, 55, 0.95)'}
+                rx="6"
+                style={{
+                  filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3))',
+                  pointerEvents: 'none',
+                }}
+              />
+              <text
+                x={tooltipPosition.x}
+                y={tooltipPosition.y - 15}
+                textAnchor="middle"
+                fill="#FFFFFF"
+                fontSize="13"
+                fontWeight="600"
+                style={{ pointerEvents: 'none' }}
+              >
+                {hoveredCluster === 'A' ? groupALabel : groupBLabel}
+              </text>
+              <circle
+                cx={tooltipPosition.x}
+                cy={tooltipPosition.y - 2}
+                r="4"
+                fill={hoveredCluster === 'A' ? clusterAColor : clusterBColor}
+                style={{ pointerEvents: 'none' }}
+              />
+            </g>
+          )}
           
           {/* 데이터 포인트 */}
           {clusterAPoints.map((point, index) => {

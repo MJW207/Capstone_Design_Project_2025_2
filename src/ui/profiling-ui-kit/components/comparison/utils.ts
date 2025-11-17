@@ -6,15 +6,43 @@
 import { FEATURE_NAME_KR as FEATURE_NAME_KR_BASE } from './featureSets';
 
 /**
- * 클러스터 색상 팔레트 (군집 선택 시 사용하는 색상과 일치)
+ * 클러스터 색상 팔레트 (19개 군집용 고유 색상)
+ * UMAP, 군집 선택, 레이더 차트에서 일관되게 사용
+ * 각 색상이 명확하게 구분되도록 채도와 명도 조정
  */
-export const CLUSTER_COLORS = ['#2563EB', '#16A34A', '#F59E0B', '#EF4444', '#8B5CF6'];
+export const CLUSTER_COLORS = [
+  '#1E40AF', // 0: Deep Blue (진한 파랑)
+  '#059669', // 1: Emerald Green (에메랄드 그린)
+  '#D97706', // 2: Dark Orange (진한 주황)
+  '#DC2626', // 3: Bright Red (밝은 빨강)
+  '#7C3AED', // 4: Purple (보라)
+  '#DB2777', // 5: Pink (핑크)
+  '#0D9488', // 6: Teal (청록)
+  '#EA580C', // 7: Orange Red (주황빨강)
+  '#0891B2', // 8: Cyan Blue (청록 파랑)
+  '#65A30D', // 9: Olive Green (올리브 그린)
+  '#4F46E5', // 10: Indigo (남색)
+  '#E11D48', // 11: Rose Red (로즈 빨강)
+  '#0284C7', // 12: Sky Blue (하늘색)
+  '#9333EA', // 13: Violet (바이올렛)
+  '#CA8A04', // 14: Gold Yellow (골드 옐로우)
+  '#2563EB', // 15: Blue (파랑)
+  '#16A34A', // 16: Green (초록)
+  '#B91C1C', // 17: Dark Red (진한 빨강)
+  '#6D28D9', // 18: Deep Purple (진한 보라)
+];
 
 /**
  * 클러스터 ID로 색상 가져오기
+ * 19개 군집에 고유 색상 부여
  */
 export function getClusterColor(clusterId: number): string {
-  return CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+  if (clusterId < 0) return '#94A3B8'; // Noise/Unknown
+  if (clusterId >= CLUSTER_COLORS.length) {
+    // 19개를 초과하는 경우 순환
+    return CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+  }
+  return CLUSTER_COLORS[clusterId];
 }
 
 /**

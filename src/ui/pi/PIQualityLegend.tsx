@@ -14,6 +14,8 @@ interface PIQualityLegendProps {
   daviesBouldin?: number;
   calinskiHarabasz?: number;
   balanceScore?: number;
+  noiseCount?: number;
+  totalCount?: number;
 }
 
 export function PIQualityLegend({
@@ -21,6 +23,8 @@ export function PIQualityLegend({
   daviesBouldin,
   calinskiHarabasz,
   balanceScore,
+  noiseCount,
+  totalCount,
 }: PIQualityLegendProps) {
   const metrics: QualityMetric[] = [];
   
@@ -61,6 +65,19 @@ export function PIQualityLegend({
     });
   }
   
+  // 노이즈 비율 (값이 있을 때만 표시)
+  if (noiseCount !== undefined && noiseCount !== null && totalCount !== undefined && totalCount !== null && totalCount > 0) {
+    const noiseRatio = (noiseCount / totalCount) * 100;
+    metrics.push({
+      label: '노이즈 비율',
+      value: noiseRatio,
+      min: 0,
+      max: 20, // 20%를 최대값으로 설정
+      warningThreshold: 10, // 10% 이상이면 경고
+      format: (v) => `${v.toFixed(2)}%`,
+    });
+  }
+  
   // 메트릭이 없으면 안내 메시지
   if (metrics.length === 0) {
     return (
@@ -75,8 +92,8 @@ export function PIQualityLegend({
   const getBarColor = (metric: QualityMetric) => {
     if (!metric.warningThreshold) return '#2563EB';
     
-    // For metrics where lower is better (Davies-Bouldin)
-    if (metric.label.includes('Davies-Bouldin')) {
+    // For metrics where lower is better (Davies-Bouldin, Noise Ratio)
+    if (metric.label.includes('Davies-Bouldin') || metric.label.includes('노이즈')) {
       return metric.value > metric.warningThreshold ? '#F59E0B' : '#16A34A';
     }
     
@@ -93,8 +110,15 @@ export function PIQualityLegend({
     
     // Davies-Bouldin은 낮을수록 좋으므로 역으로 계산
     if (metric.label.includes('Davies-Bouldin')) {
-      // 0이 최고, 2가 최악이므로 역으로 계산
+      // 0이 최고, max가 최악이므로 역으로 계산
       const normalized = ((max - metric.value) / range) * 100;
+      return Math.max(0, Math.min(100, normalized));
+    }
+    
+    // 노이즈 비율은 실제 값에 비례하여 표시 (0%면 0% 바, 20%면 100% 바)
+    if (metric.label.includes('노이즈')) {
+      // 실제 값에 비례하여 표시
+      const normalized = ((metric.value - min) / range) * 100;
       return Math.max(0, Math.min(100, normalized));
     }
     
@@ -105,7 +129,7 @@ export function PIQualityLegend({
 
   const hasWarnings = metrics.some(m => {
     if (!m.warningThreshold) return false;
-    if (m.label.includes('Davies-Bouldin')) {
+    if (m.label.includes('Davies-Bouldin') || m.label.includes('노이즈')) {
       return m.value > m.warningThreshold;
     }
     return m.value < m.warningThreshold;

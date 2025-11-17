@@ -54,6 +54,13 @@ temp_update/
 runs/
 *.tmp
 
+# Data files (large)
+merged_final.json
+clustering_data/
+Chroma_db/
+*.csv
+!server/data/preprocessed_sample.csv
+
 # OS
 Thumbs.db
 Desktop.ini
@@ -61,6 +68,7 @@ Desktop.ini
 # Scripts (temporary)
 organize_folders.bat
 
-# Markdown files (except README.md)
+# Markdown files (except README.md and docs/)
 *.md
 !README.md
+!docs/**/*.md

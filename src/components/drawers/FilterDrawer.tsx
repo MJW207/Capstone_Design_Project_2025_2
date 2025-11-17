@@ -2,9 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, Filter as FilterIcon, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { AgeSlider } from '../filter/AgeSlider';
-import { RegionGroups } from '../filter/RegionGroups';
-import { TagInput } from '../filter/TagInput';
+import { AgeSlider } from '../../ui/filter/AgeSlider';
+import { RegionGroups } from '../../ui/filter/RegionGroups';
+import { TagInput } from '../../ui/filter/TagInput';
 
 interface FilterDrawerProps {
   isOpen: boolean;

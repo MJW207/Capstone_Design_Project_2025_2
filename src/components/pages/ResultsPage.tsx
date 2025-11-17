@@ -1,20 +1,20 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { PIPagination } from '../pi/PIPagination';
-import { Search, Filter, Download, Quote, MapPin, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Loader2 } from 'lucide-react';
-import { PITextField } from '../pi/PITextField';
-import { PIButton } from '../pi/PIButton';
-import { PIChip } from '../pi/PIChip';
-import { PICard } from '../pi/PICard';
-import { PIBadge } from '../pi/PIBadge';
-import { PISegmentedControl } from '../pi/PISegmentedControl';
-import { PIClusterBadge, ClusterType } from '../pi/PIClusterBadge';
-import { PISelectionBar } from '../pi/PISelectionBar';
-import { PIBookmarkStar } from '../pi/PIBookmarkStar';
-import { PIPresetLoadButton } from '../pi/PIPresetLoadButton';
-import { PIBookmarkPanel } from '../pi/PIBookmarkPanel';
-import { PIBookmarkButton } from '../pi/PIBookmarkButton';
-import { SummaryBar } from '../summary/SummaryBar';
-import type { SummaryData } from '../summary/types';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { PIPagination } from '../../ui/pi/PIPagination';
+import { Search, Filter, Download, Quote, MapPin, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Loader2, RefreshCw } from 'lucide-react';
+import { PITextField } from '../../ui/pi/PITextField';
+import { PIButton } from '../../ui/pi/PIButton';
+import { PIChip } from '../../ui/pi/PIChip';
+import { PICard } from '../../ui/pi/PICard';
+import { PIBadge } from '../../ui/pi/PIBadge';
+import { PISegmentedControl } from '../../ui/pi/PISegmentedControl';
+import { PIClusterBadge, ClusterType } from '../../ui/pi/PIClusterBadge';
+import { PISelectionBar } from '../../ui/pi/PISelectionBar';
+import { PIBookmarkStar } from '../../ui/pi/PIBookmarkStar';
+import { PIPresetLoadButton } from '../../ui/pi/PIPresetLoadButton';
+import { PIBookmarkPanel } from '../../ui/pi/PIBookmarkPanel';
+import { PIBookmarkButton } from '../../ui/pi/PIBookmarkButton';
+import { SummaryBar } from '../../ui/summary/SummaryBar';
+import type { SummaryData } from '../../ui/summary/types';
 import { bookmarkManager } from '../../lib/bookmarkManager';
 import { presetManager, type FilterPreset } from '../../lib/presetManager';
 import { toast } from 'sonner';
@@ -46,6 +46,19 @@ interface Panel {
   created_at: string;
   embedding?: number[];
   coverage?: 'qw' | 'w' | string;
+  income?: string;
+  metadata?: {
+    결혼여부?: string;
+    자녀수?: number;
+    가족수?: string;
+    최종학력?: string;
+    직업?: string;
+    직무?: string;
+    "월평균 개인소득"?: string;
+    "월평균 가구소득"?: string;
+    detail_location?: string;
+    [key: string]: any;
+  };
 }
 
 export function ResultsPage({
@@ -79,6 +92,14 @@ export function ResultsPage({
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [pageSize] = useState(20); // 페이지당 결과 수 (20개로 변경)
+  
+  // 검색 결과 캐시 (쿼리+필터 조합을 키로 사용)
+  const [searchCache, setSearchCache] = useState<{
+    key: string;
+    allResults: Panel[];
+    total: number;
+    pages: number;
+  } | null>(null);
 
   // 북마크 로드 및 업데이트
   const updateBookmarks = () => {
@@ -151,8 +172,9 @@ export function ResultsPage({
     }
     
     // 검색 실행 (query가 있으면 그대로, 없으면 빈 쿼리로라도 검색)
+    // 프리셋 로드는 필터 변경이므로 강제 새로고침
     if (query && query.trim()) {
-      searchPanels(1);
+      searchPanels(1, true);
     } else {
       // 검색어가 없어도 필터만으로 검색 실행 (필요시)
       toast.success(`프리셋 "${preset.name}"이 적용되었습니다`);
@@ -164,26 +186,64 @@ export function ResultsPage({
     onPanelDetailOpen(panelId);
   };
 
+  // 검색 키 생성 (쿼리 + 필터 조합)
+  const getSearchKey = (queryText: string, filters: any): string => {
+    return JSON.stringify({
+      query: queryText.trim(),
+      filters: {
+        selectedGenders: filters.selectedGenders || [],
+        selectedRegions: filters.selectedRegions || [],
+        selectedIncomes: filters.selectedIncomes || [],
+        ageRange: filters.ageRange || [],
+        quickpollOnly: filters.quickpollOnly || false,
+      }
+    });
+  };
+
+  // 전체 결과를 가져오는 함수 (모든 페이지)
+  const fetchAllResults = async (queryText: string, filters: any): Promise<Panel[]> => {
+    const allResults: Panel[] = [];
+    let currentPageNum = 1;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const response = await searchApi.searchPanels(queryText.trim(), filters, currentPageNum, pageSize);
+      const results = response.results || [];
+      
+      if (results.length === 0) {
+        hasMore = false;
+      } else {
+        allResults.push(...results);
+        currentPageNum++;
+        
+        // 전체 페이지 수 확인
+        const totalPages = response.pages || 1;
+        if (currentPageNum > totalPages) {
+          hasMore = false;
+        }
+      }
+    }
+    
+    return allResults;
+  };
+
   // 서버 검색 (텍스트 일치 + 페이지네이션)
-  const searchPanels = async (pageNum: number = currentPage) => {
-    console.log('[DEBUG Frontend] ========== searchPanels 시작 ==========');
-    console.log('[DEBUG Frontend] Query:', query);
-    console.log('[DEBUG Frontend] Page:', pageNum);
+  const searchPanels = async (pageNum: number = currentPage, forceRefresh: boolean = false) => {
+    // 디버그 로그는 개발 환경에서만 출력 (선택적)
+    // if (import.meta.env.DEV) {
+    //   console.log('[DEBUG Frontend] searchPanels:', { query, pageNum, forceRefresh });
+    // }
     
     // 쿼리가 없으면 검색하지 않음
     if (!query || !query.trim()) {
-      console.log('[DEBUG Frontend] Query가 비어있음, 검색 스킵');
       setPanels([]);
       setTotalResults(0);
       setCurrentPage(1);
       setTotalPages(1);
+      setSearchCache(null);
       return;
     }
     
-    setLoading(true);
-    setError(null);
-    
-    const searchStartTime = Date.now();
     // 필터 객체 준비 (propFilters 사용)
     const filtersToSend = {
       selectedGenders: propFilters.selectedGenders || [],
@@ -193,69 +253,65 @@ export function ResultsPage({
       quickpollOnly: propFilters.quickpollOnly || false,
     };
     
-    console.log('[DEBUG Frontend] API 호출 시작...');
-    console.log('[DEBUG Frontend] 호출 파라미터:', {
-      query: query.trim(),
-      filters: filtersToSend,
-      page: pageNum,
-      limit: pageSize
-    });
+    const searchKey = getSearchKey(query, filtersToSend);
     
-    try {
-      const apiCallStart = Date.now();
-      const response = await searchApi.searchPanels(query.trim(), filtersToSend, pageNum, pageSize);
-      const apiCallDuration = Date.now() - apiCallStart;
+    // 캐시 확인 (강제 새로고침이 아니고, 같은 검색 키이고, 캐시가 있는 경우)
+    if (!forceRefresh && searchCache && searchCache.key === searchKey) {
+      const startIdx = (pageNum - 1) * pageSize;
+      const endIdx = startIdx + pageSize;
+      const paginatedResults = searchCache.allResults.slice(startIdx, endIdx);
       
-      console.log('[DEBUG Frontend] API 호출 완료:', {
-        duration: `${apiCallDuration}ms`,
-        responseKeys: Object.keys(response),
-        resultCount: response.results?.length || 0,
-        mode: response.mode,
-        total: response.total,
-        pages: response.pages,
-        query: response.query,
-        error: response.error,
-        fullResponse: response  // 전체 응답 로그
-      });
-      
-      // 에러 확인
-      if (response.error) {
-        console.error('[DEBUG Frontend] ⚠️ API 응답에 에러가 있습니다:', response.error);
-        setError(`검색 오류: ${response.error}`);
-      }
-      
-      const results = response.results || [];
-      
-      console.log('[DEBUG Frontend] 결과 상세:', {
-        resultsLength: results.length,
-        total: response.total,
-        pages: response.pages,
-        mode: response.mode,
-        hasError: !!response.error
-      });
-      
-      // 페이지네이션 정보 설정
-      const total = response.total || 0;
-      const pages = response.pages || 1;
-      const currentPageNum = response.page || pageNum;
-      
-      setPanels(results);
-      setTotalResults(total);
-      setCurrentPage(currentPageNum);
-      setTotalPages(pages);
+      setPanels(paginatedResults);
+      setTotalResults(searchCache.total);
+      setCurrentPage(pageNum);
+      setTotalPages(searchCache.pages);
       
       // Q+W, W only 카운트 (현재 페이지만)
-      setQwCount(results.filter((p: Panel) => p.coverage === 'qw').length);
-      setWOnlyCount(results.filter((p: Panel) => p.coverage === 'w').length);
+      setQwCount(paginatedResults.filter((p: Panel) => p.coverage === 'qw').length);
+      setWOnlyCount(paginatedResults.filter((p: Panel) => p.coverage === 'w').length);
+      
+      return;
+    }
+    
+    // 캐시가 없거나 다른 검색이면 새로 검색
+    setLoading(true);
+    setError(null);
+    // 로딩 시작 시 이전 결과 초기화 (검색 중일 때 빈 결과가 표시되지 않도록)
+    setPanels([]);
+    
+    const searchStartTime = Date.now();
+    
+    try {
+      // 전체 결과 가져오기
+      const allResults = await fetchAllResults(query.trim(), filtersToSend);
+      const total = allResults.length;
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      
+      // 캐시에 저장
+      setSearchCache({
+        key: searchKey,
+        allResults: allResults,
+        total: total,
+        pages: pages
+      });
+      
+      // 현재 페이지 결과 추출
+      const startIdx = (pageNum - 1) * pageSize;
+      const endIdx = startIdx + pageSize;
+      const paginatedResults = allResults.slice(startIdx, endIdx);
+      
+      setPanels(paginatedResults);
+      setTotalResults(total);
+      setCurrentPage(pageNum);
+      setTotalPages(pages);
+      
+      // Q+W, W only 카운트 (전체 결과 기준)
+      setQwCount(allResults.filter((p: Panel) => p.coverage === 'qw').length);
+      setWOnlyCount(allResults.filter((p: Panel) => p.coverage === 'w').length);
       
       // 히스토리 저장 (전체 개수 사용)
       const historyItem = historyManager.createQueryHistory(query.trim(), filtersToSend, total);
       historyManager.save(historyItem);
-      
-      const totalDuration = Date.now() - searchStartTime;
-      console.log('[DEBUG Frontend] ========== 검색 완료 ==========');
-      console.log('[DEBUG Frontend] 총 소요 시간:', `${totalDuration}ms`);
-      console.log('[DEBUG Frontend] 결과 수:', results.length);
       
     } catch (err: any) {
       const errorDuration = Date.now() - searchStartTime;
@@ -283,23 +339,50 @@ export function ResultsPage({
       setError(errorMsg);
       setPanels([]);
       setTotalResults(0);
+      setSearchCache(null);
     } finally {
       setLoading(false);
-      console.log('[DEBUG Frontend] 검색 함수 종료 (finally)');
     }
   };
 
-  // 쿼리 또는 필터 변경 시 검색 실행 (첫 페이지로)
+  // 쿼리 또는 필터 변경 시 검색 실행 (debounce 적용)
+  const prevQueryRef = useRef<string>('');
+  const prevFiltersRef = useRef<any>({});
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   useEffect(() => {
-    if (query && query.trim()) {
-      setCurrentPage(1);
-      searchPanels(1);
-    } else {
+    // 이전 타이머 취소
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    const queryChanged = query !== prevQueryRef.current;
+    const filtersChanged = JSON.stringify(propFilters) !== JSON.stringify(prevFiltersRef.current);
+    
+    if (query && query.trim() && (queryChanged || filtersChanged)) {
+      // Debounce: 500ms 후에 검색 실행
+      searchTimeoutRef.current = setTimeout(() => {
+        setCurrentPage(1);
+        prevQueryRef.current = query;
+        prevFiltersRef.current = propFilters;
+        searchPanels(1, true);
+      }, 500);
+    } else if (!query || !query.trim()) {
       setPanels([]);
       setTotalResults(0);
       setCurrentPage(1);
       setTotalPages(1);
+      setSearchCache(null);
+      prevQueryRef.current = '';
+      prevFiltersRef.current = {};
     }
+    
+    // Cleanup
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, propFilters]);
 
@@ -310,22 +393,23 @@ export function ResultsPage({
     }
   }, [panels, onDataChange]);
 
-  // 페이지 변경 핸들러
+  // 페이지 변경 핸들러 (캐시에서 가져오기)
   const handlePageChange = (page: number) => {
     if (query && query.trim()) {
-      searchPanels(page);
+      // 캐시에서 페이지 변경 (재검색 없음)
+      searchPanels(page, false);
     }
   };
   
-  // 검색창 돋보기 클릭 핸들러 (재검색)
+  // 검색창 돋보기 클릭 핸들러 (재검색 - 강제 새로고침)
   const handleSearchClick = () => {
     if (query && query.trim()) {
-      // 현재 페이지에서 다시 검색
-      searchPanels(currentPage);
+      // 강제 새로고침으로 재검색
+      searchPanels(1, true);
     } else {
       // 쿼리가 비어있으면 첫 페이지로 검색
       setCurrentPage(1);
-      searchPanels(1);
+      searchPanels(1, true);
     }
   };
 
@@ -599,36 +683,245 @@ export function ResultsPage({
         </div>
       </section>
 
-      {/* Summary Bar - Compact 4-Row Layout */}
+      {/* Summary Bar - 현재 검색 결과(panels) 기준으로 계산 */}
       {(() => {
-        // SummaryData 변환
+        // 현재 검색 결과(panels) 기준으로 통계 계산
+        const currentPanels = panels; // 현재 페이지의 패널들
+        const currentTotal = currentPanels.length;
+        const currentQCount = currentPanels.filter((p: Panel) => p.coverage === 'qw').length;
+        const currentWOnlyCount = currentPanels.filter((p: Panel) => p.coverage === 'w').length;
+
+        // 성별 통계 (현재 검색 결과 기준)
+        const genders = currentPanels.map((p: Panel) => {
+          const genderStr = (p as any).gender || '';
+          if (typeof genderStr === 'string') {
+            const lower = genderStr.toLowerCase();
+            if (lower.includes('여') || lower.includes('f') || lower === '여성' || lower === 'female') {
+              return 'F';
+            } else if (lower.includes('남') || lower.includes('m') || lower === '남성' || lower === 'male') {
+              return 'M';
+            }
+          }
+          return null;
+        }).filter(Boolean) as string[];
+        
+        const femaleCount = genders.filter(g => g === 'F').length;
+        const femaleRate = genders.length > 0 ? femaleCount / genders.length : undefined;
+
+        // 지역 통계 (현재 검색 결과 기준)
+        const regions = currentPanels.map((p: Panel) => (p as any).region || '').filter(Boolean);
+        const regionCount: Record<string, number> = {};
+        regions.forEach(region => {
+          regionCount[region] = (regionCount[region] || 0) + 1;
+        });
+        const regionsTop = Object.entries(regionCount)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([name, count]) => ({
+            name,
+            count,
+            rate: currentTotal > 0 ? Math.round((count / currentTotal) * 100) : 0
+          }));
+
+        // 연령대 통계 (현재 검색 결과 기준)
+        const ages = currentPanels.map((p: Panel) => (p as any).age || 0).filter((age: number) => age > 0);
+        const avgAge = ages.length > 0 ? Math.round(ages.reduce((sum: number, age: number) => sum + age, 0) / ages.length) : undefined;
+
+        // 연령대 분포 계산
+        const ageGroups = [
+          { label: '10대', min: 10, max: 19 },
+          { label: '20대', min: 20, max: 29 },
+          { label: '30대', min: 30, max: 39 },
+          { label: '40대', min: 40, max: 49 },
+          { label: '50대', min: 50, max: 59 },
+          { label: '60대+', min: 60, max: 999 },
+        ];
+        const ageDistribution = ageGroups.map(group => {
+          const count = ages.filter(age => age >= group.min && age <= group.max).length;
+          const rate = currentTotal > 0 ? Math.round((count / currentTotal) * 100) : 0;
+          return {
+            label: group.label,
+            count,
+            rate
+          };
+        });
+
+        // 소득 통계 계산
+        const personalIncomes = currentPanels
+          .map((p: Panel) => {
+            const incomeStr = p.metadata?.["월평균 개인소득"];
+            if (!incomeStr) return null;
+            // 문자열에서 숫자만 추출 (예: "300만원" -> 300)
+            const match = String(incomeStr).match(/(\d+)/);
+            return match ? parseInt(match[1]) : null;
+          })
+          .filter((v): v is number => v !== null && v > 0);
+        
+        const householdIncomes = currentPanels
+          .map((p: Panel) => {
+            const incomeStr = p.metadata?.["월평균 가구소득"];
+            if (!incomeStr) return null;
+            const match = String(incomeStr).match(/(\d+)/);
+            return match ? parseInt(match[1]) : null;
+          })
+          .filter((v): v is number => v !== null && v > 0);
+        
+        const avgPersonalIncome = personalIncomes.length > 0
+          ? Math.round(personalIncomes.reduce((sum, val) => sum + val, 0) / personalIncomes.length)
+          : undefined;
+        
+        const avgHouseholdIncome = householdIncomes.length > 0
+          ? Math.round(householdIncomes.reduce((sum, val) => sum + val, 0) / householdIncomes.length)
+          : undefined;
+
+        // 소득 구간 분포 (개인소득 기준, 없으면 가구소득)
+        const allIncomes = personalIncomes.length > 0 ? personalIncomes : householdIncomes;
+        const incomeGroups = [
+          { label: '200만원 미만', max: 200 },
+          { label: '200-300만원', min: 200, max: 300 },
+          { label: '300-400만원', min: 300, max: 400 },
+          { label: '400-500만원', min: 400, max: 500 },
+          { label: '500만원 이상', min: 500, max: Infinity },
+        ];
+        const incomeDistribution = incomeGroups.map(group => {
+          const count = allIncomes.filter(income => {
+            if (group.min !== undefined && group.max !== Infinity) {
+              return income >= group.min && income < group.max;
+            } else if (group.max !== Infinity) {
+              return income < group.max;
+            } else {
+              return income >= group.min!;
+            }
+          }).length;
+          const rate = allIncomes.length > 0 ? Math.round((count / allIncomes.length) * 100) : 0;
+          return { label: group.label, count, rate };
+        });
+
+        // 직업 통계
+        const occupations = currentPanels
+          .map((p: Panel) => p.metadata?.직업)
+          .filter(Boolean) as string[];
+        const occupationCount: Record<string, number> = {};
+        occupations.forEach(occ => {
+          if (occ) occupationCount[occ] = (occupationCount[occ] || 0) + 1;
+        });
+        const occupationTop = Object.entries(occupationCount)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([name, count]) => ({
+            name,
+            count,
+            rate: currentTotal > 0 ? Math.round((count / currentTotal) * 100) : 0
+          }));
+
+        // 학력 분포
+        const educations = currentPanels
+          .map((p: Panel) => p.metadata?.최종학력)
+          .filter(Boolean) as string[];
+        const educationCount: Record<string, number> = {};
+        educations.forEach(edu => {
+          if (edu) educationCount[edu] = (educationCount[edu] || 0) + 1;
+        });
+        const educationDistribution = Object.entries(educationCount)
+          .map(([label, count]) => ({
+            label,
+            count,
+            rate: educations.length > 0 ? Math.round((count / educations.length) * 100) : 0
+          }))
+          .sort((a, b) => b.count - a.count);
+
+        // 결혼 여부 통계
+        const marriedStatuses = currentPanels
+          .map((p: Panel) => {
+            const status = p.metadata?.결혼여부;
+            if (!status) return null;
+            const lower = String(status).toLowerCase();
+            return lower.includes('기혼') || lower.includes('married') || lower === '기혼' ? 'married' : 'single';
+          })
+          .filter(Boolean) as string[];
+        const marriedCount = marriedStatuses.filter(s => s === 'married').length;
+        const marriedRate = marriedStatuses.length > 0 ? marriedCount / marriedStatuses.length : undefined;
+
+        // 자녀 수 통계
+        const childrenCounts = currentPanels
+          .map((p: Panel) => {
+            const count = p.metadata?.자녀수;
+            return typeof count === 'number' ? count : null;
+          })
+          .filter((v): v is number => v !== null && v >= 0);
+        const avgChildrenCount = childrenCounts.length > 0
+          ? Math.round((childrenCounts.reduce((sum, val) => sum + val, 0) / childrenCounts.length) * 10) / 10
+          : undefined;
+
+        // 가구원 수 분포
+        const householdSizes = currentPanels
+          .map((p: Panel) => {
+            const size = p.metadata?.가족수;
+            if (!size) return null;
+            const match = String(size).match(/(\d+)/);
+            return match ? parseInt(match[1]) : null;
+          })
+          .filter((v): v is number => v !== null && v > 0);
+        const householdSizeGroups = [
+          { label: '1인', value: 1 },
+          { label: '2인', value: 2 },
+          { label: '3인', value: 3 },
+          { label: '4인', value: 4 },
+          { label: '5인 이상', min: 5 },
+        ];
+        const householdSizeDistribution = householdSizeGroups.map(group => {
+          const count = householdSizes.filter(size => {
+            if (group.value !== undefined) {
+              return size === group.value;
+            } else {
+              return size >= group.min!;
+            }
+          }).length;
+          const rate = householdSizes.length > 0 ? Math.round((count / householdSizes.length) * 100) : 0;
+          return { label: group.label, count, rate };
+        });
+
+        // 북마크 비율
+        const bookmarkedCount = currentPanels.filter((p: Panel) => bookmarkedPanels.has(p.id)).length;
+        const bookmarkedRate = currentTotal > 0 ? bookmarkedCount / currentTotal : undefined;
+
+        // 메타데이터 완성도 계산
+        const metadataFields = ['직업', '최종학력', '결혼여부', '자녀수', '가족수', '월평균 개인소득', '월평균 가구소득'];
+        const completenessScores = currentPanels.map((p: Panel) => {
+          const filledFields = metadataFields.filter(field => {
+            const value = p.metadata?.[field];
+            return value !== undefined && value !== null && value !== '';
+          }).length;
+          return filledFields / metadataFields.length;
+        });
+        const metadataCompleteness = completenessScores.length > 0
+          ? completenessScores.reduce((sum, score) => sum + score, 0) / completenessScores.length
+          : undefined;
+
+        // SummaryData 변환 (현재 검색 결과 기준)
         const summaryData: SummaryData = {
-          total: loading ? 0 : totalResults,
-          qCount: loading ? 0 : qwCount,
-          wOnlyCount: loading ? 0 : wOnlyCount,
-          femaleRate: quickInsightData
-            ? quickInsightData.gender_top / 100 // 0~1로 변환
-            : undefined,
-          avgAge: undefined, // quickInsightData에 age_med 속성이 없음 (추후 추가 가능)
-          regionsTop:
-            quickInsightData && quickInsightData.top_regions
-              ? quickInsightData.top_regions.map((region) => {
-                  // 지역 비율 계산 (현재 페이지 기준, 추후 전체 데이터 기준으로 개선 가능)
-                  const regionCount = panels.filter(
-                    (p: Panel) => (p as any).region === region
-                  ).length;
-                  const rate =
-                    panels.length > 0
-                      ? Math.round((regionCount / panels.length) * 100)
-                      : 0;
-                  return {
-                    name: region,
-                    count: regionCount,
-                    rate,
-                  };
-                })
-              : [],
-          tagsTop: quickInsightData?.top_tags || [],
+          total: loading ? 0 : currentTotal,
+          qCount: loading ? 0 : currentQCount,
+          wOnlyCount: loading ? 0 : currentWOnlyCount,
+          femaleRate: femaleRate,
+          avgAge: avgAge,
+          regionsTop: regionsTop,
+          tagsTop: [], // 관심사는 제거
+          ageDistribution: ageDistribution,
+          // 소득 관련
+          avgPersonalIncome,
+          avgHouseholdIncome,
+          incomeDistribution: incomeDistribution.filter(d => d.count > 0),
+          // 직업/학력 관련
+          occupationTop: occupationTop.length > 0 ? occupationTop : undefined,
+          educationDistribution: educationDistribution.length > 0 ? educationDistribution : undefined,
+          // 가족 구성 관련
+          marriedRate,
+          avgChildrenCount,
+          householdSizeDistribution: householdSizeDistribution.filter(d => d.count > 0),
+          // 검색 품질 지표
+          bookmarkedRate,
+          metadataCompleteness,
           // latestDate와 medianDate는 현재 데이터가 없음
           // previousTotal도 현재 추적하지 않음
         };
@@ -637,46 +930,38 @@ export function ResultsPage({
           <SummaryBar
             data={summaryData}
             onFilterClick={onFilterOpen}
-            onExportClick={onExportOpen}
-            onPresetClick={() => {
-              // 프리셋 메뉴 열기 (추후 구현)
-            }}
-            onCompareClick={() => {
-              // 비교 기능 (추후 구현)
-            }}
-            filterCount={
-              appliedFilters.length > 0 ? appliedFilters.length : 0
-            }
           />
         );
       })()}
 
       {/* 하단: 검색 결과 영역 (전체 너비) */}
       <main style={{ marginTop: '24px', paddingTop: '16px' }}>
-          {/* View Switch with Sort Control */}
-          <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>검색 결과</h2>
-            <div className="flex items-center gap-4">
-              {/* Sort Control */}
-              <PISegmentedControl
-                options={[
-                  { value: 'desc', label: '최신순' },
-                  { value: 'asc', label: '오래된순' },
-                ]}
-                value={sortOrder}
-                onChange={(v) => setSortOrder(v as 'desc' | 'asc')}
-              />
-              {/* View Mode Toggle */}
-              <PISegmentedControl
-                options={[
-                  { value: 'table', label: '테이블' },
-                  { value: 'cards', label: '카드' },
-                ]}
-                value={viewMode}
-                onChange={(v) => setViewMode(v as 'table' | 'cards')}
-              />
+          {/* View Switch with Sort Control - 결과가 있을 때만 표시 */}
+          {!loading && !error && totalResults > 0 && (
+            <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>검색 결과</h2>
+              <div className="flex items-center gap-4">
+                {/* Sort Control */}
+                <PISegmentedControl
+                  options={[
+                    { value: 'desc', label: '최신순' },
+                    { value: 'asc', label: '오래된순' },
+                  ]}
+                  value={sortOrder}
+                  onChange={(v) => setSortOrder(v as 'desc' | 'asc')}
+                />
+                {/* View Mode Toggle */}
+                <PISegmentedControl
+                  options={[
+                    { value: 'table', label: '테이블' },
+                    { value: 'cards', label: '카드' },
+                  ]}
+                  value={viewMode}
+                  onChange={(v) => setViewMode(v as 'table' | 'cards')}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
         {/* Loading State */}
         {loading && (
@@ -701,10 +986,55 @@ export function ResultsPage({
           </div>
         )}
 
+          {/* Empty State - 로딩이 끝나고 결과가 없을 때만 표시 */}
+          {!loading && !error && totalResults === 0 && (
+            <div className="flex items-center justify-center py-16">
+              <div className="text-center max-w-md">
+                <p className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>검색 결과가 없습니다</p>
+                <p className="text-sm mb-6" style={{ color: 'var(--text-tertiary)' }}>다른 검색어나 필터를 시도해보세요</p>
+                <div className="flex items-center justify-center gap-3 flex-wrap">
+                  <PIButton
+                    variant="secondary"
+                    size="medium"
+                    onClick={onFilterOpen}
+                  >
+                    필터 조정
+                  </PIButton>
+                  <PIButton
+                    variant="secondary"
+                    size="medium"
+                    onClick={() => {
+                      if (onQueryChange) {
+                        onQueryChange('');
+                      }
+                    }}
+                  >
+                    검색어 변경
+                  </PIButton>
+                  <PIButton
+                    variant="secondary"
+                    size="medium"
+                    onClick={() => {
+                      // 상단의 프리셋 버튼을 클릭하도록 유도
+                      // 실제로는 상단 프리셋 버튼의 ref를 사용하거나, 
+                      // 프리셋 메뉴를 직접 여는 로직이 필요하지만
+                      // 현재는 사용자에게 안내 메시지 표시
+                      toast.info('상단의 "프리셋" 버튼을 클릭하여 프리셋을 불러올 수 있습니다');
+                    }}
+                  >
+                    프리셋 불러오기
+                  </PIButton>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Results - Cards View */}
-          {!loading && !error && viewMode === 'cards' && (
-            <div className="cards-grid">
-              {sortedPanels.map((panel) => (
+          {!loading && !error && totalResults > 0 && viewMode === 'cards' && (
+            <>
+              {sortedPanels.length === 0 ? null : (
+                <div className="cards-grid">
+                  {sortedPanels.map((panel) => (
               <PICard
                 key={panel.id}
                 variant="panel"
@@ -794,17 +1124,21 @@ export function ResultsPage({
                   )}
                 </div>
               </PICard>
-              ))}
-            </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* Results - Table View */}
-          {!loading && !error && viewMode === 'table' && (
-            <div className="rounded-[var(--radius-card)] border overflow-hidden" style={{ 
-              background: 'var(--surface-1)', 
-              borderColor: 'var(--border-primary)' 
-            }}>
-              <table className="w-full">
+          {!loading && !error && totalResults > 0 && viewMode === 'table' && (
+            <>
+              {sortedPanels.length === 0 ? null : (
+                <div className="rounded-[var(--radius-card)] border overflow-hidden" style={{ 
+                  background: 'var(--surface-1)', 
+                  borderColor: 'var(--border-primary)' 
+                }}>
+                  <table className="w-full">
               <thead className="border-b" style={{
                 background: 'var(--bg-0)',
                 borderColor: 'var(--border-primary)'
@@ -824,34 +1158,14 @@ export function ResultsPage({
                       className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>이름</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>성별</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>나이</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>지역</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>응답</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold w-12" style={{ color: 'var(--text-tertiary)' }}>북마크</th>
-                  <th className="px-4 py-3 text-left">
-                    <button
-                      onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
-                      className="flex items-center gap-1 text-xs font-semibold transition-colors"
-                      style={{ color: 'var(--text-tertiary)' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = 'var(--brand-blue-300)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = 'var(--text-tertiary)';
-                      }}
-                      title="응답일 기준으로 정렬합니다."
-                    >
-                      응답일
-                      {sortOrder === 'desc' ? (
-                        <ArrowDown className="w-3 h-3" />
-                      ) : (
-                        <ArrowUp className="w-3 h-3" />
-                      )}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>액션</th>
+                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>이름</th>
+                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>성별</th>
+                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>나이</th>
+                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>지역/구</th>
+                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>직업</th>
+                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>소득</th>
+                  <th className="px-4 py-3 text-center text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)', verticalAlign: 'middle' }}>북마크</th>
+                  <th className="px-4 py-3 text-center text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>위치</th>
                 </tr>
               </thead>
               <tbody>
@@ -886,7 +1200,7 @@ export function ResultsPage({
                       />
                     </td>
                     <td 
-                      className="px-4 py-3 text-sm cursor-pointer transition-colors"
+                      className="px-4 py-3 text-lg cursor-pointer transition-colors"
                       style={{ color: 'var(--text-secondary)' }}
                       onClick={() => onPanelDetailOpen(panel.id)}
                       onMouseEnter={(e) => {
@@ -898,39 +1212,50 @@ export function ResultsPage({
                     >
                       {panel.name}
                     </td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{panel.gender}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{panel.age}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{panel.region}</td>
+                    <td className="px-4 py-3 text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {panel.gender || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {panel.age ? `${panel.age}세` : '-'}
+                    </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1 flex-wrap">
-                        {panel.responses && Object.keys(panel.responses).slice(0, 2).map((key, i) => (
-                          <PIChip key={i} type="tag" className="text-xs">
-                            {key}
-                          </PIChip>
-                        ))}
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {panel.region || panel.metadata?.location || '-'}
+                        </span>
+                        {panel.metadata?.detail_location && panel.metadata.detail_location !== '무응답' && (
+                          <span className="text-base" style={{ color: 'var(--text-tertiary)' }}>
+                            {panel.metadata.detail_location}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-lg" style={{ color: 'var(--text-secondary)' }}>
+                      {panel.metadata?.직업 || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-lg" style={{ color: 'var(--text-secondary)' }}>
+                      {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-center" style={{ verticalAlign: 'middle' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <PIBookmarkStar
+                          panelId={panel.id}
+                          isBookmarked={bookmarkedPanels.has(panel.id)}
+                          onToggle={(id) => handleToggleBookmark(id, panel)}
+                          size="sm"
+                        />
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <PIBookmarkStar
-                        panelId={panel.id}
-                        isBookmarked={bookmarkedPanels.has(panel.id)}
-                        onToggle={(id) => handleToggleBookmark(id, panel)}
-                        size="sm"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      {new Date(panel.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                      {onLocatePanel && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onLocatePanel?.(panel.id);
+                            onLocatePanel(panel.id);
                           }}
-                          className="p-1.5 rounded-lg transition-colors btn--ghost"
+                          className="p-2 rounded-lg transition-colors btn--ghost"
                           style={{ color: 'var(--brand-blue-300)' }}
-                          title="지도에서 위치 표시 (L)"
+                          title="UMAP에서 위치 표시"
                           onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'rgba(37, 99, 235, 0.1)';
                           }}
@@ -938,92 +1263,30 @@ export function ResultsPage({
                             e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <MapPin className="w-4 h-4" />
+                          <MapPin className="w-5 h-5" />
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPanelDetailOpen(panel.id);
-                          }}
-                          className="p-1.5 rounded-lg transition-colors btn--ghost"
-                          style={{ color: 'var(--muted-foreground)' }}
-                          title="새 창으로 열기 (W)"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'var(--surface-2)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(panel.id).then(() => {
-                              toast.success(`${panel.name} ID 복사됨`);
-                            }).catch(() => {
-                              toast.error('클립보드 복사 실패');
-                            });
-                          }}
-                          className="p-1.5 rounded-lg transition-colors btn--ghost"
-                          style={{ color: 'var(--muted-foreground)' }}
-                          title="패널 ID 복사"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'var(--surface-2)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                      </div>
+                      )}
                     </td>
                   </tr>
                 ))}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+              )}
+            </>
           )}
 
-          {/* Pagination - 항상 표시, 내보내기 버튼 위에 고정 배치(문서 흐름 내) */}
-          {!loading && !error && (
-            <div className="pt-8 flex items-center justify-center">
+          {/* Pagination */}
+          {!loading && !error && totalResults > 0 && (
+            <div className="mt-8 flex justify-center">
               <PIPagination
-                count={Math.max(1, totalPages)}
+                count={totalPages}
                 page={currentPage}
                 onChange={handlePageChange}
-                siblingCount={1}
-                boundaryCount={1}
-                disabled={loading}
               />
             </div>
           )}
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-center pt-6">
-            <PIButton
-              variant="secondary"
-              size="large"
-              icon={<Download className="w-5 h-5" />}
-              onClick={onExportOpen}
-            >
-              내보내기
-            </PIButton>
-          </div>
         </main>
-      
-      {/* Selection Bar */}
-      {selectedPanels.length > 0 && (
-        <PISelectionBar
-          selectedCount={selectedPanels.length}
-          onHighlightAll={() => toast.success('선택한 패널을 지도에 표시합니다')}
-          onSendToCompare={() => toast.success('비교 보드로 이동합니다')}
-          onExportCSV={() => toast.success('CSV 내보내기 시작')}
-          onClear={() => setSelectedPanels([])}
-        />
-      )}
     </div>
   );
 }

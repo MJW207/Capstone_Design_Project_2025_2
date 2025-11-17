@@ -6,13 +6,13 @@ import { ComparePage } from './components/pages/ComparePage';
 import { FilterDrawer } from './components/drawers/FilterDrawer';
 import { ExportDrawer } from './components/drawers/ExportDrawer';
 import { PanelDetailDrawer } from './components/drawers/PanelDetailDrawer';
-import { PIHistoryDrawer } from './components/pi/PIHistoryDrawer';
+import { PIHistoryDrawer } from './ui/pi/PIHistoryDrawer';
 import { HistoryType } from './types/history';
-import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from './ui/base/tabs';
 import { Search, BarChart3, GitCompare, History } from 'lucide-react';
-import { Toaster } from './components/ui/sonner';
+import { Toaster } from './ui/base/sonner';
 import { toast } from 'sonner';
-import { DarkModeToggle } from './lib/DarkModeSystem';
+import { DarkModeToggle, useDarkMode } from './lib/DarkModeSystem';
 import { useMirrorThemeToPortals } from './lib/useMirrorThemeToPortals';
 import { presetManager } from './lib/presetManager';
 
@@ -22,6 +22,7 @@ type AppView = 'start' | 'results';
 export default function App() {
   // 다크 모드 포털 테마 동기화
   useMirrorThemeToPortals();
+  const { isDark } = useDarkMode();
   
   const [view, setView] = useState<AppView>('start');
   const [query, setQuery] = useState('');
@@ -29,6 +30,22 @@ export default function App() {
   const [filters, setFilters] = useState<any>({});
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [totalResults, setTotalResults] = useState(0);
+  
+  // 검색 결과 및 클러스터링 결과 캐시 (탭 간 이동 시 재검색 방지)
+  const [searchCache, setSearchCache] = useState<{
+    key: string;
+    results: any[];
+    total: number;
+  } | null>(null);
+  const [clusteringCache, setClusteringCache] = useState<{
+    key: string;
+    data: any;
+  } | null>(null);
+  
+  // 검색 키 생성 함수
+  const getSearchKey = (q: string, f: any) => {
+    return JSON.stringify({ query: q.trim(), filters: f });
+  };
   
   // Drawer states
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -65,12 +82,27 @@ export default function App() {
   // Located panel for UMAP highlight
   const [locatedPanelId, setLocatedPanelId] = useState<string | null>(null);
 
-  const handleSearch = (searchQuery: string) => {
-    console.log('[App] handleSearch called with query:', searchQuery);
-    setQuery(searchQuery);
+  const handleSearch = (searchQuery: string, forceRefresh: boolean = false) => {
+    const newQuery = searchQuery;
+    const newFilters = forceRefresh ? {} : filters;
+    const searchKey = getSearchKey(newQuery, newFilters);
+    
+    // 강제 새로고침이 아니고 캐시가 있으면 캐시 사용
+    if (!forceRefresh && searchCache && searchCache.key === searchKey) {
+      setSearchResults(searchCache.results);
+      setTotalResults(searchCache.total);
+      setView('results');
+      return;
+    }
+    
+    setQuery(newQuery);
     setView('results');
-    // 검색 시 필터 자동 초기화
-    setFilters({});
+    // 강제 새로고침 시에만 필터 초기화
+    if (forceRefresh) {
+      setFilters({});
+      setSearchCache(null);
+      setClusteringCache(null);
+    }
   };
 
   const handlePresetApply = (preset: any) => {
@@ -155,15 +187,60 @@ export default function App() {
               <div className="flex items-center gap-4">
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
                   <TabsList>
-                    <TabsTrigger value="results" className="flex items-center gap-2">
+                    <TabsTrigger 
+                      value="results" 
+                      className="flex items-center gap-2"
+                      style={{
+                        background: activeTab === 'results' 
+                          ? (isDark ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.1)')
+                          : 'transparent',
+                        color: activeTab === 'results' 
+                          ? (isDark ? '#60A5FA' : '#2563EB')
+                          : 'var(--text-tertiary)',
+                        fontWeight: activeTab === 'results' ? 600 : 500,
+                        boxShadow: activeTab === 'results' 
+                          ? (isDark ? '0 2px 8px rgba(37, 99, 235, 0.2)' : '0 2px 8px rgba(37, 99, 235, 0.15)')
+                          : 'none',
+                      }}
+                    >
                       <Search className="w-4 h-4" />
                       검색 결과
                     </TabsTrigger>
-                    <TabsTrigger value="cluster" className="flex items-center gap-2">
+                    <TabsTrigger 
+                      value="cluster" 
+                      className="flex items-center gap-2"
+                      style={{
+                        background: (activeTab === 'cluster' || activeTab === 'cluster-lab')
+                          ? (isDark ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.1)')
+                          : 'transparent',
+                        color: (activeTab === 'cluster' || activeTab === 'cluster-lab')
+                          ? (isDark ? '#60A5FA' : '#2563EB')
+                          : 'var(--text-tertiary)',
+                        fontWeight: (activeTab === 'cluster' || activeTab === 'cluster-lab') ? 600 : 500,
+                        boxShadow: (activeTab === 'cluster' || activeTab === 'cluster-lab')
+                          ? (isDark ? '0 2px 8px rgba(37, 99, 235, 0.2)' : '0 2px 8px rgba(37, 99, 235, 0.15)')
+                          : 'none',
+                      }}
+                    >
                       <BarChart3 className="w-4 h-4" />
                       군집 분석
                     </TabsTrigger>
-                    <TabsTrigger value="compare" className="flex items-center gap-2">
+                    <TabsTrigger 
+                      value="compare" 
+                      className="flex items-center gap-2"
+                      style={{
+                        background: activeTab === 'compare' 
+                          ? (isDark ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.1)')
+                          : 'transparent',
+                        color: activeTab === 'compare' 
+                          ? (isDark ? '#60A5FA' : '#2563EB')
+                          : 'var(--text-tertiary)',
+                        fontWeight: activeTab === 'compare' ? 600 : 500,
+                        boxShadow: activeTab === 'compare' 
+                          ? (isDark ? '0 2px 8px rgba(37, 99, 235, 0.2)' : '0 2px 8px rgba(37, 99, 235, 0.15)')
+                          : 'none',
+                      }}
+                    >
                       <GitCompare className="w-4 h-4" />
                       비교 분석
                     </TabsTrigger>
@@ -195,12 +272,31 @@ export default function App() {
                 filters={filters}
                 onQueryChange={setQuery}
                 onSearch={handleSearch}
-                onDataChange={setSearchResults}
+                onDataChange={(data) => {
+                  setSearchResults(data);
+                  // 검색 결과 캐시 업데이트
+                  const searchKey = getSearchKey(query, filters);
+                  setSearchCache({
+                    key: searchKey,
+                    results: data,
+                    total: totalResults,
+                  });
+                }}
                 onFiltersChange={(newFilters) => {
                   setFilters(newFilters);
                   setIsFilterOpen(false);
                 }}
-                onTotalResultsChange={setTotalResults}
+                onTotalResultsChange={(total) => {
+                  setTotalResults(total);
+                  // 검색 결과 캐시 업데이트
+                  const searchKey = getSearchKey(query, filters);
+                  if (searchCache && searchCache.key === searchKey) {
+                    setSearchCache({
+                      ...searchCache,
+                      total: total,
+                    });
+                  }
+                }}
                 onPresetEdit={(preset) => {
                   // 프리셋 편집 시 필터창 열기
                   setEditingPreset({
@@ -213,7 +309,14 @@ export default function App() {
               />
             )}
             
-            {activeTab === 'cluster' && <ClusterLabPage locatedPanelId={locatedPanelId} searchResults={searchResults} query={query} />}
+            {activeTab === 'cluster' && (
+              <ClusterLabPage 
+                locatedPanelId={locatedPanelId} 
+                searchResults={searchResults} 
+                query={query}
+                onNavigateToResults={() => setActiveTab('results')}
+              />
+            )}
             
             {activeTab === 'compare' && <ComparePage />}
           </div>
@@ -229,7 +332,6 @@ export default function App() {
             setEditingPreset(null);
           }}
           onApply={(appliedFilters) => {
-            console.log('Applied filters:', appliedFilters);
             setFilters(appliedFilters);
             if (view === 'start') {
               setView('results');

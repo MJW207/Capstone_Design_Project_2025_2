@@ -127,66 +127,28 @@ async def search_panels(session: AsyncSession, filters: Dict[str, Any]) -> List[
     Returns:
         검색 결과 리스트 (딕셔너리 리스트)
     """
-    import time
-    db_start = time.time()
-    
-    print(f"[DEBUG DB] ========== search_panels 함수 진입 ==========")
-    print(f"[DEBUG DB] Filters: {filters}")
-    print(f"[DEBUG DB] Session 타입: {type(session)}")
-    print(f"[DEBUG DB] Session 상태: {session.is_active if hasattr(session, 'is_active') else 'unknown'}")
-    
     try:
         # 안전을 위해 search_path 고정
-        print(f"[DEBUG DB] search_path 설정 시작...")
-        path_start = time.time()
         await session.execute(text(f'SET search_path TO "{DBN.RAW}", public'))
-        print(f"[DEBUG DB] search_path 설정 완료: {time.time() - path_start:.3f}초")
         
-        # SQL 쿼리 빌드
-        print(f"[DEBUG DB] SQL 쿼리 빌드 시작...")
-        sql_build_start = time.time()
+        # SQL 쿼리 빌드 및 실행
         sql, params = build_search_sql(filters)
-        print(f"[DEBUG DB] SQL 쿼리 빌드 완료: {time.time() - sql_build_start:.3f}초")
-        print(f"[DEBUG DB] SQL 쿼리 (처음 500자): {sql[:500]}")
-        print(f"[DEBUG DB] SQL 파라미터: {params}")
-        
-        # 쿼리 실행
-        print(f"[DEBUG DB] SQL 쿼리 실행 시작...")
-        query_start = time.time()
         result = await session.execute(text(sql), params)
-        query_duration = time.time() - query_start
-        print(f"[DEBUG DB] SQL 쿼리 실행 완료: {query_duration:.3f}초")
-        
-        # 결과 변환
-        print(f"[DEBUG DB] 결과 변환 시작...")
-        convert_start = time.time()
         rows = [dict(row) for row in result.mappings()]
-        convert_duration = time.time() - convert_start
-        db_total = time.time() - db_start
-        
-        print(f"[DEBUG DB] 결과 변환 완료: {convert_duration:.3f}초")
-        print(f"[DEBUG DB] 총 처리 시간: {db_total:.3f}초")
-        print(f"[DEBUG DB] 반환 행 수: {len(rows)}")
-        if rows:
-            print(f"[DEBUG DB] 첫 번째 행 샘플: {list(rows[0].keys())[:5]}")
-        print(f"[DEBUG DB] ========== search_panels 완료 ==========")
         
         return rows
         
     except Exception as e:
-        import traceback
-        print(f"[DEBUG DB] ========== DB 에러 발생 ==========")
-        print(f"[DEBUG DB] 에러 타입: {type(e).__name__}")
-        print(f"[DEBUG DB] 에러 메시지: {str(e)}")
-        print(f"[DEBUG DB] 스택 트레이스:")
-        traceback.print_exc()
-        print(f"[DEBUG DB] ====================================")
+        # 에러만 로깅
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"search_panels 오류: {str(e)}", exc_info=True)
         raise
 
 
 async def get_panel_detail(session: AsyncSession, panel_id: str) -> Optional[Dict[str, Any]]:
     """
-    패널 상세 정보 조회 (RawData 테이블들과 panel_embeddings_v 뷰 JOIN)
+    패널 상세 정보 조회 (panel_embeddings_v 뷰 우선, 없으면 welcome_1st/welcome_2nd/quick_answer 직접 조회)
     
     Args:
         session: 비동기 데이터베이스 세션
@@ -203,18 +165,57 @@ async def get_panel_detail(session: AsyncSession, panel_id: str) -> Optional[Dic
     # search_path 고정
     await session.execute(text(f'SET search_path TO "{DBN.RAW}", public'))
     
-    # RawData 테이블들과 JOIN해서 실제 데이터 가져오기
-    sql = f"""
+    # 1. panel_embeddings_v 뷰에서 먼저 조회 시도
+    try:
+        sql = f"""
+        SELECT 
+          emb.mb_sn,
+          emb.demographics,
+          emb.combined_text,
+          emb.labeled_text,
+          emb.chunks,
+          emb.chunk_count,
+          emb.categories,
+          emb.all_labels,
+          emb.created_at,
+          -- welcome_1st 데이터
+          w1.gender AS w1_gender,
+          w1.birth_year AS w1_birth_year,
+          w1."location" AS w1_location,
+          w1.detail_location AS w1_detail_location,
+          -- welcome_2nd 데이터
+          w2."data" AS w2_data,
+          -- quick_answer 데이터
+          qa.answers AS qa_answers
+        FROM {EMB_V} emb
+        LEFT JOIN {W1} w1 ON emb.mb_sn = w1.mb_sn
+        LEFT JOIN {W2} w2 ON emb.mb_sn = w2.mb_sn
+        LEFT JOIN {QA} qa ON emb.mb_sn = qa.mb_sn
+        WHERE emb.mb_sn = :mb_sn
+        LIMIT 1
+        """
+        
+        result = await session.execute(text(sql), {"mb_sn": panel_id})
+        row = result.mappings().first()
+        
+        if row:
+            return dict(row)
+    except Exception as e:
+        # 뷰가 없거나 오류가 발생하면 fallback으로 진행
+        print(f"[DEBUG Panel Detail] panel_embeddings_v 뷰 조회 실패: {str(e)}, fallback으로 진행")
+    
+    # 2. Fallback: welcome_1st, welcome_2nd, quick_answer 테이블에서 직접 조회
+    sql_fallback = f"""
     SELECT 
-      emb.mb_sn,
-      emb.demographics,
-      emb.combined_text,
-      emb.labeled_text,
-      emb.chunks,
-      emb.chunk_count,
-      emb.categories,
-      emb.all_labels,
-      emb.created_at,
+      w1.mb_sn,
+      NULL::jsonb AS demographics,
+      NULL::text AS combined_text,
+      NULL::text AS labeled_text,
+      NULL::jsonb AS chunks,
+      NULL::integer AS chunk_count,
+      NULL::jsonb AS categories,
+      NULL::jsonb AS all_labels,
+      NULL::timestamp AS created_at,
       -- welcome_1st 데이터
       w1.gender AS w1_gender,
       w1.birth_year AS w1_birth_year,
@@ -224,18 +225,24 @@ async def get_panel_detail(session: AsyncSession, panel_id: str) -> Optional[Dic
       w2."data" AS w2_data,
       -- quick_answer 데이터
       qa.answers AS qa_answers
-    FROM {EMB_V} emb
-    LEFT JOIN {W1} w1 ON emb.mb_sn = w1.mb_sn
-    LEFT JOIN {W2} w2 ON emb.mb_sn = w2.mb_sn
-    LEFT JOIN {QA} qa ON emb.mb_sn = qa.mb_sn
-    WHERE emb.mb_sn = :mb_sn
+    FROM {W1} w1
+    LEFT JOIN {W2} w2 ON w1.mb_sn = w2.mb_sn
+    LEFT JOIN {QA} qa ON w1.mb_sn = qa.mb_sn
+    WHERE w1.mb_sn = :mb_sn
     LIMIT 1
     """
     
-    result = await session.execute(text(sql), {"mb_sn": panel_id})
+    result = await session.execute(text(sql_fallback), {"mb_sn": panel_id})
     row = result.mappings().first()
     
-    return dict(row) if row else None
+    if row:
+        return dict(row)
+    
+    # 3. 최종 Fallback: ChromaDB에서 패널이 존재하는지 확인하고 기본 정보만 반환
+    # (ChromaDB에는 문서 메타데이터만 있고 패널 전체 메타데이터는 없지만, 
+    #  패널이 ChromaDB에 있다는 것은 최소한 welcome_1st에는 있다는 의미)
+    # 이 경우는 이미 위에서 처리했으므로 None 반환
+    return None
 
 
 async def count_panels(session: AsyncSession, filters: Dict[str, Any]) -> int:
@@ -295,24 +302,13 @@ async def count_panels(session: AsyncSession, filters: Dict[str, Any]) -> int:
     # limit, offset 파라미터 제거
     params_clean = {k: v for k, v in params.items() if k not in ("limit", "offset")}
     
-    print(f"[DEBUG DB] COUNT 쿼리 생성:")
-    print(f"[DEBUG DB] 원본 SQL 길이: {len(sql)}")
-    print(f"[DEBUG DB] Base SQL 길이: {len(base_sql)}")
-    print(f"[DEBUG DB] COUNT SQL (처음 500자): {count_sql[:500]}")
-    print(f"[DEBUG DB] COUNT 파라미터: {list(params_clean.keys())}")
-    
     try:
         result = await session.execute(text(count_sql), params_clean)
         count = result.scalar() or 0
-        print(f"[DEBUG DB] COUNT 결과: {count}")
         return count
     except Exception as e:
-        print(f"[DEBUG DB] COUNT 쿼리 실행 실패:")
-        print(f"[DEBUG DB] COUNT SQL: {count_sql}")
-        print(f"[DEBUG DB] 파라미터: {params_clean}")
-        print(f"[DEBUG DB] 에러: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger = logging.getLogger(__name__)
+        logger.error(f"count_panels 오류: {str(e)}", exc_info=True)
         raise
 
 

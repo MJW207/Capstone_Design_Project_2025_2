@@ -1,20 +1,24 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Download, Save, ArrowRight, TrendingUp, FileText, Image, X } from 'lucide-react';
-import { PICard } from '../pi/PICard';
-import { PIButton } from '../pi/PIButton';
-import { PIBadge } from '../pi/PIBadge';
-import { PISegmentedControl } from '../pi/PISegmentedControl';
-import { PIHashtag, getHashtagColor } from '../pi/PIHashtag';
-import { PIGroupSelectionModal } from '../pi/PIGroupSelectionModal';
+import { PICard } from '../../ui/pi/PICard';
+import { PIButton } from '../../ui/pi/PIButton';
+import { PIBadge } from '../../ui/pi/PIBadge';
+import { PIHashtag, getHashtagColor } from '../../ui/pi/PIHashtag';
+import { PIGroupSelectionModal } from '../../ui/pi/PIGroupSelectionModal';
+import { PISegmentedControl } from '../../ui/pi/PISegmentedControl';
+import { PIComparisonView } from '../../ui/profiling-ui-kit/components/comparison/PIComparisonView';
+import { ClusterComparisonData } from '../../ui/profiling-ui-kit/components/comparison/types';
 import { toast } from 'sonner';
 import { historyManager } from '../../lib/history';
+import { API_URL } from '../../lib/config';
+import { ComparePageEmptyState } from './ComparePageEmptyState';
+import { useDarkMode, useThemeColors } from '../../lib/DarkModeSystem';
 
-type GroupType = 'cluster' | 'segment';
 type GroupSource = 'all' | 'search';
 
 interface CompareGroup {
   id: string;
-  type: GroupType;
+  type: 'cluster' | 'segment';
   label: string;
   count: number;
   percentage: number;
@@ -46,15 +50,11 @@ interface SMDData {
   ci: [number, number];
 }
 
-interface OpportunityData {
-  title: string;
-  delta: number;
-  direction: 'positive' | 'negative';
-}
 
 
 export function ComparePage() {
-  const [groupType, setGroupType] = useState<GroupType>('cluster');
+  const { isDark } = useDarkMode();
+  const colors = useThemeColors();
   const [selectedGroupA, setSelectedGroupA] = useState<CompareGroup | null>(null);
   const [selectedGroupB, setSelectedGroupB] = useState<CompareGroup | null>(null);
   const [groupBSource, setGroupBSource] = useState<GroupSource>('all');
@@ -65,8 +65,287 @@ export function ComparePage() {
   const [isGroupBModalOpen, setIsGroupBModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
-  // Mock data - Cluster groups
-  const clusterGroups: CompareGroup[] = [
+  // 실제 클러스터 데이터 상태
+  const [clusterGroups, setClusterGroups] = useState<CompareGroup[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingClusters, setLoadingClusters] = useState(true);
+  const [comparisonData, setComparisonData] = useState<ClusterComparisonData | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [hasClusters, setHasClusters] = useState(false);
+  const clusterColors = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#EC4899', '#10B981', '#F97316', '#8B5CF6'];
+
+  // 클러스터 목록 가져오기
+  useEffect(() => {
+    const fetchClusters = async () => {
+      setLoadingClusters(true);
+      try {
+        // localStorage에서 최근 클러스터링 세션 ID 가져오기
+        const lastSessionId = localStorage.getItem('last_clustering_session_id');
+        if (!lastSessionId) {
+          console.warn('[비교 분석] 클러스터링 세션이 없습니다.');
+          setHasClusters(false);
+          setLoadingClusters(false);
+          return;
+        }
+        
+        setSessionId(lastSessionId);
+        
+        // Precomputed 클러스터 프로파일 가져오기
+        const response = await fetch(`${API_URL}/api/precomputed/profiles`);
+        if (!response.ok) {
+          throw new Error('Precomputed 클러스터 프로파일을 가져올 수 없습니다.');
+        }
+        
+        const data = await response.json();
+        if (!data.success || !data.data || data.data.length === 0) {
+          throw new Error('Precomputed 클러스터 데이터가 없습니다.');
+        }
+        
+        // localStorage에서 클러스터 이름 가져오기 (fallback용)
+        const clusterNamesMapStr = localStorage.getItem('cluster_names_map');
+        const clusterNamesMap: Record<number, string> = clusterNamesMapStr ? JSON.parse(clusterNamesMapStr) : {};
+        
+        // 클러스터 그룹 생성
+        const groups: CompareGroup[] = data.data.map((profile: any, idx: number) => {
+          // 백엔드에서 반환하는 name을 우선 사용, 없으면 localStorage, 없으면 기본값
+          const clusterName = profile.name || clusterNamesMap[profile.cluster] || `C${profile.cluster + 1}`;
+          const totalSize = data.data.reduce((sum: number, p: any) => sum + p.size, 0);
+          const percentage = parseFloat(((profile.size / totalSize) * 100).toFixed(2));
+          
+          return {
+            id: `C${profile.cluster + 1}`,
+            type: 'cluster' as const,
+            label: clusterName, // 군집 분석에서 명명한 이름 사용
+            count: profile.size,
+            percentage: percentage,
+            color: clusterColors[idx % clusterColors.length],
+            description: clusterName,
+            tags: [],
+            evidence: [],
+            qualityWarnings: [],
+          };
+        });
+        
+        setClusterGroups(groups);
+        setHasClusters(true); // 클러스터가 있으면 true로 설정
+        
+        // 기본 선택 설정
+        if (groups.length > 0 && !selectedGroupA) {
+          setSelectedGroupA(groups[0]);
+        }
+        if (groups.length > 1 && !selectedGroupB) {
+          setSelectedGroupB(groups[1]);
+        }
+      } catch (error) {
+        console.error('[비교 분석] 클러스터 목록 가져오기 실패:', error);
+        setHasClusters(false);
+        setClusterGroups([]);
+        // 에러 토스트는 대기 화면에서 처리하므로 여기서는 표시하지 않음
+      } finally {
+        setLoadingClusters(false);
+      }
+    };
+    
+    fetchClusters();
+  }, []);
+
+  // 비교 분석 실행
+  useEffect(() => {
+    const fetchComparison = async () => {
+      // 필수 조건 체크 (조건 미충족 시 조용히 리턴)
+      if (!selectedGroupA || !selectedGroupB || !sessionId) {
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        const clusterAId = parseInt(selectedGroupA.id.replace('C', '')) - 1;
+        const clusterBId = parseInt(selectedGroupB.id.replace('C', '')) - 1;
+        
+        // 같은 클러스터끼리 비교하는 경우 방지
+        if (clusterAId === clusterBId) {
+          toast.error('같은 군집끼리는 비교할 수 없습니다. 다른 군집을 선택해주세요.');
+          setLoading(false);
+          return;
+        }
+        
+        // Precomputed 비교 분석 API 사용
+        const response = await fetch(`${API_URL}/api/precomputed/comparison/${clusterAId}/${clusterBId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        
+        if (!response.ok) {
+          let errorText = '';
+          let errorData: any = {};
+          
+          try {
+            errorText = await response.text();
+            console.error('[Precomputed 비교 분석 API 오류]', {
+              status: response.status,
+              statusText: response.statusText,
+              errorText: errorText.substring(0, 500),
+              clusterA: clusterAId,
+              clusterB: clusterBId,
+            });
+            
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { detail: errorText };
+            }
+          } catch {
+            errorData = { detail: `HTTP ${response.status}: ${response.statusText}` };
+          }
+          
+          const errorDetail = errorData.detail || errorData.message || errorText || `HTTP ${response.status}`;
+          let detailedError = `[Precomputed 비교 분석 실패]\n\n`;
+          detailedError += `클러스터: ${clusterAId} vs ${clusterBId}\n`;
+          detailedError += `상태 코드: ${response.status}\n`;
+          detailedError += `오류: ${errorDetail}\n\n`;
+          
+          if (response.status === 404) {
+            detailedError += '⚠️ 비교 분석 데이터가 없습니다.\n\n';
+            detailedError += '해결 방법:\n';
+            detailedError += '1. Precomputed 데이터 재생성:\n';
+            detailedError += '   python server/app/clustering/generate_precomputed_data.py\n';
+            detailedError += '2. 비교 분석 JSON 파일 확인:\n';
+            detailedError += '   clustering_data/data/precomputed/comparison_results.json\n';
+          } else if (response.status === 400) {
+            detailedError += '⚠️ 잘못된 클러스터 ID입니다.\n';
+            detailedError += `클러스터 ${clusterAId} 또는 ${clusterBId}가 존재하지 않습니다.`;
+          } else if (response.status >= 500) {
+            detailedError += '⚠️ 서버 내부 오류입니다.\n';
+            detailedError += '서버 로그를 확인하세요.';
+          }
+          
+          toast.error(`비교 분석 실패 (${response.status})`, {
+            description: errorDetail,
+            duration: 10000,
+          });
+          setLoading(false);
+          return;
+        }
+        
+        const responseData = await response.json();
+        
+        // Precomputed API 응답 형식: {success: true, data: {...}}
+        const data = responseData.success ? responseData.data : responseData;
+        
+        if (data.error) {
+          console.error('[비교 분석 오류]', data.error);
+          throw new Error(data.error);
+        }
+        
+        // 클러스터 이름 가져오기 (selectedGroup의 label 우선 사용, 이미 백엔드 name이 포함됨)
+        const groupALabel = selectedGroupA?.label || `C${clusterAId + 1}`;
+        const groupBLabel = selectedGroupB?.label || `C${clusterBId + 1}`;
+        
+        // comparison 데이터에서 highlights 생성
+        const allComparisons = data.comparison || [];
+        
+        // 연속형 변수: cohens_d 기준으로 정렬 (cohens_d가 있는 것만, 절댓값 기준)
+        const continuousComparisons = allComparisons
+          .filter((item: any) => item.type === 'continuous' && item.cohens_d !== undefined && item.cohens_d !== null)
+          .map((item: any) => ({
+            ...item,
+            abs_cohens_d: Math.abs(item.cohens_d || 0),
+          }))
+          .sort((a: any, b: any) => b.abs_cohens_d - a.abs_cohens_d)
+          .slice(0, 5) // 상위 5개
+          .map((item: any) => {
+            // abs_cohens_d 제거 (타입에 없음)
+            const { abs_cohens_d, ...rest } = item;
+            return rest;
+          });
+        
+        // 이진형 변수: abs_diff_pct 기준으로 정렬 (abs_diff_pct가 있는 것만)
+        const binaryComparisons = allComparisons
+          .filter((item: any) => item.type === 'binary' && (item.abs_diff_pct !== undefined && item.abs_diff_pct !== null))
+          .map((item: any) => ({
+            ...item,
+            abs_diff_pct_value: Math.abs(item.abs_diff_pct || 0),
+          }))
+          .sort((a: any, b: any) => b.abs_diff_pct_value - a.abs_diff_pct_value)
+          .slice(0, 5) // 상위 5개
+          .map((item: any) => {
+            // abs_diff_pct_value 제거 (타입에 없음)
+            const { abs_diff_pct_value, ...rest } = item;
+            return rest;
+          });
+        
+        // API 응답을 ClusterComparisonData 형식으로 변환
+        const totalCount = (data.group_a?.count ?? 0) + (data.group_b?.count ?? 0);
+        const convertedData: ClusterComparisonData = {
+          group_a: {
+            id: data.group_a?.id ?? clusterAId,
+            count: data.group_a?.count ?? 0,
+            percentage: totalCount > 0 ? parseFloat(((data.group_a?.count ?? 0) / totalCount * 100).toFixed(2)) : 0,
+            label: groupALabel,
+          },
+          group_b: {
+            id: data.group_b?.id ?? clusterBId,
+            count: data.group_b?.count ?? 0,
+            percentage: totalCount > 0 ? parseFloat(((data.group_b?.count ?? 0) / totalCount * 100).toFixed(2)) : 0,
+            label: groupBLabel,
+          },
+          comparison: allComparisons,
+          highlights: {
+            num_top: continuousComparisons,
+            bin_cat_top: binaryComparisons,
+          },
+        };
+        
+        setComparisonData(convertedData);
+        
+        // 비교 분석 히스토리 저장
+        if (selectedGroupA && selectedGroupB) {
+          const historyItem = historyManager.createComparisonHistory(
+            {
+              id: selectedGroupA.id,
+              name: selectedGroupA.label,
+              color: selectedGroupA.color
+            },
+            {
+              id: selectedGroupB.id,
+              name: selectedGroupB.label,
+              color: selectedGroupB.color
+            },
+            'difference', // 기본 분석 타입
+            {
+              comparison: allComparisons,
+              highlights: {
+                continuous: continuousComparisons,
+                binary: binaryComparisons
+              },
+            }
+          );
+          historyManager.save(historyItem);
+        }
+      } catch (error) {
+        console.error('[비교 분석 실패] 상세 오류:', {
+          error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          selectedGroupA: selectedGroupA?.id,
+          selectedGroupB: selectedGroupB?.id,
+          sessionId,
+        });
+        toast.error(`비교 분석 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
+        setComparisonData(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchComparison();
+  }, [selectedGroupA, selectedGroupB, sessionId]);
+
+  // Mock data - Cluster groups (fallback)
+  const mockClusterGroups: CompareGroup[] = [
     {
       id: 'C1',
       type: 'cluster',
@@ -166,12 +445,6 @@ export function ComparePage() {
     { metric: '가격 민감도 (1-5)', groupA: 3.2, groupB: 2.1, smd: 0.68, ci: [0.55, 0.81] },
   ];
 
-  // Mock opportunity data
-  const opportunityData: OpportunityData[] = [
-    { title: '프리미엄 건강식품 구매의향 - 실제 구매', delta: 34, direction: 'positive' },
-    { title: '피트니스 앱 관심 - 유료 구독 전환', delta: 28, direction: 'positive' },
-    { title: '온라인 PT 서비스 인지 - 이용의향', delta: 22, direction: 'positive' },
-  ];
 
 
 
@@ -243,77 +516,263 @@ export function ComparePage() {
   const downloadPNG = async () => {
     try {
       // 그룹이 선택되지 않은 경우 체크
-      if (!selectedGroupA || !selectedGroupB) {
+      if (!selectedGroupA || !selectedGroupB || !comparisonData) {
         toast.error('비교할 그룹을 먼저 선택해주세요');
         return;
       }
 
-      // 차트 컨테이너 찾기
-      const element = document.querySelector('.comparison-chart-container');
+      toast.info('PNG 생성 중...', { duration: 3000 });
+
+      // 여러 선택자로 차트 컨테이너 찾기
+      let element: HTMLElement | null = null;
       
+      // 방법 1: data-comparison-view 속성으로 찾기
+      element = document.querySelector('[data-comparison-view]') as HTMLElement;
+      
+      // 방법 2: PIComparisonView의 루트 요소 찾기 (space-y-6 클래스)
       if (!element) {
+        const comparisonViews = document.querySelectorAll('.space-y-6');
+        for (const view of comparisonViews) {
+          // PIComparisonView는 animate-in fade-in duration-500 클래스를 가짐
+          if (view.querySelector('.animate-in.fade-in')) {
+            element = view as HTMLElement;
+            break;
+          }
+        }
+      }
+      
+      // 방법 3: 비교 분석 섹션 전체 찾기 (col-span-12)
+      if (!element) {
+        const sections = document.querySelectorAll('.grid.grid-cols-12.gap-6');
+        for (const section of sections) {
+          const col12 = section.querySelector('.col-span-12');
+          if (col12 && (col12.querySelector('[data-comparison-view]') || col12.querySelector('.space-y-6'))) {
+            element = col12 as HTMLElement;
+            break;
+          }
+        }
+      }
+      
+      // 방법 4: PIComparisonTabs가 있는 요소 찾기
+      if (!element) {
+        const tabsElement = document.querySelector('[role="tablist"]');
+        if (tabsElement && tabsElement.parentElement) {
+          // 탭의 부모 요소에서 비교 뷰 찾기
+          let parent: HTMLElement | null = tabsElement.parentElement as HTMLElement;
+          while (parent && parent !== document.body) {
+            if (parent.querySelector('.space-y-6')) {
+              element = parent;
+              break;
+            }
+            parent = parent.parentElement as HTMLElement | null;
+          }
+        }
+      }
+
+      if (!element) {
+        console.error('차트 컨테이너를 찾을 수 없습니다. 사용 가능한 요소:', {
+          dataComparisonView: document.querySelector('[data-comparison-view]'),
+          spaceY6: document.querySelector('.space-y-6'),
+          gridCols12: document.querySelector('.grid.grid-cols-12.gap-6'),
+        });
         toast.error('내보낼 차트를 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해주세요.');
         return;
       }
 
+      // html2canvas 동적 import
       const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(element as HTMLElement, {
-        backgroundColor: '#ffffff',
+
+      // html2canvas가 oklch() 같은 최신 CSS 함수를 지원하지 않으므로
+      // 캡처 전에 DOM을 복제하고 색상을 변환
+      const canvas = await html2canvas(element, {
+        backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
         scale: 2, // 고해상도
         useCORS: true,
         allowTaint: true,
         logging: false,
-        width: element.scrollWidth,
-        height: element.scrollHeight
+        width: element.scrollWidth || element.offsetWidth,
+        height: element.scrollHeight || element.offsetHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: element.scrollWidth || element.offsetWidth,
+        windowHeight: element.scrollHeight || element.offsetHeight,
+        onclone: (clonedDoc) => {
+          // html2canvas가 oklch()를 지원하지 않으므로 CSS 변수와 스타일을 변환
+          
+          // 1. 스타일 태그 내의 oklch() 찾아서 변환
+          const styleSheets = clonedDoc.querySelectorAll('style');
+          styleSheets.forEach((style) => {
+            if (style.textContent && style.textContent.includes('oklch')) {
+              // oklch()를 rgb()로 대체 (더 정확한 변환)
+              style.textContent = style.textContent.replace(
+                /oklch\(([^)]+)\)/g,
+                (_match, params) => {
+                  // oklch 파라미터 파싱 (L C H 형식)
+                  const parts = params.trim().split(/\s+/);
+                  const L = parseFloat(parts[0]) || 0.5; // Lightness (0-1)
+                  
+                  // 간단한 oklch -> rgb 변환 (대략적)
+                  // 실제로는 더 복잡한 변환이 필요하지만, html2canvas가 작동하도록 기본값 사용
+                  if (isDark) {
+                    // 다크 모드: 어두운 색상
+                    if (L > 0.7) return 'rgb(249, 250, 251)'; // 밝은 텍스트
+                    if (L > 0.5) return 'rgb(209, 213, 219)'; // 중간 텍스트
+                    if (L > 0.3) return 'rgb(156, 163, 175)'; // 어두운 텍스트
+                    return 'rgb(31, 41, 55)'; // 배경
+                  } else {
+                    // 라이트 모드: 밝은 색상
+                    if (L > 0.7) return 'rgb(255, 255, 255)'; // 배경
+                    if (L > 0.5) return 'rgb(148, 163, 184)'; // 중간 텍스트
+                    if (L > 0.3) return 'rgb(100, 116, 139)'; // 어두운 텍스트
+                    return 'rgb(15, 23, 42)'; // 매우 어두운 텍스트
+                  }
+                }
+              );
+            }
+          });
+          
+          // 2. 모든 요소의 인라인 스타일에서 oklch() 변환
+          const allElements = clonedDoc.querySelectorAll('*');
+          allElements.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            
+            // 인라인 스타일이 있고 oklch가 포함되어 있으면 변환
+            if (htmlEl.style.cssText && htmlEl.style.cssText.includes('oklch')) {
+              htmlEl.style.cssText = htmlEl.style.cssText.replace(
+                /oklch\([^)]+\)/g,
+                () => {
+                  if (isDark) {
+                    return 'rgb(31, 41, 55)';
+                  } else {
+                    return 'rgb(255, 255, 255)';
+                  }
+                }
+              );
+            }
+          });
+        },
       });
 
       const link = document.createElement('a');
-      link.download = `compare_analysis_${selectedGroupA?.id || 'A'}_vs_${selectedGroupB?.id || 'B'}_${new Date().toISOString().split('T')[0]}.png`;
+      const filename = `비교분석_${selectedGroupA.label}_vs_${selectedGroupB.label}_${new Date().toISOString().split('T')[0]}.png`;
+      link.download = filename;
       link.href = canvas.toDataURL('image/png');
       link.click();
       
       toast.success('PNG 파일이 다운로드되었습니다');
     } catch (error) {
       console.error('PNG export error:', error);
-      toast.error('PNG 내보내기 중 오류가 발생했습니다');
+      toast.error(`PNG 내보내기 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
   const exportToCSV = () => {
-    const csvData = [
-      ['구분', '항목', '그룹A (%)', '그룹B (%)', '차이 (Delta%p)'],
-      ...differenceData.map(item => [
-        '분포차이',
-        item.category,
-        item.groupA.toString(),
-        item.groupB.toString(),
-        item.delta.toString()
-      ]),
-      ['', '', '', '', ''],
-      ['구분', '특성', '그룹A Lift', '그룹B Lift'],
-      ...liftData.map(item => [
-        'Lift분석',
-        item.feature,
-        item.liftA.toString(),
-        item.liftB.toString()
-      ]),
-      ['', '', '', ''],
-      ['구분', '지표', '그룹A 값', '그룹B 값', 'SMD', 'CI 하한', 'CI 상한'],
-      ...smdData.map(item => [
-        'SMD분석',
-        item.metric,
-        item.groupA.toString(),
-        item.groupB.toString(),
-        item.smd.toString(),
-        item.ci[0].toString(),
-        item.ci[1].toString()
-      ])
+    if (!comparisonData || !selectedGroupA || !selectedGroupB) {
+      toast.error('비교할 그룹을 먼저 선택해주세요');
+      return;
+    }
+
+    // CSV 헤더
+    const headers = [
+      '변수명',
+      '한글명',
+      '타입',
+      `${selectedGroupA.label} 평균/비율`,
+      `${selectedGroupB.label} 평균/비율`,
+      '차이',
+      '차이(%)',
+      'Lift(%)',
+      'Cohen\'s d',
+      'p-value',
+      '유의성'
     ];
 
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
-    downloadCSV(csvContent, `compare_analysis_${new Date().toISOString().split('T')[0]}.csv`);
+    const rows: string[][] = [headers];
+
+    // 비교 데이터 추가
+    comparisonData.comparison.forEach((item: any) => {
+      const featureNameKr = item.feature_name_kr || item.feature;
+      let groupAValue = '';
+      let groupBValue = '';
+      let difference = '';
+      let differencePct = '';
+      
+      if (item.type === 'continuous') {
+        const origA = item.original_group_a_mean ?? item.group_a_mean;
+        const origB = item.original_group_b_mean ?? item.group_b_mean;
+        groupAValue = origA !== null && origA !== undefined ? origA.toFixed(2) : '-';
+        groupBValue = origB !== null && origB !== undefined ? origB.toFixed(2) : '-';
+        difference = item.difference !== null && item.difference !== undefined ? item.difference.toFixed(2) : '-';
+        differencePct = item.lift_pct !== null && item.lift_pct !== undefined ? item.lift_pct.toFixed(2) : '-';
+      } else if (item.type === 'binary') {
+        groupAValue = item.group_a_ratio !== null && item.group_a_ratio !== undefined ? (item.group_a_ratio * 100).toFixed(2) + '%' : '-';
+        groupBValue = item.group_b_ratio !== null && item.group_b_ratio !== undefined ? (item.group_b_ratio * 100).toFixed(2) + '%' : '-';
+        const absDiffPct = item.abs_diff_pct ?? Math.abs(item.difference) * 100;
+        difference = absDiffPct !== null && absDiffPct !== undefined ? absDiffPct.toFixed(2) + '%p' : '-';
+        differencePct = item.lift_pct !== null && item.lift_pct !== undefined ? item.lift_pct.toFixed(2) : '-';
+      } else {
+        groupAValue = '-';
+        groupBValue = '-';
+        difference = '-';
+        differencePct = '-';
+      }
+
+      rows.push([
+        item.feature || '',
+        featureNameKr || '',
+        item.type || '',
+        groupAValue,
+        groupBValue,
+        difference,
+        differencePct,
+        item.lift_pct !== null && item.lift_pct !== undefined ? item.lift_pct.toFixed(2) : '-',
+        item.cohens_d !== null && item.cohens_d !== undefined ? item.cohens_d.toFixed(3) : '-',
+        item.p_value !== null && item.p_value !== undefined ? item.p_value.toFixed(4) : '-',
+        item.significant ? '유의' : '비유의'
+      ]);
+    });
+
+
+    // CSV 콘텐츠 생성 (BOM 추가로 한글 깨짐 방지)
+    const csvContent = '\uFEFF' + rows.map(row => 
+      row.map(cell => {
+        // 셀 내용에 쉼표나 따옴표가 있으면 따옴표로 감싸기
+        const cellStr = String(cell || '');
+        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+          return `"${cellStr.replace(/"/g, '""')}"`;
+        }
+        return cellStr;
+      }).join(',')
+    ).join('\n');
+
+    const filename = `비교분석_${selectedGroupA.label}_vs_${selectedGroupB.label}_${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(csvContent, filename);
     toast.success('CSV 파일이 다운로드되었습니다');
   };
+
+  // 대기 화면 표시 조건: 클러스터 로딩 중이거나 클러스터가 없을 때
+  // 로딩이 완료되고 클러스터가 없을 때만 대기 화면 표시
+  if (!loadingClusters && !hasClusters) {
+    return (
+      <div className="min-h-screen" style={{ background: 'var(--background)' }}>
+        <ComparePageEmptyState />
+      </div>
+    );
+  }
+
+  // 로딩 중일 때는 간단한 로딩 표시
+  if (loadingClusters) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary-500)] mb-4"></div>
+          <p style={{ fontSize: '14px', fontWeight: 500, color: 'var(--neutral-600)' }}>
+            클러스터 목록을 불러오는 중...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
@@ -326,83 +785,50 @@ export function ComparePage() {
         <div className="mx-auto px-20 h-full flex items-center justify-between">
           {/* Left: Controls */}
           <div className="flex items-center gap-4">
-            <PISegmentedControl
-              value={groupType}
-              onChange={(v) => setGroupType(v as GroupType)}
-              options={[
-                { value: 'cluster', label: 'Quickpoll 군집' },
-                { value: 'segment', label: 'Welcome 세그먼트' },
-              ]}
-            />
+            <div className="flex items-center gap-3">
+              {selectedGroupA && selectedGroupB ? (
+                <>
+                  {/* Group A Info */}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: selectedGroupA.color }}
+                    />
+                    <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {selectedGroupA.label}
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupA.count.toLocaleString()}명
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupA.percentage.toFixed(2)}%
+                    </span>
+                  </div>
 
-            <div className="flex items-center gap-2">
-              {/* Group A Selection */}
-              <button
-                className="px-3 py-1.5 rounded-full flex items-center gap-2 hover:bg-[var(--neutral-100)] transition-colors"
-                style={{
-                  background: selectedGroupA?.color ? `${selectedGroupA.color}15` : 'transparent',
-                  border: `1.5px solid ${selectedGroupA?.color || 'var(--neutral-300)'}`,
-                }}
-                onClick={() => setIsGroupAModalOpen(true)}
-              >
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: selectedGroupA?.color || '#94A3B8' }}
-                />
-                <span className="text-sm font-semibold" style={{ color: selectedGroupA?.color }}>
-                  {selectedGroupA?.id || 'A 선택'}
+                  <span className="text-base font-medium" style={{ color: 'var(--text-tertiary)' }}>vs</span>
+
+                  {/* Group B Info */}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: selectedGroupB.color }}
+                    />
+                    <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {selectedGroupB.label}
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupB.count.toLocaleString()}명
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupB.percentage.toFixed(2)}%
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  비교할 그룹을 선택해주세요
                 </span>
-              </button>
-
-              <span className="text-[var(--neutral-400)]">vs</span>
-
-              {/* Group B Selection */}
-              <button
-                className="px-3 py-1.5 rounded-full flex items-center gap-2 hover:bg-[var(--neutral-100)] transition-colors"
-                style={{
-                  background: selectedGroupB?.color ? `${selectedGroupB.color}15` : 'transparent',
-                  border: `1.5px solid ${selectedGroupB?.color || 'var(--neutral-300)'}`,
-                }}
-                onClick={() => setIsGroupBModalOpen(true)}
-              >
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: selectedGroupB?.color || '#94A3B8' }}
-                />
-                <span className="text-sm font-semibold" style={{ color: selectedGroupB?.color }}>
-                  {selectedGroupB?.id || 'B 선택'}
-                </span>
-              </button>
-
-              {/* Source toggle for B */}
-              <div className="ml-2">
-                <PISegmentedControl
-                  value={groupBSource}
-                  onChange={(v) => setGroupBSource(v as GroupSource)}
-                  options={[
-                    { value: 'all', label: '전체' },
-                    { value: 'search', label: '검색결과' },
-                  ]}
-                />
-              </div>
-
-              {/* Quality warnings */}
-              {selectedGroupA?.qualityWarnings?.map((warning, idx) => {
-                const badge = getQualityBadge(warning);
-                return badge ? (
-                  <PIBadge key={`a-${idx}`} variant={badge.variant} size="sm">
-                    {badge.label}
-                  </PIBadge>
-                ) : null;
-              })}
-              {selectedGroupB?.qualityWarnings?.map((warning, idx) => {
-                const badge = getQualityBadge(warning);
-                return badge ? (
-                  <PIBadge key={`b-${idx}`} variant={badge.variant} size="sm">
-                    {badge.label}
-                  </PIBadge>
-                ) : null;
-              })}
+              )}
             </div>
           </div>
 
@@ -438,221 +864,179 @@ export function ComparePage() {
 
       {/* Main Content */}
       <div className="mx-auto px-20 py-6 space-y-6 comparison-chart-container">
-        {/* SECTION-1: Profile Cards */}
-        <div className="grid grid-cols-12 gap-6" style={{ minHeight: '220px', height: '240px' }}>
-          {/* Group A Card */}
-          <div className="col-span-6">
-            <PICard className="h-full flex flex-col relative overflow-hidden p-5">
-              {/* Top gradient hairline */}
-              <div
-                className="absolute top-0 left-0 right-0 h-[2px]"
-                style={{
-                  background: 'linear-gradient(90deg, #C7B6FF 0%, #A5C8FF 100%)',
-                }}
-              />
-
-              {/* Header - Title Row */}
-              <div className="flex items-center gap-2" style={{ marginBottom: '12px' }}>
-                <div
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ background: selectedGroupA?.color }}
-                />
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--primary-500)' }}>
-                  {selectedGroupA?.label}
-                </h3>
-                <span style={{ fontSize: '14px', fontWeight: 400, color: 'var(--neutral-600)' }}>
-                  {selectedGroupA?.count.toLocaleString()}명
-                </span>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: selectedGroupA?.color }}>
-                  {selectedGroupA?.percentage}%
-                </span>
-                {selectedGroupA?.qualityWarnings && selectedGroupA.qualityWarnings.length > 0 && (
-                  <PIBadge variant="warning" size="sm" className="ml-auto">
-                    품질주의
-                  </PIBadge>
-                )}
-              </div>
-
-              {/* Description - 2 line clamp */}
-              <p 
-                className="line-clamp-2"
-                style={{ 
-                  fontSize: '13px', 
-                  fontWeight: 400, 
-                  lineHeight: '1.5', 
-                  color: 'var(--primary-500)',
-                  marginBottom: '12px',
-                  height: 'calc(13px * 1.5 * 2)', // Fixed height for 2 lines
-                }}
-              >
-                {selectedGroupA?.description}
-              </p>
-
-              {/* Tags - Single line with overflow counter */}
-              <div className="flex items-center gap-2 overflow-hidden" style={{ marginBottom: '12px', height: '24px' }}>
-                {selectedGroupA?.tags.slice(0, 5).map((tag, idx) => (
-                  <PIHashtag key={idx} color={getHashtagColor(tag)}>
-                    {tag}
-                  </PIHashtag>
-                ))}
-                {selectedGroupA && selectedGroupA.tags.length > 5 && (
-                  <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--neutral-600)', flexShrink: 0 }}>
-                    … +{selectedGroupA.tags.length - 5}
-                  </span>
-                )}
-              </div>
-
-              {/* Evidence - Max 1, 2 line clamp */}
-              {selectedGroupA?.evidence && selectedGroupA.evidence.length > 0 && (
-                <div style={{ marginBottom: '12px' }}>
-                  <div
-                    className="line-clamp-2 px-3 py-2 rounded-lg italic"
+        {/* SECTION-1: Cluster Selection UI */}
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12">
+            <PICard className="p-6">
+              <div className="flex items-center gap-6">
+                {/* Group A Selection */}
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                    첫 번째 군집 선택
+                  </label>
+                  <button
+                    className="w-full px-4 py-3 rounded-lg border-2 flex items-center justify-between hover:border-[var(--primary-500)] transition-colors"
                     style={{
-                      background: 'rgba(37, 99, 235, 0.05)',
-                      border: '1px solid rgba(37, 99, 235, 0.1)',
-                      fontSize: '11px',
-                      fontWeight: 400,
-                      lineHeight: '1.4',
-                      color: 'var(--neutral-600)',
+                      borderColor: selectedGroupA?.color || 'var(--border)',
+                      background: selectedGroupA?.color ? `${selectedGroupA.color}10` : 'transparent',
                     }}
+                    onClick={() => setIsGroupAModalOpen(true)}
                   >
-                    "{selectedGroupA.evidence[0]}"
-                  </div>
+                    <div className="flex items-center gap-3">
+                      {selectedGroupA && (
+                        <>
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ background: selectedGroupA.color }}
+                          />
+                          <div className="text-left">
+                            <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                              {selectedGroupA.label}
+                            </div>
+                            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                              {selectedGroupA.count.toLocaleString()}명 · {selectedGroupA.percentage.toFixed(2)}%
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      {!selectedGroupA && (
+                        <span style={{ color: 'var(--text-secondary)' }}>군집 선택</span>
+                      )}
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>▼</span>
+                  </button>
                 </div>
-              )}
 
-              {/* Footer */}
-              <div className="mt-auto pt-3 border-t border-[var(--neutral-200)]" style={{ marginTop: '16px' }}>
-                <PIButton variant="ghost" size="small" className="w-full justify-center">
-                  {selectedGroupA?.id} 만 보기
-                </PIButton>
-              </div>
-            </PICard>
-          </div>
+                <div className="flex items-center">
+                  <span className="text-lg font-semibold" style={{ color: 'var(--text-tertiary)' }}>VS</span>
+                </div>
 
-          {/* Group B Card */}
-          <div className="col-span-6">
-            <PICard className="h-full flex flex-col relative overflow-hidden p-5">
-              {/* Top gradient hairline */}
-              <div
-                className="absolute top-0 left-0 right-0 h-[2px]"
-                style={{
-                  background: 'linear-gradient(90deg, #C7B6FF 0%, #A5C8FF 100%)',
-                }}
-              />
-
-              {/* Header - Title Row */}
-              <div className="flex items-center gap-2" style={{ marginBottom: '12px' }}>
-                <div
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ background: selectedGroupB?.color }}
-                />
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--primary-500)' }}>
-                  {selectedGroupB?.label}
-                </h3>
-                <span style={{ fontSize: '14px', fontWeight: 400, color: 'var(--neutral-600)' }}>
-                  {selectedGroupB?.count.toLocaleString()}명
-                </span>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: selectedGroupB?.color }}>
-                  {selectedGroupB?.percentage}%
-                </span>
-                {selectedGroupB?.qualityWarnings && selectedGroupB.qualityWarnings.length > 0 && (
-                  <PIBadge variant="warning" size="sm" className="ml-auto">
-                    품질주의
-                  </PIBadge>
-                )}
-              </div>
-
-              {/* Description - 2 line clamp */}
-              <p 
-                className="line-clamp-2"
-                style={{ 
-                  fontSize: '13px', 
-                  fontWeight: 400, 
-                  lineHeight: '1.5', 
-                  color: 'var(--primary-500)',
-                  marginBottom: '12px',
-                  height: 'calc(13px * 1.5 * 2)', // Fixed height for 2 lines
-                }}
-              >
-                {selectedGroupB?.description}
-              </p>
-
-              {/* Tags - Single line with overflow counter */}
-              <div className="flex items-center gap-2 overflow-hidden" style={{ marginBottom: '12px', height: '24px' }}>
-                {selectedGroupB?.tags.slice(0, 5).map((tag, idx) => (
-                  <PIHashtag key={idx} color={getHashtagColor(tag)}>
-                    {tag}
-                  </PIHashtag>
-                ))}
-                {selectedGroupB && selectedGroupB.tags.length > 5 && (
-                  <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--neutral-600)', flexShrink: 0 }}>
-                    … +{selectedGroupB.tags.length - 5}
-                  </span>
-                )}
-              </div>
-
-              {/* Evidence - Max 1, 2 line clamp */}
-              {selectedGroupB?.evidence && selectedGroupB.evidence.length > 0 && (
-                <div style={{ marginBottom: '12px' }}>
-                  <div
-                    className="line-clamp-2 px-3 py-2 rounded-lg italic"
+                {/* Group B Selection */}
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                    두 번째 군집 선택
+                  </label>
+                  <button
+                    className="w-full px-4 py-3 rounded-lg border-2 flex items-center justify-between hover:border-[var(--primary-500)] transition-colors"
                     style={{
-                      background: 'rgba(124, 58, 237, 0.05)',
-                      border: '1px solid rgba(124, 58, 237, 0.1)',
-                      fontSize: '11px',
-                      fontWeight: 400,
-                      lineHeight: '1.4',
-                      color: 'var(--neutral-600)',
+                      borderColor: selectedGroupB?.color || 'var(--border)',
+                      background: selectedGroupB?.color ? `${selectedGroupB.color}10` : 'transparent',
                     }}
+                    onClick={() => setIsGroupBModalOpen(true)}
                   >
-                    "{selectedGroupB.evidence[0]}"
-                  </div>
+                    <div className="flex items-center gap-3">
+                      {selectedGroupB && (
+                        <>
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ background: selectedGroupB.color }}
+                          />
+                          <div className="text-left">
+                            <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                              {selectedGroupB.label}
+                            </div>
+                            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                              {selectedGroupB.count.toLocaleString()}명 · {selectedGroupB.percentage.toFixed(2)}%
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      {!selectedGroupB && (
+                        <span style={{ color: 'var(--text-secondary)' }}>군집 선택</span>
+                      )}
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>▼</span>
+                  </button>
                 </div>
-              )}
-
-              {/* Footer */}
-              <div className="mt-auto pt-3 border-t border-[var(--neutral-200)]" style={{ marginTop: '16px' }}>
-                <PIButton variant="ghost" size="small" className="w-full justify-center">
-                  {selectedGroupB?.id} 만 보기
-                </PIButton>
               </div>
             </PICard>
           </div>
         </div>
 
-        {/* SECTION-2: Difference Panel */}
-        <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-12">
-            <PICard className="relative overflow-visible h-[540px] p-5" data-export-chart>
-              {/* Top gradient hairline */}
-              <div
-                className="absolute top-0 left-0 right-0 h-[2px]"
-                style={{
-                  background: 'linear-gradient(90deg, #C7B6FF 0%, #A5C8FF 100%)',
-                }}
-              />
+        {/* SECTION-2: Difference Panel - Figma Component */}
+        {selectedGroupA && selectedGroupB ? (
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-12">
+              {loading ? (
+                <div className="flex items-center justify-center p-12 rounded-2xl"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(17, 24, 39, 0.10)',
+                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
+                  }}
+                >
+                  <p style={{ fontSize: '14px', fontWeight: 500, color: '#64748B' }}>
+                    비교 분석 중...
+                  </p>
+                </div>
+              ) : comparisonData ? (
+                <div data-comparison-view>
+                  <PIComparisonView data={comparisonData} />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-12 rounded-2xl"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(17, 24, 39, 0.10)',
+                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
+                  }}
+                >
+                  <p style={{ fontSize: '14px', fontWeight: 500, color: '#64748B' }}>
+                    비교 분석 데이터를 불러올 수 없습니다.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-12">
+              <PICard className="relative overflow-visible h-[540px] p-5" data-export-chart>
+                <div className="flex items-center justify-center h-full">
+                  <p style={{ fontSize: '14px', fontWeight: 500, color: 'var(--neutral-600)' }}>
+                    비교할 그룹을 선택해주세요
+                  </p>
+                </div>
+              </PICard>
+            </div>
+          </div>
+        )}
 
-              {/* Header - Sticky */}
-              <div className="flex items-center justify-between sticky top-0 backdrop-blur-md z-10" style={{ 
-                padding: '12px 0', 
-                marginBottom: '16px',
-                background: 'var(--card)'
-              }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--foreground)' }}>차이 분석</h3>
-                <PISegmentedControl
-                  value={diffSortBy}
-                  onChange={(v) => setDiffSortBy(v as 'delta' | 'lift' | 'smd')}
-                    options={[
-                      { value: 'delta', label: 'Delta%p' },
-                      { value: 'lift', label: 'Lift' },
-                    { value: 'smd', label: 'SMD' },
-                  ]}
+        {/* SECTION-2: Legacy Difference Panel (Hidden) */}
+        {false && (
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-12">
+              <PICard className="relative overflow-visible h-[540px] p-5" data-export-chart>
+                {/* Top gradient hairline */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-[2px]"
+                  style={{
+                    background: 'linear-gradient(90deg, #C7B6FF 0%, #A5C8FF 100%)',
+                  }}
                 />
-              </div>
 
-              <div className="space-y-4" style={{ gap: '16px' }}>
-                {/* BLOCK-1: Δ%p (h=220) */}
+                {/* Header - Sticky */}
+                <div className="flex items-center justify-between sticky top-0 backdrop-blur-md z-10" style={{ 
+                  padding: '12px 0', 
+                  marginBottom: '16px',
+                  background: 'var(--card)'
+                }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--foreground)' }}>차이 분석</h3>
+                  <PISegmentedControl
+                    value={diffSortBy}
+                    onChange={(v) => setDiffSortBy(v as 'delta' | 'lift' | 'smd')}
+                      options={[
+                        { value: 'delta', label: 'Delta%p' },
+                        { value: 'lift', label: 'Lift' },
+                      { value: 'smd', label: 'SMD' },
+                    ]}
+                  />
+                </div>
+
+                <div className="space-y-4" style={{ gap: '16px' }}>
+                  {/* BLOCK-1: Δ%p (h=220) */}
                 <div style={{ height: '220px' }}>
                   <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
                     <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--neutral-600)' }}>분포 차이 (Delta%p)</h4>
@@ -928,75 +1312,12 @@ export function ComparePage() {
                     })}
                   </div>
                 </div>
-              </div>
-            </PICard>
-          </div>
-        </div>
-
-        {/* SECTION-3: Opportunity */}
-        <div className="grid grid-cols-12 gap-6" style={{ minHeight: '160px' }}>
-          <div className="col-span-12">
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="font-semibold">기회 영역</h3>
-              <PIBadge variant="accent" size="sm">
-                의향 - 사용 갭 분석
-              </PIBadge>
-            </div>
-
-            <div className="grid grid-cols-3 gap-6">
-              {opportunityData.map((opp, idx) => (
-                <PICard key={idx} className="relative overflow-hidden">
-                  {/* Top gradient hairline */}
-                  <div
-                    className="absolute top-0 left-0 right-0 h-[2px]"
-                    style={{
-                      background: 'linear-gradient(90deg, #C7B6FF 0%, #A5C8FF 100%)',
-                    }}
-                  />
-
-                  {/* Rank badge */}
-                  <div className="absolute top-4 right-4">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center font-bold"
-                      style={{
-                        background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
-                        color: 'white',
-                        fontSize: '14px',
-                      }}
-                    >
-                      {idx + 1}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium leading-relaxed pr-10">
-                      {opp.title}
-                    </p>
-
-                    <div className="flex items-center gap-2">
-                      <ArrowRight className="w-4 h-4 text-[var(--neutral-400)]" />
-                      <div
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-full"
-                        style={{
-                          background: 'rgba(37, 99, 235, 0.1)',
-                        }}
-                      >
-                        <TrendingUp className="w-4 h-4 text-[var(--accent-blue)]" />
-                        <span className="font-bold text-[var(--accent-blue)]">
-                          +{opp.delta}%p
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-[var(--neutral-600)]">
-                      {selectedGroupA?.id}이(가) {selectedGroupB?.id}보다 {opp.delta}%p 높은 전환율
-                    </p>
-                  </div>
-                </PICard>
-              ))}
+                </div>
+              </PICard>
             </div>
           </div>
-        </div>
+        )}
+
       </div>
 
       {/* FOOTER: Sticky Action Bar */}

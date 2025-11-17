@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Info } from 'lucide-react';
-import { PIQuickActionChip } from '../pi/PIQuickActionChip';
-import { PIPresetMenu } from '../pi/PIPresetMenu';
-import { PIBookmarkMenu } from '../pi/PIBookmarkMenu';
-import { PICommandPalette } from '../pi/PICommandPalette';
-import { PIBookmarkPanel } from '../pi/PIBookmarkPanel';
-import { PIBookmarkButton } from '../pi/PIBookmarkButton';
-import { PIPresetButton } from '../pi/PIPresetButton';
+import { PIQuickActionChip } from '../../ui/pi/PIQuickActionChip';
+import { PIPresetMenu } from '../../ui/pi/PIPresetMenu';
+import { PIBookmarkMenu } from '../../ui/pi/PIBookmarkMenu';
+import { PICommandPalette } from '../../ui/pi/PICommandPalette';
+import { PIBookmarkPanel } from '../../ui/pi/PIBookmarkPanel';
+import { PIBookmarkButton } from '../../ui/pi/PIBookmarkButton';
+import { PIPresetButton } from '../../ui/pi/PIPresetButton';
 import { bookmarkManager } from '../../lib/bookmarkManager';
 import { presetManager } from '../../lib/presetManager';
 import { DarkModeToggle } from '../../lib/DarkModeSystem';
@@ -55,7 +55,6 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
 
   const handleSearch = () => {
     // 검색어가 없어도 검색 화면으로 전환
-    console.log('[StartPage] handleSearch called with query:', query.trim());
     onSearch(query.trim());
   };
 
@@ -412,8 +411,8 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
         onFilterOpen={onFilterOpen}
-        onExportOpen={() => console.log('Export')}
-        onClusterLabOpen={() => console.log('Cluster Lab')}
+        onExportOpen={() => {}}
+        onClusterLabOpen={() => {}}
       />
 
       {/* 북마크 패널 */}

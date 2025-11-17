@@ -1,7 +1,9 @@
 """DB 설정 모듈 - 스키마/테이블명을 환경변수로 관리"""
 import os
+import json
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Dict, Any
+from functools import lru_cache
 
 
 @dataclass(frozen=True)
@@ -52,4 +54,73 @@ if KW_PCA_COMPONENTS:
         _ = int(KW_PCA_COMPONENTS)  # 유효성 검사
     except ValueError:
         KW_PCA_COMPONENTS = None
+
+# 벡터 검색 활성화 여부 (기본값: True, 환경변수로 비활성화 가능)
+VECTOR_SEARCH_ENABLED: Final[bool] = os.getenv("VECTOR_SEARCH_ENABLED", "true").lower() in ("true", "1", "yes", "on")
+
+# ChromaDB 검색 설정
+CHROMA_SEARCH_ENABLED: Final[bool] = os.getenv("CHROMA_SEARCH_ENABLED", "false").lower() in ("true", "1", "yes", "on")
+CHROMA_BASE_DIR: Final[str] = os.getenv("CHROMA_BASE_DIR", r"C:\Capstone_Project\Chroma_db")
+CATEGORY_CONFIG_PATH: Final[str] = os.getenv("CATEGORY_CONFIG_PATH", r"C:\Capstone_Project\category_config.json")
+# API Keys (환경변수 우선, 없으면 기본값 사용 - 보안상 .env 파일 사용 권장)
+ANTHROPIC_API_KEY: Final[str] = os.getenv("ANTHROPIC_API_KEY", "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")
+UPSTAGE_API_KEY: Final[str] = os.getenv("UPSTAGE_API_KEY", "up_2KGGBmZpBmlePxUyk3ouWBf9iqOmJ")
+
+# ChromaDB 검색 폴백 설정 (ChromaDB 검색 실패 시 기존 검색으로 폴백)
+FALLBACK_TO_VECTOR_SEARCH: Final[bool] = os.getenv("FALLBACK_TO_VECTOR_SEARCH", "true").lower() in ("true", "1", "yes", "on")
+
+
+@lru_cache(maxsize=1)
+def load_category_config() -> Dict[str, Any]:
+    """
+    category_config.json 파일을 로드 (캐싱됨)
+    
+    Returns:
+        카테고리 설정 딕셔너리
+        
+    Raises:
+        FileNotFoundError: 설정 파일이 없을 경우
+        json.JSONDecodeError: JSON 파싱 실패 시
+    """
+    if not os.path.exists(CATEGORY_CONFIG_PATH):
+        raise FileNotFoundError(f"카테고리 설정 파일을 찾을 수 없습니다: {CATEGORY_CONFIG_PATH}")
+    
+    with open(CATEGORY_CONFIG_PATH, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    
+    return config
+
+
+
+# ChromaDB 검색 설정
+CHROMA_SEARCH_ENABLED: Final[bool] = os.getenv("CHROMA_SEARCH_ENABLED", "false").lower() in ("true", "1", "yes", "on")
+CHROMA_BASE_DIR: Final[str] = os.getenv("CHROMA_BASE_DIR", r"C:\Capstone_Project\Chroma_db")
+CATEGORY_CONFIG_PATH: Final[str] = os.getenv("CATEGORY_CONFIG_PATH", r"C:\Capstone_Project\category_config.json")
+# API Keys (환경변수 우선, 없으면 기본값 사용 - 보안상 .env 파일 사용 권장)
+ANTHROPIC_API_KEY: Final[str] = os.getenv("ANTHROPIC_API_KEY", "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")
+UPSTAGE_API_KEY: Final[str] = os.getenv("UPSTAGE_API_KEY", "up_2KGGBmZpBmlePxUyk3ouWBf9iqOmJ")
+
+# ChromaDB 검색 폴백 설정 (ChromaDB 검색 실패 시 기존 검색으로 폴백)
+FALLBACK_TO_VECTOR_SEARCH: Final[bool] = os.getenv("FALLBACK_TO_VECTOR_SEARCH", "true").lower() in ("true", "1", "yes", "on")
+
+
+@lru_cache(maxsize=1)
+def load_category_config() -> Dict[str, Any]:
+    """
+    category_config.json 파일을 로드 (캐싱됨)
+    
+    Returns:
+        카테고리 설정 딕셔너리
+        
+    Raises:
+        FileNotFoundError: 설정 파일이 없을 경우
+        json.JSONDecodeError: JSON 파싱 실패 시
+    """
+    if not os.path.exists(CATEGORY_CONFIG_PATH):
+        raise FileNotFoundError(f"카테고리 설정 파일을 찾을 수 없습니다: {CATEGORY_CONFIG_PATH}")
+    
+    with open(CATEGORY_CONFIG_PATH, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    
+    return config
 

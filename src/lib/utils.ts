@@ -33,22 +33,10 @@ export const api = {
     const controller = new AbortController();
     let timeoutId: NodeJS.Timeout | null = null;
     
-    console.log(`[DEBUG] ========== Fetch 요청 시작 [${requestId}] ==========`);
-    console.log('[DEBUG] Fetch 시작:', {
-      requestId,
-      url: fullUrl,
-      method: 'POST',
-      data: data,
-      timestamp: new Date().toISOString(),
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
-      platform: typeof navigator !== 'undefined' ? navigator.platform : 'N/A',
-      language: typeof navigator !== 'undefined' ? navigator.language : 'N/A'
-    });
-    
     timeoutId = setTimeout(() => {
-      console.error(`[DEBUG] ⏱️ 요청 타임아웃 (30초) [${requestId}]`);
+      console.error(`[DEBUG] ⏱️ 요청 타임아웃 (120초) [${requestId}]`);
       controller.abort();
-    }, 30000); // 30초 타임아웃
+    }, 120000); // 120초 타임아웃 (ChromaDB 검색이 오래 걸릴 수 있음)
     
     try {
       const requestOptions = {
@@ -61,28 +49,7 @@ export const api = {
         mode: 'cors' as RequestMode
       };
       
-      console.log('[DEBUG] Request options:', {
-        ...requestOptions,
-        body: requestOptions.body.substring(0, 200) + '...' // 본문 일부만 로그
-      });
-      console.log('[DEBUG] API_URL:', API_URL);
-      console.log('[DEBUG] Full URL:', fullUrl);
-      
-      // 네트워크 상태 확인
-      if ('connection' in navigator) {
-        const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
-        if (conn) {
-          console.log('[DEBUG] 네트워크 상태:', {
-            effectiveType: conn.effectiveType,
-            downlink: conn.downlink,
-            rtt: conn.rtt,
-            saveData: conn.saveData
-          });
-        }
-      }
-      
       const fetchStartTime = Date.now();
-      console.log(`[DEBUG] 🔵 Fetch 실행 시작 [${requestId}]: ${new Date().toISOString()}`);
       
       let response: Response;
       try {
@@ -105,20 +72,6 @@ export const api = {
       }
       
       if (timeoutId) clearTimeout(timeoutId);
-      const fetchDuration = Date.now() - fetchStartTime;
-      console.log(`[DEBUG] ✅ Fetch 응답 수신 [${requestId}]: ${fetchDuration}ms`);
-      
-      console.log('[DEBUG] Fetch 응답 상태:', {
-        requestId,
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        duration: `${fetchDuration}ms`,
-        ok: response.ok,
-        redirected: response.redirected,
-        type: response.type,
-        url: response.url
-      });
       
       if (!response.ok) {
         console.error(`[DEBUG] ❌ HTTP 오류 응답 [${requestId}]:`, {
@@ -144,11 +97,9 @@ export const api = {
       }
       
       // Response body 읽기
-      console.log(`[DEBUG] 📥 Response body 읽기 시작 [${requestId}]`);
       let jsonData: any;
       try {
         const textData = await response.text();
-        console.log(`[DEBUG] Response body 길이: ${textData.length} bytes [${requestId}]`);
         
         if (!textData || textData.trim() === '') {
           console.error(`[DEBUG] ❌ 빈 응답 본문 [${requestId}]`);
@@ -156,12 +107,6 @@ export const api = {
         }
         
         jsonData = JSON.parse(textData);
-        console.log(`[DEBUG] ✅ JSON 파싱 성공 [${requestId}]:`, {
-          keys: Object.keys(jsonData),
-          resultCount: jsonData.results?.length || 0,
-          hasTotal: 'total' in jsonData,
-          hasPages: 'pages' in jsonData
-        });
       } catch (parseError: any) {
         console.error(`[DEBUG] ❌ JSON 파싱 실패 [${requestId}]:`, {
           error: parseError?.message,
@@ -170,7 +115,6 @@ export const api = {
         throw new Error(`응답 파싱 실패: ${parseError?.message || '알 수 없는 오류'}`);
       }
       
-      console.log(`[DEBUG] ========== Fetch 요청 완료 [${requestId}] ==========`);
       return jsonData;
     } catch (err: any) {
       if (timeoutId) clearTimeout(timeoutId);

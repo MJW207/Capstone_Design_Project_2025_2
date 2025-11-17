@@ -15,6 +15,5 @@ export const API_URL = `${API_BASE_URL}`;
 
 // 디버깅: API URL 확인
 if (typeof window !== 'undefined') {
-  console.log('[Config] API URL:', API_URL);
 }
 

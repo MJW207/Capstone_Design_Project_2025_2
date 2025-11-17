@@ -1,5 +1,6 @@
 """비동기 데이터베이스 세션 관리"""
 import os
+import logging
 from typing import AsyncGenerator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -61,7 +62,6 @@ else:
         expire_on_commit=False,
     )
     pool_type = "NullPool" if USE_NULL_POOL else "QueuePool"
-    print(f"[INFO] Async database engine initialized (pool: {pool_type})")
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
@@ -76,34 +76,18 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     Raises:
         RuntimeError: 세션 생성 실패 시
     """
-    print(f"[DEBUG Session] ========== get_session 호출 ==========")
-    print(f"[DEBUG Session] SessionLocal 상태: {SessionLocal is not None}")
-    print(f"[DEBUG Session] Engine 상태: {engine is not None if 'engine' in globals() else 'unknown'}")
-    
     if SessionLocal is None:
-        print(f"[DEBUG Session] ❌ ERROR: SessionLocal이 None입니다!")
-        print(f"[DEBUG Session] ASYNC_URI: {ASYNC_URI[:50]}..." if 'ASYNC_URI' in globals() else "[DEBUG Session] ASYNC_URI: None")
         raise RuntimeError("Database not configured. Please set ASYNC_DATABASE_URI in .env")
     
-    print(f"[DEBUG Session] 세션 생성 시작...")
     session = SessionLocal()
-    print(f"[DEBUG Session] 세션 생성 완료: {type(session)}")
-    print(f"[DEBUG Session] 세션 활성 상태: {session.is_active if hasattr(session, 'is_active') else 'unknown'}")
     
     try:
         # RawData 우선 탐색 경로 고정
-        print(f"[DEBUG Session] search_path 설정 시작...")
         await session.execute(text('SET search_path TO "RawData", public'))
-        print(f"[DEBUG Session] search_path 설정 완료")
-        print(f"[DEBUG Session] 세션 yield")
         yield session  # FastAPI가 자동으로 cleanup 처리
-        print(f"[DEBUG Session] 세션 사용 완료")
     except Exception as e:
-        print(f"[DEBUG Session] ❌ 세션 사용 중 에러: {type(e).__name__}: {str(e)}")
         await session.rollback()
+        logger.error(f"세션 오류: {str(e)}", exc_info=True)
         raise
     finally:
-        print(f"[DEBUG Session] 세션 종료")
         await session.close()
-    
-    print(f"[DEBUG Session] ========== get_session 완료 ==========")

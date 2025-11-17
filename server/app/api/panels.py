@@ -3,11 +3,49 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 import json
+from pathlib import Path
+from typing import Optional, Dict, Any
+import logging
 
 from app.db.session import get_session
 from app.db.dao_panels import get_panel_detail
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# 프로젝트 루트 경로
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+MERGED_FINAL_JSON = PROJECT_ROOT / 'merged_final.json'
+
+# merged_final.json 데이터를 메모리에 캐싱
+_merged_data_cache: Optional[Dict[str, Any]] = None
+
+def load_merged_data() -> Dict[str, Any]:
+    """merged_final.json 파일을 로드하고 mb_sn을 키로 하는 딕셔너리로 변환"""
+    global _merged_data_cache
+    
+    if _merged_data_cache is not None:
+        logger.info(f"[Panel API] 캐시된 merged_data 사용: {len(_merged_data_cache)}개 패널")
+        return _merged_data_cache
+    
+    logger.info(f"[Panel API] merged_final.json 로드 시작: {MERGED_FINAL_JSON}")
+    if not MERGED_FINAL_JSON.exists():
+        logger.warning(f"[Panel API] 경고: merged_final.json 파일이 존재하지 않음: {MERGED_FINAL_JSON}")
+        return {}
+    
+    try:
+        logger.info(f"[Panel API] JSON 파일 읽기 시작...")
+        with open(MERGED_FINAL_JSON, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        logger.info(f"[Panel API] JSON 파일 읽기 완료: {len(data)}개 항목")
+        
+        # 배열을 mb_sn을 키로 하는 딕셔너리로 변환
+        _merged_data_cache = {item['mb_sn']: item for item in data if 'mb_sn' in item}
+        logger.info(f"[Panel API] 딕셔너리 변환 완료: {len(_merged_data_cache)}개 패널")
+        return _merged_data_cache
+    except Exception as e:
+        logger.error(f"[ERROR] merged_final.json 로드 실패: {str(e)}", exc_info=True)
+        return {}
 
 
 @router.get("/api/panels/{panel_id}")
@@ -15,6 +53,8 @@ async def get_panel(
     panel_id: str,
     session: AsyncSession = Depends(get_session)
 ):
+    """패널 상세 정보 조회"""
+    logger.info(f"[Panel API] ========== 패널 상세 조회 시작: {panel_id} ==========")
     """
     패널 상세 정보 조회 (RawData 테이블들과 panel_embeddings_v 뷰 JOIN)
     
@@ -77,40 +117,37 @@ async def get_panel(
             except (json.JSONDecodeError, TypeError):
                 pass
         
-        # 2. 응답이력 추출 (quick_answer.answers)
+        # 2. 응답이력 추출 (merged_final.json의 answers 필드에서 Qpoll 질문-답변 추출)
         responses = []
-        qa_answers = row.get("qa_answers")
-        if qa_answers:
-            try:
-                # JSONB가 dict일 수도 있고 문자열일 수도 있음
-                if isinstance(qa_answers, dict):
-                    answers_dict = qa_answers
-                elif isinstance(qa_answers, str):
-                    answers_dict = json.loads(qa_answers)
-                else:
-                    answers_dict = {}
-                
-                # 각 질문-답변을 응답이력으로 변환
-                for question_key, answer_value in answers_dict.items():
+        
+        # merged_final.json에서 answers 필드 추출
+        merged_data = load_merged_data()
+        qpoll_answers = {}
+        if panel_id in merged_data:
+            merged_panel = merged_data[panel_id]
+            qpoll_answers = merged_panel.get("answers", {})
+        
+        # Qpoll 질문-답변을 응답이력으로 변환
+        if qpoll_answers and isinstance(qpoll_answers, dict):
+            for q_key, q_data in qpoll_answers.items():
+                if isinstance(q_data, dict) and "question" in q_data and "answer" in q_data:
                     responses.append({
-                        "key": question_key,
-                        "title": question_key,  # 키를 제목으로 사용 (필요시 매핑 가능)
-                        "answer": str(answer_value) if answer_value else "",
+                        "key": q_key,
+                        "title": q_data.get("question", q_key),
+                        "answer": q_data.get("answer", ""),
                         "date": (
                             row.get("created_at").strftime("%Y.%m.%d")
                             if row.get("created_at")
                             else datetime.now().strftime("%Y.%m.%d")
                         )
                     })
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                pass
         
-        # 응답이력이 없으면 combined_text를 요약으로 사용
-        if not responses and row.get("combined_text"):
+        # Qpoll 응답이 없으면 메시지 추가
+        if not responses:
             responses.append({
-                "key": "summary",
-                "title": "요약",
-                "answer": row["combined_text"][:600],
+                "key": "no_qpoll",
+                "title": "Qpoll 응답 없음",
+                "answer": "해당 패널은 qpoll에 응답하지 않았습니다.",
                 "date": (
                     row.get("created_at").strftime("%Y.%m.%d")
                     if row.get("created_at")
@@ -267,14 +304,44 @@ async def get_panel(
         else:
             ai_summary = "요약 정보가 없습니다."
         
-        return {
+        # merged_final.json에서 메타데이터 가져오기
+        merged_metadata = {}
+        merged_data = load_merged_data()
+        logger.info(f"[Panel API] merged_data 로드 완료: {len(merged_data)}개 패널")
+        logger.info(f"[Panel API] 패널 ID: {panel_id}, 존재 여부: {panel_id in merged_data}")
+        if panel_id in merged_data:
+            merged_metadata = merged_data[panel_id]
+            logger.info(f"[Panel API] 메타데이터 키 개수: {len(merged_metadata)}")
+            logger.info(f"[Panel API] 메타데이터 키: {list(merged_metadata.keys())[:10]}")
+        else:
+            logger.warning(f"[Panel API] 패널 ID {panel_id}를 merged_final.json에서 찾을 수 없음")
+            # 샘플 패널 ID 확인
+            if len(merged_data) > 0:
+                sample_ids = list(merged_data.keys())[:5]
+                logger.info(f"[Panel API] 샘플 패널 ID: {sample_ids}")
+        
+        # 기본 정보를 merged_final.json 데이터로 보완
+        if merged_metadata:
+            if not gender and merged_metadata.get("gender"):
+                gender = merged_metadata["gender"]
+            if not age and merged_metadata.get("age"):
+                try:
+                    age = int(merged_metadata["age"])
+                except (ValueError, TypeError):
+                    pass
+            if not region and merged_metadata.get("location"):
+                region = merged_metadata["location"]
+            if merged_metadata.get("detail_location"):
+                region = f"{region} {merged_metadata['detail_location']}" if region else merged_metadata['detail_location']
+        
+        result = {
             "id": panel_id,
             "name": panel_id,
             "gender": gender,
             "age": age,
             "region": region,
             "income": str(income) if income else "",
-            "coverage": "qw" if qa_answers else "w",
+            "coverage": "qw" if qpoll_answers else "w",
             "tags": tags,
             "responses": responses,  # 실제 응답이력
             "evidence": evidence,  # 실제 근거 데이터
@@ -283,11 +350,18 @@ async def get_panel(
                 row.get("created_at").isoformat() 
                 if row.get("created_at") 
                 else datetime.now().isoformat()
-            )
+            ),
+            # merged_final.json 메타데이터 추가
+            "metadata": merged_metadata
         }
+        logger.info(f"[Panel API] 반환 데이터에 metadata 포함: {bool(merged_metadata)}, 키 개수: {len(merged_metadata) if merged_metadata else 0}")
+        logger.debug(f"[Panel API] 반환 데이터 키: {list(result.keys())}")
+        logger.info(f"[Panel API] ========== 패널 상세 조회 완료: {panel_id} ==========")
+        return result
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"[Panel API] 패널 조회 실패: {panel_id}, 오류: {str(e)}", exc_info=True)
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Panel fetch failed: {str(e)}")

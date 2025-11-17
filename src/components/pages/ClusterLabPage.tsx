@@ -1268,24 +1268,43 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
   useEffect(() => {
     const updateSize = () => {
       if (umapContainerRef.current) {
-        const rect = umapContainerRef.current.getBoundingClientRect();
-        // 패딩 제외한 실제 차트 영역 계산
-        const padding = 48; // p-6 = 24px * 2
-        setUmapSize({ 
-          width: rect.width - padding, 
-          height: rect.height - padding 
+        // requestAnimationFrame을 사용하여 레이아웃 계산 후 크기 업데이트
+        requestAnimationFrame(() => {
+          if (umapContainerRef.current) {
+            const rect = umapContainerRef.current.getBoundingClientRect();
+            // 패딩 제외한 실제 차트 영역 계산
+            const padding = 48; // p-6 = 24px * 2
+            const newWidth = Math.max(400, rect.width - padding);
+            const newHeight = Math.max(400, rect.height - padding);
+            
+            // 크기가 변경된 경우에만 업데이트 (무한 루프 방지)
+            setUmapSize(prev => {
+              if (Math.abs(prev.width - newWidth) > 1 || Math.abs(prev.height - newHeight) > 1) {
+                return { width: newWidth, height: newHeight };
+              }
+              return prev;
+            });
+          }
         });
       }
     };
 
+    // 초기 크기 설정을 지연시켜 레이아웃이 완료된 후 실행
+    const timeoutId = setTimeout(updateSize, 100);
     updateSize();
-    const resizeObserver = new ResizeObserver(updateSize);
+    
+    const resizeObserver = new ResizeObserver(() => {
+      // ResizeObserver 콜백도 requestAnimationFrame으로 감싸기
+      requestAnimationFrame(updateSize);
+    });
+    
     if (umapContainerRef.current) {
       resizeObserver.observe(umapContainerRef.current);
     }
     
     window.addEventListener('resize', updateSize);
     return () => {
+      clearTimeout(timeoutId);
       window.removeEventListener('resize', updateSize);
       resizeObserver.disconnect();
     };
@@ -1932,7 +1951,13 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                     
                     return (
                       <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                        <svg width={width} height={height} style={{ width: '100%', height: '100%' }}>
+                        <svg 
+                          width={width} 
+                          height={height} 
+                          viewBox={`0 0 ${width} ${height}`}
+                          preserveAspectRatio="xMidYMid meet"
+                          style={{ width: '100%', height: '100%', display: 'block' }}
+                        >
                           {/* 배경 그리드 */}
                           <defs>
                             <pattern 
@@ -3200,86 +3225,136 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
               return;
             }
 
+            // 요소의 실제 크기 확인
+            const rect = element.getBoundingClientRect();
+            const elementWidth = rect.width || element.scrollWidth || element.offsetWidth;
+            const elementHeight = rect.height || element.scrollHeight || element.offsetHeight;
 
-            // html2canvas 동적 import
-            const html2canvas = (await import('html2canvas')).default;
+            // 크기가 0이면 에러 처리
+            if (elementWidth === 0 || elementHeight === 0) {
+              console.error('요소의 크기가 0입니다:', { elementWidth, elementHeight, rect });
+              toast.error('차트가 아직 완전히 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+              return;
+            }
 
-            const canvas = await html2canvas(element, {
-              backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
-              scale: 2, // 고해상도
-              useCORS: true,
-              allowTaint: true,
-              logging: false,
-              foreignObjectRendering: false, // oklch() 문제 회피
-              width: element.scrollWidth || element.offsetWidth,
-              height: element.scrollHeight || element.offsetHeight,
-              scrollX: 0,
-              scrollY: 0,
-              windowWidth: element.scrollWidth || element.offsetWidth,
-              windowHeight: element.scrollHeight || element.offsetHeight,
-              onclone: (clonedDoc) => {
-                // html2canvas가 oklch()를 지원하지 않으므로 CSS 변수와 스타일을 변환
-                
-                // 1. 스타일 태그 내의 oklch() 찾아서 변환
-                const styleSheets = clonedDoc.querySelectorAll('style');
-                styleSheets.forEach((style) => {
-                  if (style.textContent && style.textContent.includes('oklch')) {
-                    // oklch()를 rgb()로 대체 (더 정확한 변환)
-                    style.textContent = style.textContent.replace(
-                      /oklch\(([^)]+)\)/g,
-                      (_match, params) => {
-                        // oklch 파라미터 파싱 (L C H 형식)
-                        const parts = params.trim().split(/\s+/);
-                        const L = parseFloat(parts[0]) || 0.5; // Lightness (0-1)
-                        
-                        // 간단한 oklch -> rgb 변환 (대략적)
-                        if (isDark) {
-                          // 다크 모드: 어두운 색상
-                          if (L > 0.7) return 'rgb(249, 250, 251)'; // 밝은 텍스트
-                          if (L > 0.5) return 'rgb(209, 213, 219)'; // 중간 텍스트
-                          if (L > 0.3) return 'rgb(156, 163, 175)'; // 어두운 텍스트
-                          return 'rgb(31, 41, 55)'; // 배경
-                        } else {
-                          // 라이트 모드: 밝은 색상
-                          if (L > 0.7) return 'rgb(255, 255, 255)'; // 배경
-                          if (L > 0.5) return 'rgb(148, 163, 184)'; // 중간 텍스트
-                          if (L > 0.3) return 'rgb(100, 116, 139)'; // 어두운 텍스트
-                          return 'rgb(15, 23, 42)'; // 매우 어두운 텍스트
-                        }
-                      }
-                    );
-                  }
-                });
-                
-                // 2. 모든 요소의 인라인 스타일에서 oklch() 변환
-                const allElements = clonedDoc.querySelectorAll('*');
-                allElements.forEach((el) => {
-                  const htmlEl = el as HTMLElement;
-                  
-                  // 인라인 스타일이 있고 oklch가 포함되어 있으면 변환
-                  if (htmlEl.style.cssText && htmlEl.style.cssText.includes('oklch')) {
-                    htmlEl.style.cssText = htmlEl.style.cssText.replace(
-                      /oklch\([^)]+\)/g,
-                      () => {
-                        if (isDark) {
-                          return 'rgb(31, 41, 55)';
-                        } else {
-                          return 'rgb(255, 255, 255)';
-                        }
-                      }
-                    );
-                  }
-                });
-              },
-            });
+            // 실제 사용할 크기 (컨테이너 크기 사용, 패딩 제외)
+            const padding = 48; // p-6 = 24px * 2
+            const exportWidth = Math.max(umapSize.width, elementWidth - padding);
+            const exportHeight = Math.max(umapSize.height, elementHeight - padding);
 
-            const link = document.createElement('a');
-            const filename = `UMAP_차트_${new Date().toISOString().split('T')[0]}.png`;
-            link.download = filename;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
+            // SVG 요소들이 제대로 렌더링되었는지 확인
+            const svgElements = element.querySelectorAll('svg');
+            let hasValidSvg = false;
+            for (const svg of svgElements) {
+              const svgRect = svg.getBoundingClientRect();
+              if (svgRect.width > 0 && svgRect.height > 0) {
+                hasValidSvg = true;
+                break;
+              }
+            }
+
+            if (!hasValidSvg && svgElements.length > 0) {
+              console.warn('SVG 요소들이 아직 렌더링되지 않았습니다. 잠시 대기합니다...');
+              // 짧은 대기 후 재시도
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            // 방법 1: SVG를 직접 이미지로 변환 (가장 빠름, 순회 없음)
+            const svgElement = element.querySelector('svg') as SVGSVGElement;
             
-            toast.success('PNG 파일이 다운로드되었습니다');
+            if (svgElement) {
+              // SVG의 실제 크기 가져오기 (컨테이너 크기 우선 사용)
+              const actualWidth = exportWidth || umapSize.width || parseInt(svgElement.getAttribute('width') || '800');
+              const actualHeight = exportHeight || umapSize.height || parseInt(svgElement.getAttribute('height') || '800');
+              
+              // SVG를 직접 PNG로 변환
+              const svgData = new XMLSerializer().serializeToString(svgElement);
+              
+              // SVG에 명시적 크기 추가 (항상 추가하여 정확한 크기 보장)
+              const finalSvgData = svgData.replace(
+                /<svg([^>]*)>/,
+                (match, attrs) => {
+                  // 기존 width, height 제거
+                  let newAttrs = attrs.replace(/\s*width\s*=\s*["'][^"']*["']/gi, '');
+                  newAttrs = newAttrs.replace(/\s*height\s*=\s*["'][^"']*["']/gi, '');
+                  // 새로운 width, height 추가
+                  return `<svg${newAttrs} width="${actualWidth}" height="${actualHeight}">`;
+                }
+              );
+              
+              const svgBlob = new Blob([finalSvgData], { type: 'image/svg+xml;charset=utf-8' });
+              const svgUrl = URL.createObjectURL(svgBlob);
+              
+              const img = new Image();
+              img.onload = () => {
+                try {
+                  // 고해상도 캔버스 생성 (scale 2)
+                  const scale = 2;
+                  // 이미지의 실제 크기 사용 (SVG가 로드된 후의 실제 크기)
+                  const imgWidth = img.naturalWidth || actualWidth;
+                  const imgHeight = img.naturalHeight || actualHeight;
+                  
+                  const canvas = document.createElement('canvas');
+                  canvas.width = imgWidth * scale;
+                  canvas.height = imgHeight * scale;
+                  const ctx = canvas.getContext('2d');
+                  
+                  if (ctx) {
+                    // 배경색 설정
+                    ctx.fillStyle = isDark ? '#1F2937' : '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    // SVG 이미지 그리기 (고해상도, 원본 크기 유지)
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    
+                    // 다운로드
+                    const link = document.createElement('a');
+                    const filename = `UMAP_차트_${new Date().toISOString().split('T')[0]}.png`;
+                    link.download = filename;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                    
+                    URL.revokeObjectURL(svgUrl);
+                    toast.success('PNG 파일이 다운로드되었습니다');
+                  }
+                } catch (err) {
+                  console.error('SVG to PNG conversion error:', err);
+                  URL.revokeObjectURL(svgUrl);
+                  fallbackToHtml2Canvas(element);
+                }
+              };
+              
+              img.onerror = () => {
+                // SVG 변환 실패 시 html2canvas로 폴백
+                URL.revokeObjectURL(svgUrl);
+                fallbackToHtml2Canvas(element);
+              };
+              
+              img.src = svgUrl;
+            } else {
+              // SVG가 없으면 html2canvas 사용
+              await fallbackToHtml2Canvas(element);
+            }
+            
+            // html2canvas 폴백 함수
+            async function fallbackToHtml2Canvas(el: HTMLElement) {
+              const html2canvas = (await import('html2canvas')).default;
+              const canvas = await html2canvas(el, {
+                backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                foreignObjectRendering: false,
+              });
+              
+              const link = document.createElement('a');
+              const filename = `UMAP_차트_${new Date().toISOString().split('T')[0]}.png`;
+              link.download = filename;
+              link.href = canvas.toDataURL('image/png');
+              link.click();
+              toast.success('PNG 파일이 다운로드되었습니다');
+            }
           } catch (error) {
             console.error('UMAP PNG export error:', error);
             toast.error(`PNG 내보내기 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`);

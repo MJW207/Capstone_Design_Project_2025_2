@@ -513,7 +513,28 @@ export function ComparePage() {
     document.body.removeChild(link);
   };
 
-  const downloadPNG = async () => {
+  // 현재 활성화된 차트 ID 찾기
+  const getCurrentActiveChartId = (): string | null => {
+    // DOM에서 현재 표시된 차트 찾기
+    const charts = ['radar', 'heatmap', 'stacked', 'index'];
+    for (const chartId of charts) {
+      const element = document.querySelector(`[data-chart-id="${chartId}"]`) as HTMLElement | null;
+      if (element && element.offsetParent !== null) {
+        // 요소가 표시되어 있으면 (display: none이 아니면)
+        return chartId;
+      }
+    }
+    return null;
+  };
+
+  // 현재 활성화된 차트만 PNG로 내보내기
+  const downloadChartPNG = async (chartId?: string) => {
+    // chartId가 없으면 현재 활성화된 차트 찾기
+    const activeChartId = chartId || getCurrentActiveChartId();
+    if (!activeChartId) {
+      toast.error('내보낼 차트를 찾을 수 없습니다.');
+      return;
+    }
     try {
       // 그룹이 선택되지 않은 경우 체크
       if (!selectedGroupA || !selectedGroupB || !comparisonData) {
@@ -523,138 +544,208 @@ export function ComparePage() {
 
       toast.info('PNG 생성 중...', { duration: 3000 });
 
-      // 여러 선택자로 차트 컨테이너 찾기
-      let element: HTMLElement | null = null;
+      // data-chart-id로 차트 요소 찾기
+      const element = document.querySelector(`[data-chart-id="${activeChartId}"]`) as HTMLElement | null;
       
-      // 방법 1: data-comparison-view 속성으로 찾기
-      element = document.querySelector('[data-comparison-view]') as HTMLElement;
-      
-      // 방법 2: PIComparisonView의 루트 요소 찾기 (space-y-6 클래스)
       if (!element) {
-        const comparisonViews = document.querySelectorAll('.space-y-6');
-        for (const view of comparisonViews) {
-          // PIComparisonView는 animate-in fade-in duration-500 클래스를 가짐
-          if (view.querySelector('.animate-in.fade-in')) {
-            element = view as HTMLElement;
-            break;
-          }
-        }
-      }
-      
-      // 방법 3: 비교 분석 섹션 전체 찾기 (col-span-12)
-      if (!element) {
-        const sections = document.querySelectorAll('.grid.grid-cols-12.gap-6');
-        for (const section of sections) {
-          const col12 = section.querySelector('.col-span-12');
-          if (col12 && (col12.querySelector('[data-comparison-view]') || col12.querySelector('.space-y-6'))) {
-            element = col12 as HTMLElement;
-            break;
-          }
-        }
-      }
-      
-      // 방법 4: PIComparisonTabs가 있는 요소 찾기
-      if (!element) {
-        const tabsElement = document.querySelector('[role="tablist"]');
-        if (tabsElement && tabsElement.parentElement) {
-          // 탭의 부모 요소에서 비교 뷰 찾기
-          let parent: HTMLElement | null = tabsElement.parentElement as HTMLElement;
-          while (parent && parent !== document.body) {
-            if (parent.querySelector('.space-y-6')) {
-              element = parent;
-              break;
-            }
-            parent = parent.parentElement as HTMLElement | null;
-          }
-        }
-      }
-
-      if (!element) {
-        console.error('차트 컨테이너를 찾을 수 없습니다. 사용 가능한 요소:', {
-          dataComparisonView: document.querySelector('[data-comparison-view]'),
-          spaceY6: document.querySelector('.space-y-6'),
-          gridCols12: document.querySelector('.grid.grid-cols-12.gap-6'),
-        });
-        toast.error('내보낼 차트를 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해주세요.');
+        toast.error('내보낼 차트를 찾을 수 없습니다.');
         return;
       }
 
-      // html2canvas 동적 import
+      // 요소의 실제 크기 확인
+      const rect = element.getBoundingClientRect();
+      const elementWidth = rect.width || element.scrollWidth || element.offsetWidth;
+      const elementHeight = rect.height || element.scrollHeight || element.offsetHeight;
+
+      // 크기가 0이면 에러 처리
+      if (elementWidth === 0 || elementHeight === 0) {
+        console.error('요소의 크기가 0입니다:', { elementWidth, elementHeight, rect });
+        toast.error('차트가 아직 완전히 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+        return;
+      }
+
+      // html2canvas 사용
       const html2canvas = (await import('html2canvas')).default;
 
-      // html2canvas가 oklch() 같은 최신 CSS 함수를 지원하지 않으므로
-      // 캡처 전에 DOM을 복제하고 색상을 변환
       const canvas = await html2canvas(element, {
         backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
-        scale: 2, // 고해상도
+        scale: 2,
         useCORS: true,
         allowTaint: true,
         logging: false,
-        width: element.scrollWidth || element.offsetWidth,
-        height: element.scrollHeight || element.offsetHeight,
+        foreignObjectRendering: false,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: element.scrollWidth || element.offsetWidth,
-        windowHeight: element.scrollHeight || element.offsetHeight,
+        ignoreElements: (element) => {
+          if (element.tagName === 'CANVAS') return true;
+          if (element.tagName === 'PATTERN') return true;
+          if (element instanceof SVGElement && element.tagName === 'pattern') return true;
+          return false;
+        },
         onclone: (clonedDoc) => {
-          // html2canvas가 oklch()를 지원하지 않으므로 CSS 변수와 스타일을 변환
+          // 1. 패턴 요소 전역 제거 (createPattern 오류 방지) - 최우선 처리
+          const allPatterns = clonedDoc.querySelectorAll('pattern');
+          const allPatternIds = new Set<string>();
+          allPatterns.forEach((pattern) => {
+            const id = pattern.getAttribute('id');
+            if (id) allPatternIds.add(id);
+            pattern.remove();
+          });
           
-          // 1. 스타일 태그 내의 oklch() 찾아서 변환
-          const styleSheets = clonedDoc.querySelectorAll('style');
-          styleSheets.forEach((style) => {
-            if (style.textContent && style.textContent.includes('oklch')) {
-              // oklch()를 rgb()로 대체 (더 정확한 변환)
-              style.textContent = style.textContent.replace(
-                /oklch\(([^)]+)\)/g,
-                (_match, params) => {
-                  // oklch 파라미터 파싱 (L C H 형식)
-                  const parts = params.trim().split(/\s+/);
-                  const L = parseFloat(parts[0]) || 0.5; // Lightness (0-1)
-                  
-                  // 간단한 oklch -> rgb 변환 (대략적)
-                  // 실제로는 더 복잡한 변환이 필요하지만, html2canvas가 작동하도록 기본값 사용
-                  if (isDark) {
-                    // 다크 모드: 어두운 색상
-                    if (L > 0.7) return 'rgb(249, 250, 251)'; // 밝은 텍스트
-                    if (L > 0.5) return 'rgb(209, 213, 219)'; // 중간 텍스트
-                    if (L > 0.3) return 'rgb(156, 163, 175)'; // 어두운 텍스트
-                    return 'rgb(31, 41, 55)'; // 배경
-                  } else {
-                    // 라이트 모드: 밝은 색상
-                    if (L > 0.7) return 'rgb(255, 255, 255)'; // 배경
-                    if (L > 0.5) return 'rgb(148, 163, 184)'; // 중간 텍스트
-                    if (L > 0.3) return 'rgb(100, 116, 139)'; // 어두운 텍스트
-                    return 'rgb(15, 23, 42)'; // 매우 어두운 텍스트
+          // 2. 모든 url(#...) 참조 및 linear-gradient를 찾아서 제거 (더 강력한 접근)
+          const allElements = clonedDoc.querySelectorAll('*');
+          allElements.forEach((el) => {
+            const element = el as HTMLElement | SVGElement;
+            
+            // fill 속성 - 모든 url(#...) 참조를 확인
+            const fill = element.getAttribute('fill');
+            if (fill && fill.includes('url(#')) {
+              // 패턴이든 아니든 일단 단색으로 변경 (안전)
+              element.setAttribute('fill', isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)');
+            }
+            
+            // stroke 속성
+            const stroke = element.getAttribute('stroke');
+            if (stroke && stroke.includes('url(#')) {
+              element.setAttribute('stroke', isDark ? 'rgba(255, 255, 255, 0.1)' : '#E5E7EB');
+            }
+            
+            // style 속성 (인라인 스타일) - 모든 url(#...) 및 linear-gradient 제거
+            const styleAttr = element.getAttribute('style');
+            if (styleAttr) {
+              let newStyle = styleAttr;
+              
+              // url(#...) 제거
+              if (newStyle.includes('url(#')) {
+                newStyle = newStyle.replace(/url\(#[^)]+\)/gi, (match) => {
+                  // 패턴 ID인지 확인
+                  const matchId = match.match(/url\(#([^)]+)\)/);
+                  if (matchId && allPatternIds.has(matchId[1])) {
+                    return isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)';
                   }
-                }
-              );
+                  // 패턴이 아니어도 안전을 위해 제거
+                  return isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)';
+                });
+              }
+              
+              // linear-gradient 제거 (createPattern 오류 방지)
+              if (newStyle.includes('linear-gradient')) {
+                newStyle = newStyle.replace(/linear-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              // radial-gradient 제거
+              if (newStyle.includes('radial-gradient')) {
+                newStyle = newStyle.replace(/radial-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              if (newStyle !== styleAttr) {
+                element.setAttribute('style', newStyle);
+              }
             }
           });
           
-          // 2. 모든 요소의 인라인 스타일에서 oklch() 변환
-          const allElements = clonedDoc.querySelectorAll('*');
-          allElements.forEach((el) => {
-            const htmlEl = el as HTMLElement;
-            
-            // 인라인 스타일이 있고 oklch가 포함되어 있으면 변환
-            if (htmlEl.style.cssText && htmlEl.style.cssText.includes('oklch')) {
-              htmlEl.style.cssText = htmlEl.style.cssText.replace(
-                /oklch\([^)]+\)/g,
-                () => {
-                  if (isDark) {
-                    return 'rgb(31, 41, 55)';
-                  } else {
-                    return 'rgb(255, 255, 255)';
+          // 3. CSS 스타일에서 패턴 참조, gradient 및 oklch 제거
+          const styleSheets = clonedDoc.querySelectorAll('style');
+          styleSheets.forEach((style) => {
+            if (style.textContent) {
+              let newContent = style.textContent;
+              
+              // oklch() 변환
+              if (newContent.includes('oklch')) {
+                newContent = newContent.replace(
+                  /oklch\(([^)]+)\)/g,
+                  (_match, params) => {
+                    const parts = params.trim().split(/\s+/);
+                    const L = parseFloat(parts[0]) || 0.5;
+                    if (isDark) {
+                      if (L > 0.7) return 'rgb(249, 250, 251)';
+                      if (L > 0.5) return 'rgb(209, 213, 219)';
+                      if (L > 0.3) return 'rgb(156, 163, 175)';
+                      return 'rgb(31, 41, 55)';
+                    } else {
+                      if (L > 0.7) return 'rgb(255, 255, 255)';
+                      if (L > 0.5) return 'rgb(148, 163, 184)';
+                      if (L > 0.3) return 'rgb(100, 116, 139)';
+                      return 'rgb(15, 23, 42)';
+                    }
                   }
-                }
+                );
+              }
+              
+              // 모든 url(#...) 참조 제거 (패턴이든 아니든)
+              newContent = newContent.replace(/url\(#[^)]+\)/gi, isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)');
+              
+              // linear-gradient 제거 (createPattern 오류 방지)
+              if (newContent.includes('linear-gradient')) {
+                newContent = newContent.replace(/linear-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              // radial-gradient 제거
+              if (newContent.includes('radial-gradient')) {
+                newContent = newContent.replace(/radial-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              if (newContent !== style.textContent) {
+                style.textContent = newContent;
+              }
+            }
+          });
+          
+          // 4. 인라인 스타일의 oklch() 변환
+          const elementsWithOklch = clonedDoc.querySelectorAll('[style*="oklch"]');
+          const maxElementsToProcess = 1000;
+          for (let i = 0; i < Math.min(elementsWithOklch.length, maxElementsToProcess); i++) {
+            const el = elementsWithOklch[i] as HTMLElement;
+            if (el.closest('svg')) continue;
+            
+            if (el.style.cssText && el.style.cssText.includes('oklch')) {
+              el.style.cssText = el.style.cssText.replace(
+                /oklch\([^)]+\)/g,
+                () => isDark ? 'rgb(31, 41, 55)' : 'rgb(255, 255, 255)'
               );
+            }
+          }
+          
+          // 5. Canvas 요소 확인 및 수정
+          const canvases = clonedDoc.querySelectorAll('canvas');
+          canvases.forEach((c) => {
+            const canvas = c as HTMLCanvasElement;
+            if (canvas.width === 0 || canvas.height === 0) {
+              canvas.width = canvas.clientWidth || 1;
+              canvas.height = canvas.clientHeight || 1;
+            }
+          });
+          
+          // 6. SVG 요소들의 크기 확인 및 수정
+          const svgs = clonedDoc.querySelectorAll('svg');
+          svgs.forEach((svg) => {
+            const svgEl = svg as SVGSVGElement;
+            const viewBox = svgEl.getAttribute('viewBox');
+            let width = svgEl.getAttribute('width');
+            let height = svgEl.getAttribute('height');
+            
+            if (!width || width === '0' || !height || height === '0') {
+              if (viewBox) {
+                const parts = viewBox.split(' ').map(Number);
+                if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
+                  width = String(parts[2]);
+                  height = String(parts[3]);
+                  svgEl.setAttribute('width', width);
+                  svgEl.setAttribute('height', height);
+                }
+              } else {
+                width = '800';
+                height = '600';
+                svgEl.setAttribute('width', width);
+                svgEl.setAttribute('height', height);
+              }
             }
           });
         },
       });
 
       const link = document.createElement('a');
-      const filename = `비교분석_${selectedGroupA.label}_vs_${selectedGroupB.label}_${new Date().toISOString().split('T')[0]}.png`;
+      const filename = `${activeChartId}_${selectedGroupA.label}_vs_${selectedGroupB.label}_${new Date().toISOString().split('T')[0]}.png`;
       link.download = filename;
       link.href = canvas.toDataURL('image/png');
       link.click();
@@ -853,7 +944,7 @@ export function ComparePage() {
             <PIButton 
               variant="ghost" 
               size="small"
-              onClick={downloadPNG}
+              onClick={() => downloadChartPNG()}
             >
               <Image className="w-4 h-4 mr-1" />
               PNG
@@ -1349,7 +1440,7 @@ export function ComparePage() {
             <PIButton 
               variant="primary" 
               size="small"
-              onClick={downloadPNG}
+              onClick={() => downloadChartPNG()}
             >
               <Download className="w-4 h-4 mr-1" />
               PNG

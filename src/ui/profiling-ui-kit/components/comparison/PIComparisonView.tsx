@@ -154,42 +154,50 @@ export function PIComparisonView({ data }: PIComparisonViewProps) {
         style={{ animationDelay: '200ms' }}
       >
         {activeChart === 'radar' && (
-          <PIRadarChart
-            data={filteredRadarData}
-            groupALabel={clusterLabels[0]}
-            groupBLabel={clusterLabels[1]}
-            maxFeatures={selectedRadarFeatures.length || 8}
-            showOnlyMeaningful={showOnlyMeaningful}
-            clusterAId={data.group_a.id}
-            clusterBId={data.group_b.id}
-          />
+          <div data-chart-id="radar">
+            <PIRadarChart
+              data={filteredRadarData}
+              groupALabel={clusterLabels[0]}
+              groupBLabel={clusterLabels[1]}
+              maxFeatures={selectedRadarFeatures.length || 8}
+              showOnlyMeaningful={showOnlyMeaningful}
+              clusterAId={data.group_a.id}
+              clusterBId={data.group_b.id}
+            />
+          </div>
         )}
 
         {activeChart === 'heatmap' && (
-          <PIBinaryHeatmap
-            data={filteredHeatmapData}
-            clusterLabels={clusterLabels}
-            maxFeatures={selectedHeatmapFeatures.length || 12}
-            showOnlyMeaningful={showOnlyMeaningful}
-          />
+          <div data-chart-id="heatmap">
+            <PIBinaryHeatmap
+              data={filteredHeatmapData}
+              clusterLabels={clusterLabels}
+              maxFeatures={selectedHeatmapFeatures.length || 12}
+              showOnlyMeaningful={showOnlyMeaningful}
+            />
+          </div>
         )}
 
         {activeChart === 'stacked' && (
-          <PIStackedBarChart
-            data={filteredStackedData}
-            clusterLabels={clusterLabels}
-          />
+          <div data-chart-id="stacked">
+            <PIStackedBarChart
+              data={filteredStackedData}
+              clusterLabels={clusterLabels}
+            />
+          </div>
         )}
 
         {activeChart === 'index' && (
-          <PIIndexDotPlot
-            data={filteredIndexData}
-            clusterLabels={clusterLabels}
-            baselineValue={0.5}
-            maxFeatures={selectedIndexFeatures.length || 10}
-            showOnlyMeaningful={showOnlyMeaningful}
-            hasSelectedFeatures={selectedIndexFeatures.length > 0}
-          />
+          <div data-chart-id="index">
+            <PIIndexDotPlot
+              data={filteredIndexData}
+              clusterLabels={clusterLabels}
+              baselineValue={0.5}
+              maxFeatures={selectedIndexFeatures.length || 10}
+              showOnlyMeaningful={showOnlyMeaningful}
+              hasSelectedFeatures={selectedIndexFeatures.length > 0}
+            />
+          </div>
         )}
       </div>
 

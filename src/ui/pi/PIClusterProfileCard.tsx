@@ -102,7 +102,14 @@ export function PIClusterProfileCard({
       <div className="flex-1 p-5 space-y-4">
         {/* Tags */}
         <div>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: colors.text.secondary, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ 
+            fontSize: '11px', 
+            fontWeight: 600, 
+            color: isDark ? colors.text.primary : colors.text.secondary, 
+            marginBottom: '8px', 
+            textTransform: 'uppercase', 
+            letterSpacing: '0.05em' 
+          }}>
             주요 특성
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -116,7 +123,14 @@ export function PIClusterProfileCard({
 
         {/* Snippets */}
         <div>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: colors.text.secondary, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ 
+            fontSize: '11px', 
+            fontWeight: 600, 
+            color: isDark ? colors.text.primary : colors.text.secondary, 
+            marginBottom: '8px', 
+            textTransform: 'uppercase', 
+            letterSpacing: '0.05em' 
+          }}>
             대표 인사이트
           </div>
           <div className="space-y-2">
@@ -133,7 +147,12 @@ export function PIClusterProfileCard({
                     : '1px solid rgba(17, 24, 39, 0.06)',
                 }}
               >
-                <p style={{ fontSize: '11px', fontWeight: 400, color: colors.text.secondary, lineHeight: '1.4' }}>
+                <p style={{ 
+                  fontSize: '11px', 
+                  fontWeight: 400, 
+                  color: isDark ? colors.text.primary : colors.text.secondary, 
+                  lineHeight: '1.4' 
+                }}>
                   - {snippet}
                 </p>
               </div>

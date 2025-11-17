@@ -11,6 +11,8 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 - [주요 컴포넌트](#주요-컴포넌트)
 - [API 엔드포인트](#api-엔드포인트)
 - [비교 분석 기능](#비교-분석-기능)
+- [ChromaDB 검색 프로세스](#chromadb-검색-프로세스)
+- [클러스터링 방법론](#클러스터링-방법론)
 - [문제 해결](#문제-해결)
 - [개발 가이드](#개발-가이드)
 
@@ -30,7 +32,35 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 ### 📊 클러스터링 및 시각화
 
 - **사전 클러스터링 기반 분석**: 사전에 전처리한 데이터로 사전 클러스터링을 수행한 뒤, 검색 결과로 나온 패널들이 UMAP 상에서 어디에 위치하는지 파악하는 방식으로 군집 분석을 수행합니다.
-- **UMAP 시각화**: 사전 클러스터링된 패널들의 2D 공간상 위치를 interactive하게 시각화
+- **HDBSCAN 밀도 기반 클러스터링**: 
+  * **알고리즘**: HDBSCAN (Hierarchical Density-Based Spatial Clustering of Applications with Noise)
+  * **참고 논문**: McInnes, L., Healy, J., & Astels, S. (2017). HDBSCAN: Hierarchical density based clustering. Journal of Open Source Software, 2(11), 205.
+  * **최적 파라미터**: 
+    - `min_cluster_size`: 50 (최소 클러스터 크기)
+    - `min_samples`: 50 (최소 샘플 수)
+    - `metric`: euclidean (유클리드 거리)
+    - `cluster_selection_method`: eom (Excess of Mass)
+  * **성능 지표**: 
+    - Silhouette Score: 0.6014 (K-Means 대비 +96.5% 향상)
+    - Davies-Bouldin Index: 0.6872 (낮을수록 좋음)
+    - Calinski-Harabasz Index: 6385.79
+    - 클러스터 수: 19개 (자동 결정)
+    - 노이즈 포인트: 0.3% (매우 낮음)
+- **데이터 전처리 과정**:
+  1. **생애주기 분류**: 연령과 자녀 유무를 기반으로 6단계 분류 (Young Singles, DINK, Young Parents, Mature Parents, Middle Age, Seniors)
+  2. **소득 계층 분류**: 소득을 3분위로 분류 (Low, Mid, High)
+  3. **초기 세그먼트 생성**: 생애주기 × 소득 계층 = 18개 조합
+  4. **원-핫 인코딩**: 18개 세그먼트를 원-핫 벡터로 변환
+  5. **추가 피처 결합**: 연령, 소득, 교육 수준, 프리미엄 지수 등 6개 연속형 변수 추가
+  6. **표준화**: StandardScaler를 사용하여 모든 피처를 표준화 (평균 0, 표준편차 1)
+- **UMAP 차원 축소**: 
+  * **목적**: 고차원 클러스터링 결과를 2D 공간으로 시각화
+  * **파라미터**: 
+    - `n_components`: 2
+    - `n_neighbors`: 15
+    - `min_dist`: 0.1
+    - `metric`: cosine
+  * **참고 논문**: McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. arXiv preprint arXiv:1802.03426.
 - **클러스터 프로필**: tag와 characteristic을 포함한 각 cluster의 상세 분석
 - **품질 지표**: silhouette score, Calinski-Harabasz index, Davies-Bouldin index
 - **클러스터 필터링**: 특정 클러스터만 선택하여 분석
@@ -413,6 +443,134 @@ Panel Insight은 ChromaDB를 활용한 의미 기반 벡터 검색 시스템을 
 ### 데이터베이스 요구사항
 - **PostgreSQL 12+** (관계형 데이터 저장용)
 - **ChromaDB** (벡터 검색용, 로컬 파일 시스템)
+
+## 클러스터링 방법론
+
+### 개요
+
+Panel Insight은 HDBSCAN (Hierarchical Density-Based Spatial Clustering of Applications with Noise) 알고리즘을 사용하여 패널 데이터를 클러스터링합니다. 이 방법은 밀도 기반 클러스터링으로, 클러스터 수를 사전에 지정하지 않고 데이터의 자연스러운 밀도 분포를 기반으로 자동으로 클러스터를 발견합니다.
+
+### 알고리즘 선택 배경
+
+**참고 논문**: McInnes, L., Healy, J., & Astels, S. (2017). HDBSCAN: Hierarchical density based clustering. Journal of Open Source Software, 2(11), 205.
+
+**선택 이유**:
+1. **자동 클러스터 수 결정**: K-Means와 달리 클러스터 수를 사전에 지정할 필요가 없어 데이터의 자연스러운 구조를 포착
+2. **노이즈 포인트 식별**: 어떤 클러스터에도 속하지 않는 이상치를 자동으로 식별하여 클러스터 품질 향상
+3. **불규칙한 형태 포착**: 밀도 기반 클러스터링으로 구형이 아닌 불규칙한 형태의 클러스터도 포착 가능
+4. **최고 성능**: K-Means 대비 Silhouette Score +96.5% 향상 (0.3061 → 0.6014)
+
+### 데이터 전처리 파이프라인
+
+#### 1단계: 생애주기 분류
+- **입력**: 연령(`age`), 자녀 유무(`has_children`)
+- **분류 기준**:
+  - 연령 < 30: Young Singles (젊은 싱글)
+  - 30 ≤ 연령 < 45, 자녀 없음: DINK (딩크족)
+  - 30 ≤ 연령 < 45, 자녀 있음: Young Parents (젊은 부모)
+  - 45 ≤ 연령 < 60, 자녀 있음: Mature Parents (중년 부모)
+  - 45 ≤ 연령 < 60, 자녀 없음: Middle Age (중년)
+  - 연령 ≥ 60: Seniors (시니어)
+- **출력**: 6개 생애주기 단계
+
+#### 2단계: 소득 계층 분류
+- **입력**: 표준화된 소득(`Q6_scaled`)
+- **방법**: 3분위 분류 (Quantile-based)
+- **출력**: Low, Mid, High 3개 계층
+
+#### 3단계: 초기 세그먼트 생성
+- **조합**: 생애주기(6) × 소득 계층(3) = 18개 세그먼트
+- **예시**: `1_low` (젊은 싱글 저소득), `2_high` (딩크족 고소득) 등
+
+#### 4단계: 원-핫 인코딩
+- **방법**: `sklearn.preprocessing.OneHotEncoder` 사용
+- **출력**: 18차원 원-핫 벡터
+
+#### 5단계: 추가 피처 결합
+- **연속형 변수 6개**:
+  1. `age_scaled`: 표준화된 연령
+  2. `Q6_scaled`: 표준화된 소득
+  3. `education_level_scaled`: 표준화된 교육 수준
+  4. `Q8_count_scaled`: 표준화된 제품 구매 수
+  5. `Q8_premium_index`: 프리미엄 지수 (0~1)
+  6. `is_premium_car`: 프리미엄 차량 보유 여부 (0/1)
+- **최종 피처 수**: 18 (세그먼트) + 6 (추가) = 24차원
+
+#### 6단계: 표준화
+- **방법**: `sklearn.preprocessing.StandardScaler`
+- **목적**: 모든 피처를 평균 0, 표준편차 1로 정규화하여 스케일 차이 제거
+
+### HDBSCAN 클러스터링
+
+#### 최적 파라미터
+```python
+hdbscan.HDBSCAN(
+    min_cluster_size=50,      # 최소 클러스터 크기
+    min_samples=50,           # 최소 샘플 수
+    metric='euclidean',       # 유클리드 거리
+    cluster_selection_method='eom'  # Excess of Mass 방법
+)
+```
+
+#### 파라미터 설명
+- **`min_cluster_size`**: 클러스터로 인정받기 위한 최소 포인트 수. 너무 작으면 노이즈가 많아지고, 너무 크면 클러스터 수가 줄어듭니다.
+- **`min_samples`**: 밀도 계산 시 고려할 최소 이웃 수. `min_cluster_size`와 동일하게 설정하여 일관성 유지.
+- **`metric`**: 거리 측정 방법. 유클리드 거리를 사용하여 표준화된 데이터에 적합.
+- **`cluster_selection_method`**: 'eom' (Excess of Mass) 방법으로 클러스터를 선택하여 안정적인 결과를 얻습니다.
+
+#### 클러스터링 결과
+- **클러스터 수**: 19개 (자동 결정)
+- **노이즈 포인트**: 60명 (0.3%)
+- **성능 지표**:
+  - Silhouette Score: **0.6014** 
+  - Davies-Bouldin Index: **0.6872** 
+  - Calinski-Harabasz Index: **6385.79**
+
+### UMAP 차원 축소
+
+**참고 논문**: McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. arXiv preprint arXiv:1802.03426.
+
+#### 목적
+고차원 클러스터링 결과(24차원)를 2D 공간으로 시각화하여 사용자가 인터랙티브하게 클러스터를 탐색할 수 있도록 합니다.
+
+#### 파라미터
+```python
+umap.UMAP(
+    n_components=2,      # 2차원으로 축소
+    n_neighbors=15,      # 지역 구조를 결정하는 이웃 수
+    min_dist=0.1,        # 포인트 간 최소 거리 (클러스터 밀도 조절)
+    metric='cosine',      # 코사인 유사도 사용
+    random_state=42       # 재현성을 위한 시드
+)
+```
+
+#### 출력
+- **UMAP 좌표**: 각 패널의 2D 좌표 (`umap_x`, `umap_y`)
+- **시각화**: 클러스터별 색상으로 구분된 인터랙티브 차트
+
+### 성능 평가
+
+#### K-Means와 비교
+
+| 방법 | 클러스터 수 | Silhouette Score | Davies-Bouldin Index | 평가 |
+|------|------------|------------------|---------------------|------|
+| **K-Means (k=8)** | 8 | 0.3061 | 1.7035 | 기준 |
+| **K-Means (k=16)** | 16 | 0.5423 | 1.0613 | +77.2% |
+| **HDBSCAN** | **19** | **0.6014** | **0.6872** | **+96.5%** ⭐ |
+
+**결론**: HDBSCAN이 모든 평가 지표에서 최고 성능을 달성했습니다.
+
+#### 클러스터 품질
+- **명확한 구분**: 생애주기와 소득 계층별로 명확하게 구분됨
+- **균형도**: 클러스터 크기가 다양하게 분포 (최소 1.3% ~ 최대 17.4%)
+- **낮은 노이즈**: 0.3%의 노이즈 포인트로 안정적인 결과
+
+### 구현 위치
+
+- **클러스터링 스크립트**: `server/app/clustering/flc_income_hdbscan_analysis.py`
+- **API 엔드포인트**: `GET /api/precomputed/clusters`
+- **사전 계산 데이터**: `clustering_data/data/precomputed/`
+- **상세 분석 보고서**: `docs/server/scripts/HDBSCAN_CLUSTERING_ANALYSIS.md`
 
 ## 문제 해결
 

@@ -18,10 +18,10 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 
 ### 🔍 검색 및 분석
 
-- **의미 기반 벡터 검색**: HuggingFace Sentence-Transformers를 활용한 임베딩 기반 검색
-  * 자연어 쿼리를 768차원 벡터로 변환
-  * ChromaDB와 pgvector를 통한 코사인 유사도 검색
-  * 유사도 0.9 이상 결과만 필터링
+- **의미 기반 벡터 검색**: ChromaDB와 Upstage Embeddings를 활용한 임베딩 기반 검색
+  * 자연어 쿼리를 벡터로 변환하여 의미 기반 검색
+  * ChromaDB를 통한 코사인 유사도 검색
+  * 단계적 필터링 및 메타데이터 기반 검색
 - **고급 필터링**: 나이, 성별, 지역, 소득 등 다중 필터 조합
 - **실시간 결과**: pagination과 result count를 포함한 live search
 - **패널 상세정보**: 실제 데이터 기반 상세 정보 표시 (태그, 근거, 응답이력)
@@ -83,15 +83,17 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 ### Backend
 
 - **FastAPI** with Python 3.13
-- **PostgreSQL** with **pgvector** extension (벡터 데이터베이스)
+- **PostgreSQL** (관계형 데이터베이스)
 - **ChromaDB** 벡터 검색 엔진
-- **HuggingFace Sentence-Transformers** (임베딩 생성)
-  * 모델: `intfloat/multilingual-e5-base` (768차원)
+- **Upstage Embeddings** (임베딩 생성)
+  * 모델: `solar-embedding-1-large`
+- **LangChain Chroma** ChromaDB 통합
 - **SQLAlchemy** (비동기 ORM)
 - **NumPy & SciPy** 수치 계산
 - **Scikit-learn** 머신러닝
 - **HDBSCAN** 밀도 기반 클러스터링
 - **UMAP** 차원 축소
+- **Anthropic Claude** (메타데이터 추출 및 카테고리 분류)
 
 ## 🚀 빠른 시작
 
@@ -99,8 +101,9 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 
 - **Node.js 18+** 
 - **Python 3.13+**
-- **PostgreSQL 12+** with pgvector extension
+- **PostgreSQL 12+**
 - **npm** 또는 **yarn**
+- **ChromaDB** (로컬 파일 시스템 기반)
 
 ### 설치
 
@@ -129,13 +132,14 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
    # 데이터베이스 연결
    DATABASE_URL=postgresql://user:password@host:port/database
    
-   # 임베딩 설정
-   EMBEDDING_PROVIDER=hf
-   EMBEDDING_MODEL=intfloat/multilingual-e5-base
-   EMBEDDING_DIMENSION=768
+   # ChromaDB 설정
+   CHROMA_BASE_DIR=./Chroma_db
    
-   # Anthropic API (선택사항 - 메타데이터 추출용)
-   ANTHROPIC_API_KEY=your_api_key_here
+   # 임베딩 설정 (Upstage)
+   UPSTAGE_API_KEY=your_upstage_api_key_here
+   
+   # Anthropic API (메타데이터 추출 및 카테고리 분류용)
+   ANTHROPIC_API_KEY=your_anthropic_api_key_here
    ```
 
 ### 애플리케이션 실행
@@ -343,26 +347,72 @@ panel-insight/
   * 수도권: 서울특별시, 경기도
   * 프리미엄 폰: 고가 스마트폰 정의
 
-## 벡터 검색 시스템
+## ChromaDB 검색 프로세스
 
-### 작동 방식
-1. **쿼리 입력**: 사용자가 자연어로 검색어 입력 (예: "서울 거주 20대 여성")
-2. **임베딩 생성**: HuggingFace Sentence-Transformers가 쿼리를 768차원 벡터로 변환
-   - 자동으로 `query: ` 프롬프트 추가
-   - 정규화된 벡터 생성 (코사인 유사도 최적화)
-3. **벡터 검색**: ChromaDB와 pgvector를 사용하여 데이터베이스에서 유사한 임베딩 검색
-   - 코사인 거리 사용
-   - 유사도 = 1 - 거리
-   - 유사도 0.9 이상만 필터링
-4. **결과 조인**: 벡터 검색 결과를 RawData 테이블과 JOIN하여 상세 정보 반환
+### 개요
+
+Panel Insight은 ChromaDB를 활용한 의미 기반 벡터 검색 시스템을 구현했습니다. 자연어 쿼리를 단계적으로 처리하여 가장 관련성 높은 패널을 찾아냅니다.
+
+### 검색 파이프라인 (PanelSearchPipeline)
+
+검색 프로세스는 다음 5단계로 구성됩니다:
+
+#### 1단계: 메타데이터 추출
+- **목적**: 자연어 쿼리에서 구조화된 메타데이터 추출
+- **도구**: Anthropic Claude API
+- **추출 항목**: 나이, 성별, 지역, 소득, 직업, 학력 등
+- **예시**: "서울 거주 20대 여성" → `{age: "20대", gender: "여성", region: "서울"}`
+
+#### 2단계: 카테고리 분류
+- **목적**: 추출된 메타데이터를 사전 정의된 카테고리로 분류
+- **도구**: Anthropic Claude API + CategoryClassifier
+- **카테고리 예시**: 인구통계, IT기기, 보유제품, 기호품, 라이프스타일 등
+- **출력**: 카테고리별 메타데이터 매핑
+
+#### 2.5단계: 메타데이터 필터 추출
+- **목적**: 카테고리별로 필요한 메타데이터 필터 조건 추출
+- **도구**: MetadataFilterExtractor
+- **기능**: 복수 값 OR 조건 지원 (예: 지역=["서울", "경기"])
+
+#### 3단계: 자연어 텍스트 생성
+- **목적**: 카테고리별 메타데이터를 자연어 텍스트로 변환
+- **도구**: CategoryTextGenerator (Anthropic Claude)
+- **병렬 처리**: 여러 카테고리를 동시에 처리하여 성능 향상
+- **예시**: `{age: "20대", gender: "여성"}` → "20대 여성"
+
+#### 4단계: 임베딩 생성
+- **목적**: 자연어 텍스트를 벡터 임베딩으로 변환
+- **도구**: Upstage Embeddings API
+- **모델**: `solar-embedding-1-large`
+- **출력**: 카테고리별 벡터 임베딩
+
+#### 5단계: 단계적 필터링 검색
+- **목적**: ChromaDB에서 벡터 유사도 검색 및 메타데이터 필터링
+- **도구**: ChromaPanelSearcher + ResultFilter
+- **프로세스**:
+  1. 각 패널의 ChromaDB 컬렉션에서 카테고리별 벡터 검색
+  2. 메타데이터 필터 조건 적용 (완전 매칭 우선)
+  3. 부분 매칭 스코어 계산 (필터 조건 일치 비율)
+  4. 유사도 점수와 필터 매칭 점수를 결합하여 최종 점수 계산
+  5. 상위 top_k개 패널 반환
+
+### ChromaDB 구조
+
+- **저장 방식**: 로컬 파일 시스템 기반
+- **컬렉션 구조**: 패널별로 독립적인 컬렉션 (`panel_{mb_sn}`)
+- **문서 구조**: 카테고리별로 청크 단위로 저장
+- **메타데이터**: 각 문서에 패널 정보(나이, 성별, 지역 등) 포함
+
+### 검색 최적화
+
+- **캐싱**: 동일 쿼리에 대한 결과 캐싱으로 성능 향상
+- **병렬 처리**: 여러 카테고리 텍스트 생성 및 검색을 병렬로 처리
+- **단계적 필터링**: 완전 매칭 → 부분 매칭 → 유사도 순으로 필터링
+- **폴백 메커니즘**: 메타데이터 추출 실패 시 쿼리 텍스트를 직접 임베딩하여 검색
 
 ### 데이터베이스 요구사항
-- **PostgreSQL 12+** 
-- **pgvector 확장** 설치 필요
-  ```sql
-  CREATE EXTENSION IF NOT EXISTS vector;
-  ```
-- 벡터 타입 컬럼이 있는 테이블/뷰 필요
+- **PostgreSQL 12+** (관계형 데이터 저장용)
+- **ChromaDB** (벡터 검색용, 로컬 파일 시스템)
 
 ## 문제 해결
 

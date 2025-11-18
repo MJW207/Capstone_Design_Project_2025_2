@@ -24,13 +24,13 @@ class MetadataFilterExtractor:
             정규화된 메타데이터 필터 (복수 값 포함)
             예: {"지역": ["서울", "경기"], "연령대": ["10대", "20대"], "성별": "남", "결혼여부": "기혼"}
         """
-        # 카테고리별 메타데이터 매핑
-        # ⚠️ 주의: "직업", "소득"은 ChromaDB에 메타데이터로 저장되지 않았으므로 제외
-        # → 벡터 유사도 검색으로만 처리
+        # ⭐⭐⭐ Pinecone 실제 메타데이터 구조에 맞춘 카테고리별 매핑
+        # Pinecone 확인 결과:
+        #   - "인구" topic: 지역, 지역구, 연령대, 성별, 나이, 결혼여부, 자녀수, 가족수, 학력 (9개 필드)
+        #   - 기타 모든 topic: topic, index, mb_sn만 존재 (메타데이터 필터 사용 불가)
         CATEGORY_METADATA_MAPPING = {
             "기본정보": ["지역", "지역구", "연령대", "성별", "나이", "결혼여부", "자녀수", "가족수", "학력"],
-            "직업소득": ["학력"],  # ⭐ "직업", "소득" 제거 (벡터 검색으로만 처리)
-            "건강": ["활동", "운동"],
+            "직업소득": ["개인소득", "가구소득"],  # Pinecone에서 소득 필터 지원
         }
         
         applicable_keys = CATEGORY_METADATA_MAPPING.get(category, [])
@@ -141,6 +141,24 @@ class MetadataFilterExtractor:
                     # 문자열이면 int로 변환 시도
                     if isinstance(value, str) and value.isdigit():
                         value = int(value)
+                # 개인소득, 가구소득 범위 비교 로직 (Pinecone 필터 형식)
+                elif key in ["개인소득", "가구소득"]:
+                    import re
+                    logger.debug(f"   [DEBUG] 소득 처리: key={key}, value={value}, type={type(value)}")
+                    # value는 쿼리에서 추출된 값 (예: 300만원)
+                    # Pinecone 필터: {key_min: {$lte: 300}, key_max: {$gte: 300}}
+                    if isinstance(value, (int, float)):
+                        filter_dict[f"{key}_min"] = {"$lte": value}
+                        filter_dict[f"{key}_max"] = {"$gte": value}
+                        continue  # filter_dict[key] = value 실행 방지
+                    elif isinstance(value, str):
+                        # "300만원", "300" 등 처리
+                        match = re.search(r'(\d+)', str(value))
+                        if match:
+                            value_int = int(match.group(1))
+                            filter_dict[f"{key}_min"] = {"$lte": value_int}
+                            filter_dict[f"{key}_max"] = {"$gte": value_int}
+                            continue
                 
                 filter_dict[key] = value
         

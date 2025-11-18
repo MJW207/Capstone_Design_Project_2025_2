@@ -47,6 +47,7 @@ interface Panel {
   embedding?: number[];
   coverage?: 'qw' | 'w' | string;
   income?: string;
+  aiSummary?: string;
   metadata?: {
     결혼여부?: string;
     자녀수?: number;
@@ -1105,20 +1106,16 @@ export function ResultsPage({
                     <PIChip type="tag">{panel.region}</PIChip>
                   </div>
 
-                  {/* Response Snippets */}
-                  {panel.responses && (
+                  {/* AI 인사이트 */}
+                  {panel.aiSummary && (
                     <div className="pt-2 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
-                      <div className="space-y-2">
-                        {Object.entries(panel.responses).slice(0, 2).map(([key, value]) => (
-                          <div key={key} className="flex gap-2">
-                            <Quote className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--brand-blue-300)' }} />
-                            <div className="flex-1">
-                              <p className="text-xs italic line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
-                                {String(value)}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="flex gap-2">
+                        <Quote className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--brand-blue-300)' }} />
+                        <div className="flex-1">
+                          <p className="text-xs italic line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
+                            {panel.aiSummary}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}

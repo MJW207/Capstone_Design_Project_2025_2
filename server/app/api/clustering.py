@@ -1207,13 +1207,15 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
         
         # 클러스터 컬럼명 확인 (HDBSCAN 또는 일반)
         cluster_col = 'cluster_hdbscan' if 'cluster_hdbscan' in df_precomputed.columns else 'cluster'
+        has_cluster_col = cluster_col in df_precomputed.columns
         
         for _, row in df_precomputed.iterrows():
             panel_id = str(row[panel_id_col]).strip()
+            cluster_value = int(row[cluster_col]) if has_cluster_col else -1
             precomputed_panel_to_umap[panel_id] = {
                 'umap_x': float(row['umap_x']),
                 'umap_y': float(row['umap_y']),
-                'original_cluster': int(row[cluster_col])
+                'original_cluster': cluster_value
             }
         
         logger.info(f"[확장 클러스터링] UMAP 좌표 매핑 완료: {len(precomputed_panel_to_umap)}개 패널")
@@ -1297,33 +1299,42 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
             # 전체 precomputed 데이터 반환 (클러스터링 없이)
             logger.info(f"[전체 데이터 반환] precomputed UMAP 데이터 전체 반환")
             
+            # cluster 컬럼 존재 여부 확인
+            has_cluster_col = cluster_col in df_precomputed.columns
+            
             result_panels = []
             for _, row in df_precomputed.iterrows():
                 panel_id = str(row[panel_id_col]).strip()
                 is_search = panel_id.lower() in requested_set
                 
+                # cluster 값 (없으면 -1)
+                cluster_value = int(row[cluster_col]) if has_cluster_col else -1
+                
                 result_panels.append({
                     'panel_id': panel_id,
                     'umap_x': float(row['umap_x']),
                     'umap_y': float(row['umap_y']),
-                    'cluster': int(row['cluster']),  # 원본 클러스터 유지
+                    'cluster': cluster_value,
                     'is_search_result': bool(is_search),
-                    'original_cluster': int(row['cluster'])
+                    'original_cluster': cluster_value
                 })
             
-            # 원본 클러스터 통계
+            # 원본 클러스터 통계 (cluster 컬럼이 있을 때만)
             cluster_stats = {}
-            for cluster_id in df_precomputed['cluster'].unique():
-                cluster_mask = df_precomputed['cluster'] == cluster_id
-                cluster_panels = [p for p in result_panels if p['cluster'] == cluster_id]
-                search_count = sum(1 for p in cluster_panels if p['is_search_result'])
-                
-                cluster_stats[int(cluster_id)] = {
-                    'size': int(cluster_mask.sum()),
-                    'percentage': float(cluster_mask.sum() / len(df_precomputed) * 100),
-                    'search_count': search_count,
-                    'search_percentage': float(search_count / max(1, cluster_mask.sum()) * 100)
-                }
+            if has_cluster_col:
+                for cluster_id in df_precomputed[cluster_col].unique():
+                    cluster_mask = df_precomputed[cluster_col] == cluster_id
+                    cluster_panels = [p for p in result_panels if p['cluster'] == cluster_id]
+                    search_count = sum(1 for p in cluster_panels if p['is_search_result'])
+                    
+                    cluster_stats[int(cluster_id)] = {
+                        'size': int(cluster_mask.sum()),
+                        'percentage': float(cluster_mask.sum() / len(df_precomputed) * 100),
+                        'search_count': search_count,
+                        'search_percentage': float(search_count / max(1, cluster_mask.sum()) * 100)
+                    }
+            else:
+                logger.warning(f"[전체 데이터 반환] cluster 컬럼이 없어 클러스터 통계를 생성할 수 없습니다.")
             
             return {
                 'success': True,
@@ -1356,23 +1367,32 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
             search_panel_mb_sns.add(mb_sn)
         
         # Precomputed 데이터에서 검색된 패널이 속한 클러스터 찾기
+        has_cluster_col = cluster_col in df_precomputed.columns
         searched_cluster_ids = set()
-        for _, row in df_precomputed.iterrows():
-            panel_id = str(row[panel_id_col]).strip().lower()
-            if panel_id in search_panel_mb_sns:
-                cluster_id = int(row[cluster_col])
-                if cluster_id != -1:  # 노이즈 제외
-                    searched_cluster_ids.add(cluster_id)
+        
+        if has_cluster_col:
+            for _, row in df_precomputed.iterrows():
+                panel_id = str(row[panel_id_col]).strip().lower()
+                if panel_id in search_panel_mb_sns:
+                    cluster_id = int(row[cluster_col])
+                    if cluster_id != -1:  # 노이즈 제외
+                        searched_cluster_ids.add(cluster_id)
+        else:
+            logger.warning(f"[4단계] cluster 컬럼이 없어 클러스터 기반 확장을 수행할 수 없습니다.")
         
         logger.info(f"[4단계 완료] 검색된 패널이 속한 클러스터: {sorted(searched_cluster_ids)}")
         
         # 5. 해당 클러스터의 모든 패널 추출 (재클러스터링 없이 HDBSCAN 결과 그대로 사용)
         extended_panel_ids = set()
-        for _, row in df_precomputed.iterrows():
-            panel_id = str(row[panel_id_col]).strip()
-            cluster_id = int(row[cluster_col])
-            if cluster_id in searched_cluster_ids:
-                extended_panel_ids.add(panel_id.lower())
+        if has_cluster_col:
+            for _, row in df_precomputed.iterrows():
+                panel_id = str(row[panel_id_col]).strip()
+                cluster_id = int(row[cluster_col])
+                if cluster_id in searched_cluster_ids:
+                    extended_panel_ids.add(panel_id.lower())
+        else:
+            # cluster 컬럼이 없으면 검색된 패널만 포함
+            extended_panel_ids = search_panel_mb_sns.copy()
         
         logger.info(f"[HDBSCAN 결과 사용] 재클러스터링 없이 기존 HDBSCAN 결과 사용")
         logger.info(f"  - 검색 패널: {len(search_panel_mb_sns)}개")
@@ -1385,10 +1405,15 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
         for _, row in df_precomputed.iterrows():
             panel_id = str(row[panel_id_col]).strip()
             panel_id_lower = panel_id.lower()
-            cluster_id = int(row[cluster_col])
+            cluster_id = int(row[cluster_col]) if has_cluster_col else -1
             
-            # 검색된 패널이 속한 클러스터의 패널만 포함
-            if cluster_id in searched_cluster_ids:
+            # 검색된 패널이 속한 클러스터의 패널만 포함 (또는 cluster 컬럼이 없으면 검색된 패널만)
+            if has_cluster_col:
+                include_panel = cluster_id in searched_cluster_ids
+            else:
+                include_panel = panel_id_lower in search_panel_mb_sns
+            
+            if include_panel:
                 is_search = panel_id_lower in search_panel_mb_sns
                 
                 result_panels.append({

@@ -30,9 +30,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# ChromaDB telemetry 로그 억제 (매우 많은 로그 출력 방지)
-logging.getLogger('chromadb.telemetry').setLevel(logging.WARNING)
-logging.getLogger('chromadb.config').setLevel(logging.WARNING)
+# HTTP 관련 로그 억제
 logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 
@@ -42,8 +40,7 @@ logging.getLogger('app.api.search').setLevel(logging.INFO)
 logging.getLogger('app.api.panels').setLevel(logging.INFO)  # panels API 로거 추가
 
 # 중요한 검색 단계만 DEBUG로
-logging.getLogger('app.services.chroma_pipeline').setLevel(logging.INFO)
-logging.getLogger('app.services.result_filter').setLevel(logging.INFO)
+logging.getLogger('app.services.pinecone_pipeline').setLevel(logging.INFO)
 
 # 환경 변수 로드 - Path 사용으로 경로 안정화
 ENV_PATH = (Path(__file__).resolve().parents[1] / ".env")
@@ -58,20 +55,13 @@ async def lifespan(app: FastAPI):
     """
     앱 수명주기 관리 (startup/shutdown)
     """
-    # startup: 간단 DB ping + HF 모델 워밍업 (선택사항)
+    # startup: 간단 DB ping
     try:
         if async_engine is not None:
             async with async_engine.begin() as conn:
                 await conn.execute(text("SELECT 1"))
     except Exception:
         pass  # 실패해도 계속 진행
-    
-    # HF 모델 워밍업 (선택사항 - 첫 요청 지연 감소)
-    try:
-        from app.embeddings import _hf_model
-        _hf_model()
-    except Exception:
-        pass  # 실패해도 첫 요청 시 로드됨
     
     yield
     

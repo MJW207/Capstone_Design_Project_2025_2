@@ -87,29 +87,16 @@ async def healthz(session: AsyncSession = Depends(get_session)):
     헬스체크 및 사전 점검
     
     - DB 연결 확인
-    - HF 모델 로드 확인 (차원만 반환, 실제 임베딩은 생성하지 않음)
     
     Returns:
         {
             "ok": true,
-            "db": true,
-            "embedding": {
-                "provider": "hf",
-                "model": "intfloat/multilingual-e5-base",
-                "vector_dim": 768,
-                "model_loaded": true
-            }
+            "db": true
         }
     """
     result = {
         "ok": True,
-        "db": False,
-        "embedding": {
-            "provider": os.getenv("EMBEDDING_PROVIDER", "hf"),
-            "model": os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base"),
-            "vector_dim": int(os.getenv("EMBEDDING_DIMENSION", "768")),
-            "model_loaded": False
-        }
+        "db": False
     }
     
     # DB 연결 확인
@@ -119,16 +106,6 @@ async def healthz(session: AsyncSession = Depends(get_session)):
     except Exception as e:
         result["ok"] = False
         result["db_error"] = str(e)
-    
-    # HF 모델 로드 확인 (워밍업)
-    try:
-        from app.embeddings import _hf_model
-        # 모델이 이미 로드되어 있으면 캐시에서 반환, 없으면 로드
-        model = _hf_model()
-        result["embedding"]["model_loaded"] = model is not None
-    except Exception as e:
-        result["ok"] = False
-        result["embedding"]["error"] = str(e)
     
     return result
 

@@ -246,6 +246,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
   const [umapData, setUmapData] = useState<UMAPPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
   // 검색 결과 기반 확장 클러스터링 상태
   const [extendedClusteringData, setExtendedClusteringData] = useState<{
     panels: Array<{
@@ -1716,7 +1717,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
               ref={umapContainerRef}
               className="relative rounded-2xl p-6 flex flex-col"
                 style={{
-                height: '800px', // 적절한 크기로 조정 (1200px -> 800px)
+                height: '1600px', // 세로 크기 2배로 증가 (800px -> 1600px)
                 background: isDark
                   ? 'rgba(255, 255, 255, 0.05)'
                   : 'rgba(255, 255, 255, 0.8)',
@@ -1737,6 +1738,118 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                     opacity: 0.5,
                   }}
                 />
+                
+                {/* 클러스터 레이블 오버레이 - UMAP 차트 위에 표시 */}
+                {!showProfile && clusters.length > 0 && (
+                  <div 
+                    className="absolute top-4 left-4 right-4 z-10 pointer-events-none"
+                    style={{
+                      maxHeight: '120px',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    <div 
+                      className="flex flex-wrap items-center gap-3 p-3 rounded-lg backdrop-blur-sm"
+                      style={{
+                        background: isDark 
+                          ? 'rgba(0, 0, 0, 0.6)' 
+                          : 'rgba(255, 255, 255, 0.9)',
+                        border: isDark
+                          ? '1px solid rgba(255, 255, 255, 0.1)'
+                          : '1px solid rgba(17, 24, 39, 0.1)',
+                        boxShadow: isDark
+                          ? '0 4px 12px rgba(0, 0, 0, 0.3)'
+                          : '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      }}
+                    >
+                      {clusters.map((cluster, idx) => {
+                        const clusterProfile = clusterProfiles.find(p => p.cluster === cluster.id);
+                        const clusterDisplayName = clusterProfile?.name || `C${cluster.id + 1}`;
+                        const searchedCount = Array.from(highlightedPanelIds).filter(panelId => {
+                          const clusterId = searchedPanelClusters[panelId];
+                          return clusterId === cluster.id;
+                        }).length;
+                        
+                        return (
+                          <div 
+                            key={cluster.id} 
+                            className="flex items-center gap-2 pointer-events-auto"
+                            style={{
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => {
+                              setSelectedClusterForTable(cluster.id);
+                              setIsClusterTableOpen(true);
+                            }}
+                          >
+                            <div 
+                              className="w-3 h-3 rounded-full flex-shrink-0" 
+                              style={{ background: getClusterColorUtil(idx) }} 
+                            />
+                            <span style={{ 
+                              fontSize: '11px', 
+                              fontWeight: 500, 
+                              color: colors.text.secondary,
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {clusterDisplayName}
+                            </span>
+                            <span style={{ 
+                              fontSize: '10px', 
+                              fontWeight: 400, 
+                              color: colors.text.tertiary,
+                              whiteSpace: 'nowrap'
+                            }}>
+                              ({cluster.size}명)
+                            </span>
+                            {searchedCount > 0 && (
+                              <span style={{ 
+                                fontSize: '10px', 
+                                fontWeight: 600, 
+                                color: '#F59E0B',
+                                padding: '2px 4px',
+                                background: '#FEF3C7',
+                                borderRadius: '4px',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                🔍 {searchedCount}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      
+                      {/* 검색된 패널 범례 */}
+                      {highlightedPanelIds.size > 0 && (
+                        <div 
+                          className="flex items-center gap-2 ml-auto pointer-events-auto"
+                          style={{
+                            borderLeft: isDark 
+                              ? '1px solid rgba(255, 255, 255, 0.1)' 
+                              : '1px solid rgba(17, 24, 39, 0.1)',
+                            paddingLeft: '12px',
+                          }}
+                        >
+                          <div 
+                            className="w-3 h-3 rounded-full border-2 border-white flex-shrink-0" 
+                            style={{ 
+                              background: '#F59E0B',
+                              boxShadow: '0 0 0 2px #F59E0B',
+                            }} 
+                          />
+                          <span style={{ 
+                            fontSize: '11px', 
+                            fontWeight: 500, 
+                            color: colors.text.secondary,
+                            whiteSpace: 'nowrap'
+                          }}>
+                            검색된 패널 ({highlightedPanelIds.size}개)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 
                 {/* 프로파일링 모드 */}
                 {showProfile && profileData ? (
@@ -1884,7 +1997,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                     };
                     
                     return (
-                      <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                      <div 
+                        style={{ width: '100%', height: '100%', position: 'relative' }}
+                      >
                         <svg 
                           width={width} 
                           height={height} 
@@ -2439,7 +2554,6 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             })}
                           </g>
                         </svg>
-                        
                       </div>
                     );
                   })()}
@@ -2447,53 +2561,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                     </>
                 )}
                 
-                {/* Legend - 클러스터 및 검색된 패널 표시 */}
-                <div className="flex items-center gap-4 mt-4 pt-4 border-t flex-shrink-0" style={{ borderColor: 'rgba(17, 24, 39, 0.08)' }}>
-                  {clusters.map((cluster, idx) => {
-                    const clusterProfile = clusterProfiles.find(p => p.cluster === cluster.id);
-                    const clusterDisplayName = clusterProfile?.name || `C${cluster.id + 1}`;
-                    const searchedCount = Array.from(highlightedPanelIds).filter(panelId => {
-                      const clusterId = searchedPanelClusters[panelId];
-                      return clusterId === cluster.id;
-                    }).length;
-                    
-                    return (
-                      <div key={cluster.id} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ background: getClusterColorUtil(idx) }} />
-                        <span style={{ fontSize: '12px', fontWeight: 500, color: colors.text.secondary }}>{clusterDisplayName}</span>
-                        <span style={{ fontSize: '11px', fontWeight: 400, color: colors.text.tertiary, marginLeft: '4px' }}>
-                          ({cluster.size}명)
-                        </span>
-                        {searchedCount > 0 && (
-                          <span style={{ 
-                            fontSize: '11px', 
-                            fontWeight: 600, 
-                            color: '#F59E0B',
-                            marginLeft: '4px',
-                            padding: '2px 6px',
-                            background: '#FEF3C7',
-                            borderRadius: '4px',
-                          }}>
-                            🔍 {searchedCount}개
-                          </span>
-                        )}
-                </div>
-                    );
-                  })}
-                  
-                  {/* 검색된 패널 범례 */}
-                  {highlightedPanelIds.size > 0 && (
-                    <div className="ml-auto flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full border-2 border-white" style={{ 
-                        background: '#F59E0B',
-                        boxShadow: '0 0 0 2px #F59E0B',
-                      }} />
-                      <span style={{ fontSize: '11px', fontWeight: 500, color: colors.text.secondary }}>
-                        검색된 패널 ({highlightedPanelIds.size}개)
-                      </span>
-                  </div>
-                )}
-              </div>
+                {/* Legend는 이제 UMAP 차트 위에 오버레이로 표시됨 (제거) */}
             </div>
           </div>
         )}
@@ -2515,7 +2583,18 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
               clusters.length <= 6 ? 'grid-cols-3' :
               'grid-cols-4'
             }`}>
-              {clusters.map((cluster, index) => {
+              {clusters
+                .filter((cluster) => {
+                  // 노이즈 군집(cluster.id === -1)은 유지
+                  if (cluster.id === -1) return true;
+                  
+                  // 일반 군집 중 60명 이하인 소형 군집은 노이즈로 간주하여 제외
+                  if (cluster.size <= 60) {
+                    return false;
+                  }
+                  return true;
+                })
+                .map((cluster, index) => {
                 // 클러스터 비율 계산
                 const totalSamples = clusteringMeta?.n_samples || labels.length || 1;
                 const percentage = totalSamples > 0 ? parseFloat(((cluster.size / totalSamples) * 100).toFixed(2)) : 0.0;

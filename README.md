@@ -11,7 +11,7 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 - [주요 컴포넌트](#주요-컴포넌트)
 - [API 엔드포인트](#api-엔드포인트)
 - [비교 분석 기능](#비교-분석-기능)
-- [ChromaDB 검색 프로세스](#chromadb-검색-프로세스)
+- [Pinecone 검색 프로세스](#pinecone-검색-프로세스)
 - [클러스터링 방법론](#클러스터링-방법론)
 - [문제 해결](#문제-해결)
 - [개발 가이드](#개발-가이드)
@@ -20,9 +20,9 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 
 ### 🔍 검색 및 분석
 
-- **의미 기반 벡터 검색**: ChromaDB와 Upstage Embeddings를 활용한 임베딩 기반 검색
+- **의미 기반 벡터 검색**: Pinecone과 Upstage Embeddings를 활용한 임베딩 기반 검색
   * 자연어 쿼리를 벡터로 변환하여 의미 기반 검색
-  * ChromaDB를 통한 코사인 유사도 검색
+  * Pinecone을 통한 코사인 유사도 검색
   * 단계적 필터링 및 메타데이터 기반 검색
 - **고급 필터링**: 나이, 성별, 지역, 소득 등 다중 필터 조합
 - **실시간 결과**: pagination과 result count를 포함한 live search
@@ -113,11 +113,11 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 ### Backend
 
 - **FastAPI** with Python 3.13
-- **PostgreSQL** (관계형 데이터베이스)
-- **ChromaDB** 벡터 검색 엔진
+- **PostgreSQL** (세션 관리 및 일부 메타데이터용, 선택적)
+- **Pinecone** 벡터 검색 엔진 (클라우드 기반)
 - **Upstage Embeddings** (임베딩 생성)
   * 모델: `solar-embedding-1-large`
-- **LangChain Chroma** ChromaDB 통합
+- **Pinecone Client** Pinecone 통합
 - **SQLAlchemy** (비동기 ORM)
 - **NumPy & SciPy** 수치 계산
 - **Scikit-learn** 머신러닝
@@ -133,7 +133,8 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 - **Python 3.13+**
 - **PostgreSQL 12+**
 - **npm** 또는 **yarn**
-- **ChromaDB** (로컬 파일 시스템 기반)
+- **Pinecone** (클라우드 벡터 데이터베이스)
+  * Pinecone API 키 필요
 
 ### 설치
 
@@ -177,35 +178,38 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
    
    **설치되는 주요 패키지 카테고리**:
    - **Web Framework**: FastAPI, Uvicorn
-   - **Database**: PostgreSQL (psycopg), pgvector, SQLAlchemy
+   - **Database**: PostgreSQL (psycopg), pgvector, SQLAlchemy (선택적)
    - **Configuration**: python-dotenv, pydantic-settings
    - **Data Processing**: pandas, numpy, scipy, pyyaml, pyarrow
    - **Machine Learning & Clustering**: scikit-learn, HDBSCAN, UMAP
-   - **Embeddings**: sentence-transformers, torch (HuggingFace)
-   - **ChromaDB 검색**: anthropic, langchain-upstage, langchain-chroma, chromadb
+   - **Pinecone 검색**: anthropic, langchain-upstage, pinecone
    - **HTTP Client**: httpx
    - **Testing**: pytest
    
    **주의사항**:
    - Python 3.13+ 필요
-   - 일부 패키지(특히 torch)는 용량이 크므로 설치 시간이 걸릴 수 있습니다
-   - ChromaDB는 로컬 파일 시스템 기반이므로 추가 설정이 필요하지 않습니다
+   - Pinecone은 클라우드 기반이므로 API 키 설정이 필요합니다
 
 4. **환경 변수 설정**
    
    프로젝트 루트에 `.env` 파일을 생성하고 다음 환경변수를 설정하세요:
    ```env
-   # 데이터베이스 연결
+   # 데이터베이스 연결 (선택적, 세션 관리용)
    DATABASE_URL=postgresql://user:password@host:port/database
    
-   # ChromaDB 설정
-   CHROMA_BASE_DIR=./Chroma_db
+   # Pinecone 설정
+   PINECONE_API_KEY=your_pinecone_api_key_here
+   PINECONE_INDEX_NAME=panel-profiles
+   PINECONE_ENVIRONMENT=us-east-1
    
    # 임베딩 설정 (Upstage)
    UPSTAGE_API_KEY=your_upstage_api_key_here
    
    # Anthropic API (메타데이터 추출 및 카테고리 분류용)
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
+   
+   # 카테고리 설정
+   CATEGORY_CONFIG_PATH=./category_config.json
    ```
 
 ### 애플리케이션 실행
@@ -284,10 +288,9 @@ panel-insight/
 │   │   │   ├── data_preprocessor.py # 데이터 전처리
 │   │   │   └── generate_hdbscan_comparisons.py # 비교 데이터 생성
 │   │   ├── services/            # 비즈니스 로직
-│   │   │   ├── chroma_pipeline.py # ChromaDB 검색 파이프라인
+│   │   │   ├── pinecone_pipeline.py # Pinecone 검색 파이프라인
 │   │   │   ├── metadata_extractor.py # 메타데이터 추출
-│   │   │   └── embedding_generator.py # 임베딩 생성
-│   │   └── embeddings.py        # HuggingFace 임베딩 생성
+│   │   │   └── embedding_generator.py # Upstage 임베딩 생성
 │   ├── configs/                 # 설정 파일
 │   ├── sql/                     # SQL 스크립트
 │   ├── tests/                   # 테스트 파일
@@ -413,11 +416,11 @@ panel-insight/
   * 수도권: 서울특별시, 경기도
   * 프리미엄 폰: 고가 스마트폰 정의
 
-## ChromaDB 검색 프로세스
+## Pinecone 검색 프로세스
 
 ### 개요
 
-Panel Insight은 ChromaDB를 활용한 의미 기반 벡터 검색 시스템을 구현했습니다. 자연어 쿼리를 단계적으로 처리하여 가장 관련성 높은 패널을 찾아냅니다.
+Panel Insight은 Pinecone을 활용한 의미 기반 벡터 검색 시스템을 구현했습니다. 자연어 쿼리를 단계적으로 처리하여 가장 관련성 높은 패널을 찾아냅니다.
 
 ### 검색 파이프라인 (PanelSearchPipeline)
 
@@ -453,21 +456,22 @@ Panel Insight은 ChromaDB를 활용한 의미 기반 벡터 검색 시스템을 
 - **출력**: 카테고리별 벡터 임베딩
 
 #### 5단계: 단계적 필터링 검색
-- **목적**: ChromaDB에서 벡터 유사도 검색 및 메타데이터 필터링
-- **도구**: ChromaPanelSearcher + ResultFilter
+- **목적**: Pinecone에서 벡터 유사도 검색 및 메타데이터 필터링
+- **도구**: PineconePanelSearcher + PineconeResultFilter
 - **프로세스**:
-  1. 각 패널의 ChromaDB 컬렉션에서 카테고리별 벡터 검색
-  2. 메타데이터 필터 조건 적용 (완전 매칭 우선)
-  3. 부분 매칭 스코어 계산 (필터 조건 일치 비율)
+  1. Pinecone 인덱스에서 카테고리별 벡터 검색
+  2. 메타데이터 필터 조건 적용 (Pinecone $in 연산자 지원)
+  3. 소득 범위 필터링 지원 (개인소득_min, 개인소득_max)
   4. 유사도 점수와 필터 매칭 점수를 결합하여 최종 점수 계산
   5. 상위 top_k개 패널 반환
 
-### ChromaDB 구조
+### Pinecone 구조
 
-- **저장 방식**: 로컬 파일 시스템 기반
-- **컬렉션 구조**: 패널별로 독립적인 컬렉션 (`panel_{mb_sn}`)
-- **문서 구조**: 카테고리별로 청크 단위로 저장
-- **메타데이터**: 각 문서에 패널 정보(나이, 성별, 지역 등) 포함
+- **저장 방식**: 클라우드 기반 벡터 데이터베이스
+- **인덱스 구조**: 단일 인덱스에 모든 패널 데이터 저장
+- **Topic 구조**: 카테고리별로 topic으로 구분 (예: "인구", "직업소득")
+- **메타데이터**: 각 벡터에 패널 정보(나이, 성별, 지역, 소득 등) 포함
+- **필터링**: Pinecone 네이티브 메타데이터 필터 지원 ($in, $lte, $gte 등)
 
 ### 검색 최적화
 
@@ -477,8 +481,11 @@ Panel Insight은 ChromaDB를 활용한 의미 기반 벡터 검색 시스템을 
 - **폴백 메커니즘**: 메타데이터 추출 실패 시 쿼리 텍스트를 직접 임베딩하여 검색
 
 ### 데이터베이스 요구사항
-- **PostgreSQL 12+** (관계형 데이터 저장용)
-- **ChromaDB** (벡터 검색용, 로컬 파일 시스템)
+- **Pinecone** (벡터 검색용, 클라우드 기반)
+  * Pinecone API 키 필요
+  * 인덱스 이름: `panel-profiles` (기본값)
+- **PostgreSQL 12+** (선택적, 세션 관리 및 일부 메타데이터용)
+- **merged_final.json** (패널 상세 정보용, 로컬 파일)
 
 ## 클러스터링 방법론
 

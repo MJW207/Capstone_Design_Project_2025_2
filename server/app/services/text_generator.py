@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class CategoryTextGenerator:
-    """카테고리별로 자연어 텍스트 생성 (ChromaDB 저장 형식에 맞춤)"""
+    """카테고리별로 자연어 텍스트 생성 (Pinecone 저장 형식에 맞춤)"""
 
     def __init__(self, api_key: str):
         """
@@ -19,9 +19,9 @@ class CategoryTextGenerator:
 
     def generate(self, category: str, metadata_items: List[str]) -> str:
         """
-        카테고리별 자연어 텍스트 생성 (ChromaDB 실제 저장 형식 참고)
+        카테고리별 자연어 텍스트 생성 (Pinecone 실제 저장 형식 참고)
         
-        ⭐ 중요: ChromaDB에 저장된 텍스트 형식을 최대한 유사하게 생성해야 벡터 유사도가 높아짐
+        ⭐ 중요: Pinecone에 저장된 텍스트 형식을 최대한 유사하게 생성해야 벡터 유사도가 높아짐
         """
         if not metadata_items:
             return ""
@@ -50,15 +50,15 @@ class CategoryTextGenerator:
 
     def _generate_by_template(self, category: str, metadata: Dict[str, str]) -> str:
         """
-        ChromaDB 저장 형식을 참고한 템플릿 기반 텍스트 생성
+        Pinecone 저장 형식을 참고한 템플릿 기반 텍스트 생성
         
-        실제 ChromaDB 저장 예시:
+        실제 Pinecone 저장 예시:
         - 인구: "경기 성남시에 거주하는 48세 남이며 미혼, 가족 구성은 2명, 최종 학력은 대학교 재학입니다."
         - 직업소득: "현재 직업은 전문직 (의사, 간호사, 변호사, 회계사, 예술가, 종교인, 엔지니어, 프로그래머, 기술사 등)이며, 직무는 IT입니다. 월평균 개인 소득은 월 600~699만원이고, 가구 소득은 월 600~699만원입니다."
         """
         
         if category == "기본정보":
-            # ChromaDB topic="인구" 형식
+            # Pinecone topic="인구" 형식
             parts = []
             
             # 지역 정보
@@ -110,8 +110,8 @@ class CategoryTextGenerator:
             return ""
         
         elif category == "직업소득":
-            # ChromaDB topic="직업소득" 형식
-            # 직업별 상세 설명 매핑 (ChromaDB 실제 패턴)
+            # Pinecone topic="직업소득" 형식
+            # 직업별 상세 설명 매핑 (Pinecone 실제 패턴)
             job_details = {
                 "전문직": " (의사, 간호사, 변호사, 회계사, 예술가, 종교인, 엔지니어, 프로그래머, 기술사 등)",
                 "사무직": " (일반 사무직, 은행원, 공무원, 군인, 경찰, 소방관 등)",
@@ -242,7 +242,7 @@ logger = logging.getLogger(__name__)
 
 
 class CategoryTextGenerator:
-    """카테고리별로 자연어 텍스트 생성 (ChromaDB 저장 형식에 맞춤)"""
+    """카테고리별로 자연어 텍스트 생성 (Pinecone 저장 형식에 맞춤)"""
 
     def __init__(self, api_key: str):
         """
@@ -254,9 +254,9 @@ class CategoryTextGenerator:
 
     def generate(self, category: str, metadata_items: List[str]) -> str:
         """
-        카테고리별 자연어 텍스트 생성 (ChromaDB 실제 저장 형식 참고)
+        카테고리별 자연어 텍스트 생성 (Pinecone 실제 저장 형식 참고)
         
-        ⭐ 중요: ChromaDB에 저장된 텍스트 형식을 최대한 유사하게 생성해야 벡터 유사도가 높아짐
+        ⭐ 중요: Pinecone에 저장된 텍스트 형식을 최대한 유사하게 생성해야 벡터 유사도가 높아짐
         """
         if not metadata_items:
             return ""
@@ -285,15 +285,15 @@ class CategoryTextGenerator:
 
     def _generate_by_template(self, category: str, metadata: Dict[str, str]) -> str:
         """
-        ChromaDB 저장 형식을 참고한 템플릿 기반 텍스트 생성
+        Pinecone 저장 형식을 참고한 템플릿 기반 텍스트 생성
         
-        실제 ChromaDB 저장 예시:
+        실제 Pinecone 저장 예시:
         - 인구: "경기 성남시에 거주하는 48세 남이며 미혼, 가족 구성은 2명, 최종 학력은 대학교 재학입니다."
         - 직업소득: "현재 직업은 전문직 (의사, 간호사, 변호사, 회계사, 예술가, 종교인, 엔지니어, 프로그래머, 기술사 등)이며, 직무는 IT입니다. 월평균 개인 소득은 월 600~699만원이고, 가구 소득은 월 600~699만원입니다."
         """
         
         if category == "기본정보":
-            # ChromaDB topic="인구" 형식
+            # Pinecone topic="인구" 형식
             parts = []
             
             # 지역 정보
@@ -345,8 +345,8 @@ class CategoryTextGenerator:
             return ""
         
         elif category == "직업소득":
-            # ChromaDB topic="직업소득" 형식
-            # 직업별 상세 설명 매핑 (ChromaDB 실제 패턴)
+            # Pinecone topic="직업소득" 형식
+            # 직업별 상세 설명 매핑 (Pinecone 실제 패턴)
             job_details = {
                 "전문직": " (의사, 간호사, 변호사, 회계사, 예술가, 종교인, 엔지니어, 프로그래머, 기술사 등)",
                 "사무직": " (일반 사무직, 은행원, 공무원, 군인, 경찰, 소방관 등)",

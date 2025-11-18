@@ -238,10 +238,7 @@ async def get_panel_detail(session: AsyncSession, panel_id: str) -> Optional[Dic
     if row:
         return dict(row)
     
-    # 3. 최종 Fallback: ChromaDB에서 패널이 존재하는지 확인하고 기본 정보만 반환
-    # (ChromaDB에는 문서 메타데이터만 있고 패널 전체 메타데이터는 없지만, 
-    #  패널이 ChromaDB에 있다는 것은 최소한 welcome_1st에는 있다는 의미)
-    # 이 경우는 이미 위에서 처리했으므로 None 반환
+    # 3. 최종 Fallback: 더 이상 사용할 수 있는 데이터 소스가 없음
     return None
 
 

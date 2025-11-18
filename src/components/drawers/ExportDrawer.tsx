@@ -488,7 +488,7 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
               className="space-y-1 text-xs"
               style={{ color: 'var(--text-secondary)' }}
             >
-              <p>- 형식: {format.toUpperCase()}</p>
+              <p>- 형식: {format === 'pdf' ? 'TXT' : format.toUpperCase()}</p>
               <p>- 전체 데이터: {data.length}명</p>
               <p>- 샘플: {Math.min(parseInt(sampleSize), data.length)}명 ({samplingMethod === 'random' ? '무작위' : '층화'})</p>
               <p>- 예상 크기: ~{(Math.min(parseInt(sampleSize), data.length) * 2.5).toFixed(1)} KB</p>

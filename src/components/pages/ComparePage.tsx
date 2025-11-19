@@ -938,16 +938,20 @@ export function ComparePage() {
           <div className="text-sm text-[var(--neutral-600)]">
             선택:{' '}
             <span className="font-semibold" style={{ color: selectedGroupA?.color }}>
-              {selectedGroupA?.id}
+              {selectedGroupA?.label}
             </span>
             {' vs '}
             <span className="font-semibold" style={{ color: selectedGroupB?.color }}>
-              {selectedGroupB?.id}
+              {selectedGroupB?.label}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <PIButton variant="ghost" size="small">
+            <PIButton 
+              variant="ghost" 
+              size="small"
+              onClick={exportToCSV}
+            >
               <Download className="w-4 h-4 mr-1" />
               CSV
             </PIButton>

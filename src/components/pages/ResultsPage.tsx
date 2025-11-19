@@ -14,7 +14,9 @@ import { PIPresetLoadButton } from '../../ui/pi/PIPresetLoadButton';
 import { PIBookmarkPanel } from '../../ui/pi/PIBookmarkPanel';
 import { PIBookmarkButton } from '../../ui/pi/PIBookmarkButton';
 import { SummaryBar } from '../../ui/summary/SummaryBar';
+import { SummaryBar as SummaryBarNew } from '../../ui/summary/SummaryBarNew';
 import type { SummaryData } from '../../ui/summary/types';
+import { convertSummaryDataToBarProps } from '../../ui/summary/summaryBarUtils';
 import { bookmarkManager } from '../../lib/bookmarkManager';
 import { presetManager, type FilterPreset } from '../../lib/presetManager';
 import { toast } from 'sonner';
@@ -157,7 +159,7 @@ export function ResultsPage({
       selectedGenders: preset.filters.gender || [],
       selectedRegions: preset.filters.regions || [],
       selectedIncomes: preset.filters.income || [],
-      ageRange: preset.filters.ageRange || [15, 80],
+      ageRange: preset.filters.ageRange || [0, 120],
       quickpollOnly: preset.filters.quickpollOnly || false,
       interests: Array.isArray(preset.filters.interests) 
         ? preset.filters.interests 
@@ -252,6 +254,8 @@ export function ResultsPage({
       selectedIncomes: propFilters.selectedIncomes || [],
       ageRange: propFilters.ageRange || [],
       quickpollOnly: propFilters.quickpollOnly || false,
+      interests: propFilters.interests || [],
+      interestLogic: propFilters.interestLogic || 'and',
     };
     
     const searchKey = getSearchKey(query, filtersToSend);
@@ -927,10 +931,23 @@ export function ResultsPage({
           // previousTotal도 현재 추적하지 않음
         };
 
+        // 새로운 SummaryBar 사용
+        const summaryBarProps = convertSummaryDataToBarProps(
+          summaryData,
+          query,
+          propFilters,
+          undefined, // costKb - 추후 API 응답에서 가져올 수 있음
+          undefined  // latencyText - 추후 API 응답에서 가져올 수 있음
+        );
+
         return (
-          <SummaryBar
-            data={summaryData}
-            onFilterClick={onFilterOpen}
+          <SummaryBarNew
+            {...summaryBarProps}
+            onChipClick={(chip) => {
+              // 칩 클릭 시 상세 차트 하이라이트 등의 동작
+              console.log('Chip clicked:', chip);
+              // TODO: 상세 차트 하이라이트 로직 추가
+            }}
           />
         );
       })()}

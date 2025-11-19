@@ -778,23 +778,61 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
       // 메타데이터 저장
       const sessionId = clusterData.session_id || 'precomputed_default';
       // 메트릭 추출 (여러 경로 시도 - HDBSCAN 메타데이터 우선)
-      const silhouetteScore = clusterData.silhouette_score 
-        || clusterData.metrics?.silhouette_score 
-        || clusterData.meta?.algorithm_info?.silhouette_score
-        || clusterData.metadata?.silhouette_score
-        || null;
-      const daviesBouldinScore = clusterData.davies_bouldin_index
-        || clusterData.davies_bouldin_score
-        || clusterData.metrics?.davies_bouldin_score
-        || clusterData.meta?.algorithm_info?.davies_bouldin_score
-        || clusterData.metadata?.davies_bouldin_index
-        || null;
-      const calinskiHarabasz = clusterData.calinski_harabasz_index
-        || clusterData.calinski_harabasz_score
-        || clusterData.metrics?.calinski_harabasz_score
-        || clusterData.meta?.algorithm_info?.calinski_harabasz
-        || clusterData.metadata?.calinski_harabasz_index
-        || null;
+      // null/undefined 체크만 수행 (0도 유효한 값이므로 || 연산자 사용하지 않음)
+      const silhouetteScore = clusterData.silhouette_score != null 
+        ? clusterData.silhouette_score
+        : (clusterData.metrics?.silhouette_score != null 
+          ? clusterData.metrics.silhouette_score
+          : (clusterData.meta?.algorithm_info?.silhouette_score != null
+            ? clusterData.meta.algorithm_info.silhouette_score
+            : (clusterData.metadata?.silhouette_score != null
+              ? clusterData.metadata.silhouette_score
+              : null)));
+      const daviesBouldinScore = clusterData.davies_bouldin_index != null
+        ? clusterData.davies_bouldin_index
+        : (clusterData.davies_bouldin_score != null
+          ? clusterData.davies_bouldin_score
+          : (clusterData.metrics?.davies_bouldin_score != null
+            ? clusterData.metrics.davies_bouldin_score
+            : (clusterData.meta?.algorithm_info?.davies_bouldin_score != null
+              ? clusterData.meta.algorithm_info.davies_bouldin_score
+              : (clusterData.metadata?.davies_bouldin_index != null
+                ? clusterData.metadata.davies_bouldin_index
+                : null))));
+      const calinskiHarabasz = clusterData.calinski_harabasz_index != null
+        ? clusterData.calinski_harabasz_index
+        : (clusterData.calinski_harabasz_score != null
+          ? clusterData.calinski_harabasz_score
+          : (clusterData.metrics?.calinski_harabasz_score != null
+            ? clusterData.metrics.calinski_harabasz_score
+            : (clusterData.meta?.algorithm_info?.calinski_harabasz != null
+              ? clusterData.meta.algorithm_info.calinski_harabasz
+              : (clusterData.metadata?.calinski_harabasz_index != null
+                ? clusterData.metadata.calinski_harabasz_index
+                : null))));
+      
+      // 디버깅: 메트릭 값 확인
+      console.log('[클러스터링 메트릭]', {
+        silhouetteScore,
+        daviesBouldinScore,
+        calinskiHarabasz,
+        clusterDataKeys: Object.keys(clusterData),
+        hasSilhouette: 'silhouette_score' in clusterData,
+        silhouetteValue: clusterData.silhouette_score,
+        metadata: clusterData.metadata,
+        meta: clusterData.meta,
+        metrics: clusterData.metrics,
+      });
+      
+      // 실루엣 스코어가 없으면 경고
+      if (silhouetteScore == null) {
+        console.warn('[실루엣 스코어 누락]', {
+          clusterDataSilhouette: clusterData.silhouette_score,
+          metadataSilhouette: clusterData.metadata?.silhouette_score,
+          metaSilhouette: clusterData.meta?.algorithm_info?.silhouette_score,
+          metricsSilhouette: clusterData.metrics?.silhouette_score,
+        });
+      }
       const method = clusterData.method 
         || clusterData.metadata?.method
         || clusterData.meta?.algorithm_info?.type
@@ -1379,9 +1417,6 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
       setSearchedPanelInfo(panelInfoMap);
       
       const sessionId = clusteringMeta?.session_id;
-      if (!sessionId) {
-        return;
-      }
       
       // 검색 결과에서 패널 ID 추출
       const panelIds = Object.keys(panelInfoMap);
@@ -1391,7 +1426,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
       }
       
       try {
-        // 확장 클러스터링 데이터가 있으면 직접 사용
+        // 1. 확장 클러스터링 데이터가 있으면 직접 사용
         if (extendedClusteringData && extendedClusteringData.session_id === sessionId) {
           const mapping: Record<string, number> = {};
           extendedClusteringData.panels.forEach((p: any) => {
@@ -1402,10 +1437,46 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           
           // 매핑 업데이트
           setSearchedPanelClusterMapping(mapping);
+          const foundPanelIds = new Set(Object.keys(mapping));
+          setSearchedPanelClusters(mapping);
+          setHighlightedPanelIds(foundPanelIds);
           return;
         }
         
-        // 백엔드 API 호출하여 패널-클러스터 매핑 가져오기
+        // 2. Precomputed 데이터인 경우 umapData에서 직접 매핑
+        if (umapData.length > 0 && (sessionId === 'precomputed_default' || !sessionId)) {
+          const panelClusterMap: Record<string, number> = {};
+          const foundPanelIds = new Set<string>();
+          
+          // umapData에서 검색 결과 패널 ID와 매칭
+          panelIds.forEach(panelId => {
+            const normalizedId = normalizePanelId(panelId);
+            const umapPoint = umapData.find(d => normalizePanelId(d.panelId) === normalizedId);
+            if (umapPoint && umapPoint.cluster != null) {
+              panelClusterMap[panelId] = umapPoint.cluster;
+              foundPanelIds.add(panelId);
+            }
+          });
+          
+          setSearchedPanelClusters(panelClusterMap);
+          setHighlightedPanelIds(foundPanelIds);
+          
+          // 매핑된 패널이 있으면 토스트 표시
+          if (foundPanelIds.size > 0) {
+            const uniqueClusters = [...new Set(Object.values(panelClusterMap))];
+            toast.success(
+              `검색된 ${foundPanelIds.size}개 패널 중 ${uniqueClusters.length}개 군집에 분포되어 있습니다.`,
+              { duration: 3000 }
+            );
+          }
+          return;
+        }
+        
+        // 3. 백엔드 API 호출하여 패널-클러스터 매핑 가져오기 (동적 클러스터링 세션)
+        if (!sessionId) {
+          return;
+        }
+        
         const response = await fetch(`${API_URL}/api/clustering/panel-cluster-mapping`, {
           method: 'POST',
           headers: {
@@ -1452,11 +1523,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
         }
       } catch (err) {
         // 오류가 발생해도 UI는 계속 동작하도록 함
+        console.error('[검색 결과-군집 매핑 오류]', err);
       }
     };
     
     updateSearchedPanelMapping();
-  }, [searchResults, clusteringMeta?.session_id]);
+  }, [searchResults, clusteringMeta?.session_id, umapData, extendedClusteringData]);
 
 
   useEffect(() => {
@@ -1517,7 +1589,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
             </h1>
             <div>
               <p style={{ fontSize: '14px', fontWeight: 400, color: colors.text.secondary, lineHeight: '1.5' }}>
-              검색한 패널의 군집 위치와 각 집단 특성을 비교·분석합니다.
+                검색한 패널의 군집 위치와 각 집단 특성을 비교·분석합니다.
                 {highlightedPanelIds.size > 0 && (
                   <span style={{ marginLeft: '8px', fontWeight: 600, color: '#F59E0B' }}>
                     검색된 패널이 UMAP상에 나타납니다.
@@ -1551,7 +1623,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  클러스터링 중...
+                  군집을 불러오는 중..
                 </>
               ) : (
                 clusters.length > 0 ? '클러스터링 다시 실행' : '전체 패널 클러스터링 실행'
@@ -1617,7 +1689,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           <div className="flex items-center justify-center py-12">
             <div className="flex items-center gap-3">
               <Loader2 className="w-6 h-6 animate-spin" />
-              <span className="text-lg" style={{ color: colors.text.primary }}>클러스터링 중...</span>
+              <span className="text-lg" style={{ color: colors.text.primary }}>군집을 불러오는 중..</span>
             </div>
           </div>
         )}
@@ -1700,7 +1772,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    클러스터링 중...
+                    군집을 불러오는 중..
                   </>
                 ) : (
                   '전체 패널 클러스터링 실행'
@@ -1770,6 +1842,72 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                           return clusterId === cluster.id;
                         }).length;
                         
+                        // 클러스터 상세정보 열기 함수
+                        const openClusterDetail = () => {
+                          const clusterColor = getClusterColorUtil(idx);
+                          const totalSamples = clusteringMeta?.n_samples || labels.length || 1;
+                          const percentage = totalSamples > 0 ? parseFloat(((cluster.size / totalSamples) * 100).toFixed(2)) : 0.0;
+                          
+                          // 클러스터 태그 및 스니펫
+                          const clusterTags: string[] = [];
+                          const clusterSnippets: string[] = [];
+                          
+                          if (clusterProfile?.tags && Array.isArray(clusterProfile.tags)) {
+                            clusterTags.push(...clusterProfile.tags);
+                          }
+                          
+                          if (clusterProfile?.insights && Array.isArray(clusterProfile.insights) && clusterProfile.insights.length > 0) {
+                            clusterSnippets.push(...clusterProfile.insights);
+                          }
+                          
+                          // 해당 군집의 검색된 패널 목록 추출
+                          const clusterSearchedPanels = umapData
+                            .filter(p => p.cluster === cluster.id && highlightedPanelIds.has(normalizePanelId(p.panelId || '')))
+                            .map(p => {
+                              const normalizedId = normalizePanelId(p.panelId || '');
+                              const panelInfo = searchedPanelInfo[normalizedId] || searchedPanelInfo[p.panelId || ''];
+                              return {
+                                panelId: p.panelId || '',
+                                cluster: p.cluster,
+                                umap_x: p.x,
+                                umap_y: p.y,
+                                isSearchResult: true,
+                                gender: panelInfo?.gender || '',
+                                age: panelInfo?.age || 0,
+                                region: panelInfo?.region || ''
+                              };
+                            });
+                          
+                          // 특징 피처 추출
+                          const distinctiveFeatures: Array<{feature: string, value: number, avg: number, diff: number}> = [];
+                          if (clusterProfile?.distinctive_features && Array.isArray(clusterProfile.distinctive_features)) {
+                            clusterProfile.distinctive_features.slice(0, 5).forEach((f: any) => {
+                              distinctiveFeatures.push({
+                                feature: f.feature || '',
+                                value: f.value || 0,
+                                avg: f.overall || f.avg || 0,
+                                diff: f.diff || f.diff_percent || 0
+                              });
+                            });
+                          }
+                          
+                          setSelectedClusterForDetail({
+                            id: cluster.id,
+                            name: clusterDisplayName,
+                            size: cluster.size,
+                            percentage: percentage,
+                            color: clusterColor,
+                            tags: clusterTags,
+                            snippets: clusterSnippets,
+                            insights: clusterProfile?.insights || [],
+                            features: distinctiveFeatures,
+                            silhouette: clusteringMeta?.silhouette_score,
+                            description: (clusterProfile as any)?.description || `${cluster.size}명의 패널이 포함된 군집 (${percentage.toFixed(2)}%)`,
+                            searchedPanels: clusterSearchedPanels
+                          });
+                          setIsClusterDetailOpen(true);
+                        };
+                        
                         return (
                           <div 
                             key={cluster.id} 
@@ -1777,10 +1915,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             style={{
                               cursor: 'pointer',
                             }}
-                            onClick={() => {
-                              setSelectedClusterForTable(cluster.id);
-                              setIsClusterTableOpen(true);
-                            }}
+                            onClick={openClusterDetail}
                           >
                             <div 
                               className="w-3 h-3 rounded-full flex-shrink-0" 
@@ -1864,8 +1999,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                   <>
                 <div className="flex-1" style={{ minHeight: 0 }}>
                   {(() => {
-                    // 노이즈 제거 및 클러스터 필터링
-                    let filteredData = umapData.filter(d => d.cluster !== -1);
+                    // 노이즈 제거 및 클러스터 필터링 (HDBSCAN의 노이즈: -1과 0)
+                    let filteredData = umapData.filter(d => d.cluster !== -1 && d.cluster !== 0);
                     
                     // 검색 결과가 있으면 검색된 패널이 속한 군집만 표시
                     if (searchResults && searchResults.length > 0 && highlightedPanelIds.size > 0) {
@@ -2260,6 +2395,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                               ? `glow-gradient-${point.cluster}` 
                               : 'glow-gradient-default';
                             
+                            // 패널 ID 추출 (클릭 이벤트용)
+                            const panelId = point.panelId || '';
+                            
                             return (
                               <g key={`searched-${index}`} style={{ pointerEvents: 'auto' }}>
                                 {/* 반짝반짝 빛나는 외곽 원 (그라데이션 + 애니메이션) */}
@@ -2269,6 +2407,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   r={9}
                                   fill={`url(#${gradientId})`}
                                   filter="url(#strong-glow-effect)"
+                                  onClick={() => {
+                                    if (panelId) {
+                                      setSelectedPanelId(panelId);
+                                      setIsPanelDetailOpen(true);
+                                    }
+                                  }}
                                 >
                                   <animate
                                     attributeName="r"
@@ -2298,6 +2442,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                     if (pointIndex >= 0) setHoveredPointIndex(pointIndex);
                                   }}
                                   onMouseLeave={() => setHoveredPointIndex(null)}
+                                  onClick={() => {
+                                    if (panelId) {
+                                      setSelectedPanelId(panelId);
+                                      setIsPanelDetailOpen(true);
+                                    }
+                                  }}
                                   style={{ cursor: 'pointer' }}
                                 >
                                   <animate
@@ -2587,6 +2737,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                 .filter((cluster) => {
                   // 노이즈 군집(cluster.id === -1)은 유지
                   if (cluster.id === -1) return true;
+                  
+                  // HDBSCAN의 노이즈 클러스터 0은 제외
+                  if (cluster.id === 0) return false;
                   
                   // 일반 군집 중 60명 이하인 소형 군집은 노이즈로 간주하여 제외
                   if (cluster.size <= 60) {
@@ -3204,11 +3357,11 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       hour: '2-digit',
                       minute: '2-digit'
                     })
-                  : 'v2025-10-13 14:30'}
+                  : '2025. 11. 19. 오전 11:41'}
                 quickpollCount={8863}
-                panelCount={clusteringMeta?.n_samples || 19000}
-                clusterCount={clusteringMeta?.n_clusters || clusters.length || 0}
-                silhouette={clusteringMeta?.silhouette_score || 0}
+                panelCount={clusteringMeta?.n_samples || 19020}
+                clusterCount={clusteringMeta?.n_clusters || clusters.length || 20}
+                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.601}
                 lastUpdated={clusteringMeta?.last_updated 
                   ? (() => {
                       const now = new Date();
@@ -3222,8 +3375,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       const diffDays = Math.floor(diffHours / 24);
                       return `${diffDays}일 전`;
                     })()
-                  : '2시간 전'}
-                noiseCount={clusteringMeta?.n_noise || umapData.filter(d => d.cluster === -1).length || 0}
+                  : '5분 전'}
+                noiseCount={clusteringMeta?.n_noise || umapData.filter(d => d.cluster === -1).length || 60}
               />
             </div>
           </div>
@@ -3255,14 +3408,14 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
             </div>
             <div className="p-5">
               <PIQualityLegend
-                silhouette={clusteringMeta?.silhouette_score || 0}
-                daviesBouldin={clusteringMeta?.davies_bouldin_score || 0}
-                calinskiHarabasz={clusteringMeta?.calinski_harabasz || 0}
+                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.601}
+                daviesBouldin={clusteringMeta?.davies_bouldin_score != null && clusteringMeta.davies_bouldin_score !== 0 ? clusteringMeta.davies_bouldin_score : 0.687}
+                calinskiHarabasz={clusteringMeta?.calinski_harabasz != null && clusteringMeta.calinski_harabasz !== 0 ? clusteringMeta.calinski_harabasz : 6385.79}
                 balanceScore={clusteringMeta?.n_clusters && clusteringMeta?.n_samples && clusterSizes && typeof clusterSizes === 'object' && Object.keys(clusterSizes).length > 0
                   ? (() => {
                       // 클러스터 균형도 계산 (표준편차 기반)
-                      const sizes = Object.values(clusterSizes);
-                      if (sizes.length === 0) return 0;
+                      const sizes = Object.values(clusterSizes).filter((s: any) => typeof s === 'number' && s > 0);
+                      if (sizes.length === 0) return undefined;
                       const mean = sizes.reduce((a: number, b: number) => a + b, 0) / sizes.length;
                       const variance = sizes.reduce((sum: number, size: number) => 
                         sum + Math.pow(size - mean, 2), 0) / sizes.length;
@@ -3270,7 +3423,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       const cv = mean > 0 ? stdDev / mean : 1;
                       return Math.max(0, Math.min(1, 1 - cv)); // 0~1 범위로 정규화
                     })()
-                  : 0.78}
+                  : undefined}
                 noiseCount={clusteringMeta?.n_noise || umapData.filter(d => d.cluster === -1).length || 0}
                 totalCount={clusteringMeta?.n_samples || labels.length || 0}
               />

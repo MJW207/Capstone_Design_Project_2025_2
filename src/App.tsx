@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { DarkModeToggle, useDarkMode } from './lib/DarkModeSystem';
 import { useMirrorThemeToPortals } from './lib/useMirrorThemeToPortals';
 import { presetManager } from './lib/presetManager';
+import { PICommandPalette } from './ui/pi/PICommandPalette';
 
 
 type AppView = 'start' | 'results';
@@ -54,6 +55,7 @@ export default function App() {
   const [isPanelDetailOpen, setIsPanelDetailOpen] = useState(false);
   const [selectedPanelId, setSelectedPanelId] = useState<string>('');
   const [editingPreset, setEditingPreset] = useState<{ id: string; name: string; filters: any } | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   
   // History navigation
   const handleHistoryNavigate = (type: HistoryType, data: any) => {
@@ -148,6 +150,11 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + K - command palette
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
       // Cmd/Ctrl + H - toggle history
       if ((e.metaKey || e.ctrlKey) && e.key === 'h') {
         e.preventDefault();
@@ -179,9 +186,24 @@ export default function App() {
             <div className="flex items-center justify-between">
               <button
                 onClick={() => setView('start')}
-                className="text-xl font-bold hover:text-[var(--accent-blue)] transition-colors"
+                className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                }}
               >
-                Panel Insight
+                <img 
+                  src="/panel-insight-icon.svg" 
+                  alt="Panel Insight"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                  }}
+                />
+                <div className="text-xl font-bold" style={{ color: 'var(--foreground)' }}>
+                  Panel Insight
+                </div>
               </button>
               
               <div className="flex items-center gap-4">
@@ -346,7 +368,7 @@ export default function App() {
             selectedGenders: editingPreset.filters.gender || [],
             selectedRegions: editingPreset.filters.regions || [],
             selectedIncomes: editingPreset.filters.income || [],
-            ageRange: editingPreset.filters.ageRange || [15, 80],
+            ageRange: editingPreset.filters.ageRange || [0, 120],
             quickpollOnly: editingPreset.filters.quickpollOnly || false,
             interests: Array.isArray(editingPreset.filters.interests) 
               ? editingPreset.filters.interests 
@@ -424,6 +446,25 @@ export default function App() {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         onNavigate={handleHistoryNavigate}
+      />
+
+      {/* Global Command Palette */}
+      <PICommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onFilterOpen={() => {
+          setIsFilterOpen(true);
+          setIsCommandPaletteOpen(false);
+        }}
+        onExportOpen={() => {
+          setIsExportOpen(true);
+          setIsCommandPaletteOpen(false);
+        }}
+        onClusterLabOpen={() => {
+          setView('results');
+          setActiveTab('cluster');
+          setIsCommandPaletteOpen(false);
+        }}
       />
 
       {/* Toast notifications */}

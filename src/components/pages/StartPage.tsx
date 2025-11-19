@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Info } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Search, Filter } from 'lucide-react';
 import { PIQuickActionChip } from '../../ui/pi/PIQuickActionChip';
 import { PIPresetMenu } from '../../ui/pi/PIPresetMenu';
 import { PIBookmarkMenu } from '../../ui/pi/PIBookmarkMenu';
@@ -9,7 +9,7 @@ import { PIBookmarkButton } from '../../ui/pi/PIBookmarkButton';
 import { PIPresetButton } from '../../ui/pi/PIPresetButton';
 import { bookmarkManager } from '../../lib/bookmarkManager';
 import { presetManager } from '../../lib/presetManager';
-import { DarkModeToggle } from '../../lib/DarkModeSystem';
+import { DarkModeToggle, useDarkMode } from '../../lib/DarkModeSystem';
 
 interface StartPageProps {
   onSearch: (query: string) => void;
@@ -20,6 +20,7 @@ interface StartPageProps {
 }
 
 export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilters = {}, onPanelDetailOpen }: StartPageProps) {
+  const { isDark } = useDarkMode();
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isPresetOpen, setIsPresetOpen] = useState(false);
@@ -28,6 +29,10 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
   const [isBookmarkPanelOpen, setIsBookmarkPanelOpen] = useState(false);
   const [bookmarkCount, setBookmarkCount] = useState(0);
   const [presetCount, setPresetCount] = useState(0);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [mouseVelocity, setMouseVelocity] = useState({ vx: 0, vy: 0 });
+  const heroSectionRef = useRef<HTMLDivElement>(null);
+  const lastMousePositionRef = useRef({ x: 0, y: 0 });
 
   // 북마크 개수 로드
   useEffect(() => {
@@ -85,6 +90,89 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFocused]);
 
+  // 마우스 움직임 추적 - 속도 계산 포함
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (heroSectionRef.current) {
+        const rect = heroSectionRef.current.getBoundingClientRect();
+        const newX = e.clientX - rect.left;
+        const newY = e.clientY - rect.top;
+        
+        // 속도 계산 (이전 위치와의 차이)
+        const vx = newX - lastMousePositionRef.current.x;
+        const vy = newY - lastMousePositionRef.current.y;
+        
+        setMousePosition({ x: newX, y: newY });
+        setMouseVelocity({ vx, vy });
+        
+        lastMousePositionRef.current = { x: newX, y: newY };
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+
+  // 물결 효과 계산 - 마우스가 오브 위를 지나갈 때 물결 생성
+  const calculateWaveEffect = (orbCenterX: number, orbCenterY: number) => {
+    if (!heroSectionRef.current) {
+      return { waveX: 0, waveY: 0, scale: 1, waveIntensity: 0 };
+    }
+
+    const rect = heroSectionRef.current.getBoundingClientRect();
+    const orbScreenX = rect.left + (rect.width * orbCenterX / 100);
+    const orbScreenY = rect.top + (rect.height * orbCenterY / 100);
+    
+    // 마우스와 오브 중심 간 거리
+    const dx = mousePosition.x - (rect.width * orbCenterX / 100);
+    const dy = mousePosition.y - (rect.height * orbCenterY / 100);
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // 오브 반경 (대략)
+    const orbRadius = 310; // 620px / 2
+    
+    // 마우스가 오브 범위 내에 있는지 확인
+    const isInsideOrb = distance < orbRadius * 1.5; // 약간 여유있게
+    
+    if (!isInsideOrb) {
+      return { waveX: 0, waveY: 0, scale: 1, waveIntensity: 0 };
+    }
+    
+    // 거리에 따른 영향력 (가까울수록 강함)
+    const influence = Math.max(0, 1 - distance / (orbRadius * 1.5));
+    
+    // 마우스 속도에 따른 물결 강도
+    const speed = Math.sqrt(mouseVelocity.vx * mouseVelocity.vx + mouseVelocity.vy * mouseVelocity.vy);
+    const waveIntensity = influence * Math.min(speed / 3, 1);
+    
+    // 물결 방향 (마우스 움직임 방향)
+    const angle = Math.atan2(mouseVelocity.vy, mouseVelocity.vx);
+    
+    // 원형 파문 효과 (마우스 위치에서 퍼지는 물결)
+    const time = Date.now() * 0.002;
+    const waveRadius = distance * 0.1; // 거리에 비례한 파문 크기
+    const waveAngle = Math.atan2(dy, dx);
+    
+    // 물결 파형 (여러 레이어로 자연스러운 물결)
+    const wave1 = Math.sin(time * 3 - waveRadius * 0.05) * waveIntensity * 20;
+    const wave2 = Math.cos(time * 2.5 - waveRadius * 0.08) * waveIntensity * 15;
+    
+    // 원형으로 퍼지는 물결
+    const waveX = Math.cos(waveAngle) * (wave1 + wave2);
+    const waveY = Math.sin(waveAngle) * (wave1 + wave2);
+    
+    // 거리에 따른 스케일 (마우스가 가까울수록 약간 확대)
+    const scale = 1 + influence * 0.1;
+    
+    return {
+      waveX,
+      waveY,
+      scale,
+      waveIntensity: waveIntensity,
+    };
+  };
+
   // 별 생성 - useMemo로 한 번만 생성하여 위치 고정
   const stars = useMemo(() => {
     const starElements = [];
@@ -120,7 +208,7 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
       }}
     >
       {/* 별 반짝임 효과 */}
-      <div className="stars-container">
+      <div className="stars-container" style={{ zIndex: 0 }}>
         {stars}
       </div>
 
@@ -129,19 +217,43 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
         className="absolute inset-x-0 top-0 h-[20%] pointer-events-none"
         style={{
           background: 'radial-gradient(ellipse at top, rgba(96, 165, 250, 0.08) 0%, transparent 70%)',
+          zIndex: 0,
         }}
       />
 
       {/* Minimal Transparent Nav */}
       <nav className="relative z-20 px-20 py-6 flex items-center justify-between">
-        <div className="text-base font-bold" style={{ color: 'var(--foreground)' }}>
-          Panel Insight
-        </div>
+        <button
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+          }}
+        >
+          <img 
+            src="/panel-insight-icon.svg" 
+            alt="Panel Insight"
+            style={{
+              width: '32px',
+              height: '32px',
+            }}
+          />
+          <div className="text-base font-bold" style={{ color: 'var(--foreground)' }}>
+            Panel Insight
+          </div>
+        </button>
         <DarkModeToggle variant="icon" size="sm" position="relative" />
       </nav>
 
       {/* Hero Section with Background */}
-      <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+      <div 
+        ref={heroSectionRef}
+        className="flex-1 flex items-center justify-center relative overflow-hidden"
+      >
         {/* Background Group - Extended for seamless appearance */}
         <div 
           className="absolute inset-0 pointer-events-none"
@@ -150,49 +262,66 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
             bottom: '-20vh',
             left: 0,
             right: 0,
+            zIndex: 0,
           }}
         >
-          {/* Left Orb - Blue Gradient */}
-          <div 
-            className="absolute animate-float-slow"
-            style={{
-              left: '40%',
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-            }}
-          >
-            <div
-              className="rounded-full"
-              style={{
-                width: '620px',
-                height: '620px',
-                background: 'radial-gradient(circle, #60A5FA 0%, #1D4ED8 100%)',
-                filter: 'blur(120px)',
-                opacity: 0.28,
-              }}
-            />
-          </div>
+          {/* Left Orb - Blue Gradient (고정 위치, 마우스가 지나갈 때 물결) */}
+          {(() => {
+            const wave = calculateWaveEffect(40, 50);
+            
+            return (
+              <div 
+                className="absolute orb-interactive animate-float-slow"
+                style={{
+                  left: '40%',
+                  top: '50%',
+                  transform: `translate(calc(-50% + ${wave.waveX}px), calc(-50% + ${wave.waveY}px)) scale(${wave.scale})`,
+                  filter: `blur(${120 - wave.waveIntensity * 20}px)`,
+                  willChange: 'transform, filter',
+                  transition: 'transform 0.1s ease-out, filter 0.1s ease-out',
+                }}
+              >
+                <div
+                  className="rounded-full"
+                  style={{
+                    width: '620px',
+                    height: '620px',
+                    background: 'radial-gradient(circle, #60A5FA 0%, #1D4ED8 100%)',
+                    opacity: 0.28,
+                  }}
+                />
+              </div>
+            );
+          })()}
 
-          {/* Right Orb - Purple Gradient */}
-          <div 
-            className="absolute animate-float-slow-delayed"
-            style={{
-              left: '66%',
-              top: '56%',
-              transform: 'translate(-50%, -50%)',
-            }}
-          >
-            <div
-              className="rounded-full"
-              style={{
-                width: '580px',
-                height: '580px',
-                background: 'radial-gradient(circle, #C084FC 0%, #7C3AED 100%)',
-                filter: 'blur(120px)',
-                opacity: 0.24,
-              }}
-            />
-          </div>
+          {/* Right Orb - Purple Gradient (고정 위치, 마우스가 지나갈 때 물결) */}
+          {(() => {
+            const wave = calculateWaveEffect(66, 56);
+            
+            return (
+              <div 
+                className="absolute orb-interactive animate-float-slow-delayed"
+                style={{
+                  left: '66%',
+                  top: '56%',
+                  transform: `translate(calc(-50% + ${wave.waveX * 0.8}px), calc(-50% + ${wave.waveY * 0.8}px)) scale(${wave.scale * 0.95})`,
+                  filter: `blur(${120 - wave.waveIntensity * 15}px)`,
+                  willChange: 'transform, filter',
+                  transition: 'transform 0.1s ease-out, filter 0.1s ease-out',
+                }}
+              >
+                <div
+                  className="rounded-full"
+                  style={{
+                    width: '580px',
+                    height: '580px',
+                    background: 'radial-gradient(circle, #C084FC 0%, #7C3AED 100%)',
+                    opacity: 0.24,
+                  }}
+                />
+              </div>
+            );
+          })()}
 
           {/* Subtle Grid Overlay */}
           <div 
@@ -207,30 +336,32 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
                 linear-gradient(90deg, #0B1220 1px, transparent 1px)
               `,
               backgroundSize: '40px 40px',
-              opacity: 0.04,
+              opacity: 0.01,
               mixBlendMode: 'overlay',
             }}
           />
         </div>
 
         {/* Center Stack - Auto Layout */}
-        <div className="relative z-10 flex flex-col items-center gap-3" style={{ width: '720px' }}>
-          {/* Title with Gradient */}
+        <div className="relative z-20 flex flex-col items-center gap-3" style={{ width: '720px' }}>
+          {/* PANEL INSIGHT Typo */}
           <div className="flex flex-col items-center gap-2">
             <h1
+              className="inline-block uppercase font-extrabold"
               style={{
-                fontSize: '56px',
-                fontWeight: 700,
-                letterSpacing: '-0.3%',
+                fontSize: 'clamp(32px, 5vw, 64px)',
+                letterSpacing: '0.18em',
                 lineHeight: '1.2',
-                background: 'linear-gradient(135deg, #1D4ED8 0%, #7C3AED 100%)',
+                background: 'linear-gradient(to right, #4b74ff 0%, #8055ff 50%, #c35bff 100%)',
                 WebkitBackgroundClip: 'text',
                 backgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                textShadow: 'none',
+                textShadow: '0 8px 24px rgba(88, 104, 255, 0.35)',
+                filter: 'drop-shadow(0 8px 24px rgba(88, 104, 255, 0.35))',
+                transform: 'translateX',
               }}
             >
-              Panel Insight
+              PANEL&nbsp;INSIGHT
             </h1>
             
             {/* Gradient Underline */}
@@ -239,7 +370,7 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
               style={{
                 width: '56px',
                 height: '1px',
-                background: 'linear-gradient(135deg, #1D4ED8 0%, #7C3AED 100%)',
+                background: 'linear-gradient(135deg, #4b74ff 0%, #8055ff 50%, #c35bff 100%)',
                 opacity: 0.4,
               }}
             />
@@ -261,28 +392,56 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
           {/* Glass Search Bar */}
           <div className="w-full" style={{ marginTop: '32px' }}>
             <div
-              className={`relative w-full transition-all duration-[120ms] ease-[cubic-bezier(0.33,1,0.68,1)] glass ${isFocused ? 'pi-focus-ring-gradient' : ''}`}
+              className="relative w-full transition-all duration-[120ms] ease-[cubic-bezier(0.33,1,0.68,1)] glass-search-bar"
               style={{
                 height: '56px',
-                borderRadius: '16px',
-                border: isFocused 
-                  ? '1px solid var(--border-accent)' 
-                  : '1px solid var(--border)',
-                boxShadow: isFocused
-                  ? 'var(--shadow-2), 0 0 0 1px var(--glass-border-strong), 0 0 24px rgba(37, 99, 235, 0.15)'
-                  : 'var(--shadow-1)',
+                borderRadius: '20px',
+                background: isDark
+                  ? isFocused
+                    ? 'rgba(0, 0, 0, 0.25)'
+                    : 'rgba(0, 0, 0, 0.15)'
+                  : isFocused
+                    ? 'rgba(255, 255, 255, 0.15)'
+                    : 'rgba(255, 255, 255, 0.12)',
+                backdropFilter: 'blur(18px)',
+                WebkitBackdropFilter: 'blur(18px)',
+                border: isDark
+                  ? isFocused
+                    ? '1px solid rgba(255, 255, 255, 0.25)'
+                    : '1px solid rgba(255, 255, 255, 0.15)'
+                  : isFocused
+                    ? '1px solid rgba(255, 255, 255, 0.3)'
+                    : '1px solid rgba(255, 255, 255, 0.25)',
+                boxShadow: isDark
+                  ? isFocused
+                    ? '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(255, 255, 255, 0.05), inset 0 0 16px 8px rgba(255, 255, 255, 0.1), 0 0 24px rgba(96, 165, 250, 0.2)'
+                    : '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 0 rgba(255, 255, 255, 0.03), inset 0 0 16px 8px rgba(255, 255, 255, 0.05)'
+                  : isFocused
+                    ? '0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.1), inset 0 0 16px 8px rgba(255, 255, 255, 0.8), 0 0 24px rgba(37, 99, 235, 0.15)'
+                    : '0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -1px 0 rgba(255, 255, 255, 0.08), inset 0 0 16px 8px rgba(255, 255, 255, 0.6)',
                 transform: isFocused ? 'translateY(-2px)' : 'translateY(0)',
+                overflow: 'hidden',
               }}
               onMouseEnter={(e) => {
                 if (!isFocused) {
                   e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.borderColor = 'rgba(17, 24, 39, 0.12)';
+                  e.currentTarget.style.background = isDark
+                    ? 'rgba(0, 0, 0, 0.2)'
+                    : 'rgba(255, 255, 255, 0.13)';
+                  e.currentTarget.style.borderColor = isDark
+                    ? 'rgba(255, 255, 255, 0.2)'
+                    : 'rgba(255, 255, 255, 0.28)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isFocused) {
                   e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.borderColor = 'rgba(17, 24, 39, 0.08)';
+                  e.currentTarget.style.background = isDark
+                    ? 'rgba(0, 0, 0, 0.15)'
+                    : 'rgba(255, 255, 255, 0.12)';
+                  e.currentTarget.style.borderColor = isDark
+                    ? 'rgba(255, 255, 255, 0.15)'
+                    : 'rgba(255, 255, 255, 0.25)';
                 }
               }}
             >

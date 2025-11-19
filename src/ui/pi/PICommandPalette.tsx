@@ -133,6 +133,21 @@ export function PICommandPalette({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
 
+      // 단축키 직접 실행 (입력 필드에 포커스가 없을 때만)
+      if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        const pressedKey = e.key.toLowerCase();
+        const commandWithShortcut = filteredCommands.find(cmd => 
+          cmd.shortcut && cmd.shortcut.toLowerCase() === pressedKey
+        );
+        
+        if (commandWithShortcut) {
+          e.preventDefault();
+          commandWithShortcut.action();
+          return;
+        }
+      }
+
+      // 네비게이션 키
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
@@ -143,6 +158,7 @@ export function PICommandPalette({
         e.preventDefault();
         filteredCommands[selectedIndex]?.action();
       } else if (e.key === 'Escape') {
+        e.preventDefault();
         onClose();
       }
     };

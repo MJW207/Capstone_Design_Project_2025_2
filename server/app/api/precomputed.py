@@ -329,16 +329,86 @@ async def get_precomputed_umap():
 @router.get("/comparison/{cluster_a}/{cluster_b}")
 async def get_precomputed_comparison(cluster_a: int, cluster_b: int):
     """
-    Precomputed 비교 분석 결과 반환
+    Precomputed 비교 분석 결과 반환 (NeonDB 우선 사용)
     """
     logger.info(f"[Precomputed 비교 분석 요청] Cluster {cluster_a} vs {cluster_b}")
-    logger.debug(f"[Precomputed 비교 분석] JSON 경로: {COMPARISON_JSON}")
     
     try:
         comparison = None
         
-        # COMPARISON_JSON이 있으면 먼저 확인
-        if COMPARISON_JSON.exists():
+        # 1. NeonDB에서 비교 데이터 로드 시도
+        try:
+            from app.utils.clustering_loader import get_precomputed_session_id
+            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+            from sqlalchemy.orm import sessionmaker
+            from sqlalchemy import text
+            import os
+            from dotenv import load_dotenv
+            import asyncio
+            import sys
+            
+            load_dotenv(override=True)
+            
+            precomputed_name = "hdbscan_default"
+            session_id = await get_precomputed_session_id(precomputed_name)
+            
+            if session_id:
+                logger.info(f"[Precomputed 비교 분석] NeonDB에서 비교 데이터 로드 시도: session_id={session_id}")
+                
+                uri = os.getenv("ASYNC_DATABASE_URI")
+                if uri:
+                    if uri.startswith("postgresql://"):
+                        uri = uri.replace("postgresql://", "postgresql+psycopg://", 1)
+                    elif "postgresql+asyncpg" in uri:
+                        uri = uri.replace("postgresql+asyncpg", "postgresql+psycopg", 1)
+                    
+                    if sys.platform == 'win32':
+                        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+                    
+                    temp_engine = create_async_engine(uri, echo=False, pool_pre_ping=True, poolclass=None)
+                    
+                    try:
+                        async with temp_engine.begin() as conn:
+                            await conn.execute(text('SET search_path TO "merged", public'))
+                            
+                            # cluster_comparisons 테이블에서 비교 데이터 조회
+                            result = await conn.execute(
+                                text("""
+                                    SELECT comparison_data
+                                    FROM merged.cluster_comparisons
+                                    WHERE session_id = :session_id
+                                    AND ((cluster_a = :cluster_a AND cluster_b = :cluster_b)
+                                         OR (cluster_a = :cluster_b AND cluster_b = :cluster_a))
+                                    LIMIT 1
+                                """),
+                                {"session_id": session_id, "cluster_a": cluster_a, "cluster_b": cluster_b}
+                            )
+                            
+                            row = result.fetchone()
+                            if row and row[0]:
+                                comparison_data = row[0]
+                                if isinstance(comparison_data, str):
+                                    comparison_data = json.loads(comparison_data)
+                                
+                                comparison = {
+                                    'cluster_a': cluster_a,
+                                    'cluster_b': cluster_b,
+                                    'comparison': comparison_data.get('comparison', []),
+                                    'group_a': comparison_data.get('group_a', {}),
+                                    'group_b': comparison_data.get('group_b', {})
+                                }
+                                
+                                logger.info(f"[Precomputed 비교 분석] NeonDB에서 비교 데이터 로드 성공")
+                    except Exception as db_error:
+                        logger.warning(f"[Precomputed 비교 분석] NeonDB 조회 실패: {str(db_error)}, 파일 시스템 fallback 시도")
+                    finally:
+                        if temp_engine:
+                            await temp_engine.dispose()
+        except Exception as e:
+            logger.warning(f"[Precomputed 비교 분석] NeonDB 로드 시도 실패: {str(e)}, 파일 시스템 fallback 시도")
+        
+        # 2. 파일 시스템 fallback (COMPARISON_JSON)
+        if comparison is None and COMPARISON_JSON.exists():
             logger.debug(f"[Precomputed 비교 분석] JSON 로드 시작")
             try:
                 with open(COMPARISON_JSON, 'r', encoding='utf-8') as f:
@@ -385,24 +455,52 @@ async def get_precomputed_comparison(cluster_a: int, cluster_b: int):
             except (json.JSONDecodeError, IOError) as e:
                 logger.warning(f"[Precomputed 비교 분석] JSON 로드 실패, 동적 생성으로 전환: {str(e)}")
         
-        # 비교 데이터가 없으면 동적으로 생성
+        # 3. 비교 데이터가 없으면 동적으로 생성 (NeonDB 데이터 사용)
         if comparison is None:
-            logger.info(f"[Precomputed 비교 분석] 비교 데이터 없음, 동적 생성 시도: {cluster_a} vs {cluster_b}")
+            logger.info(f"[Precomputed 비교 분석] 비교 데이터 없음, 동적 생성 시도 (NeonDB): {cluster_a} vs {cluster_b}")
             
             try:
-                # HDBSCAN CSV 파일 로드
                 import pandas as pd
                 from app.clustering.compare import compare_groups, CONTINUOUS_FEATURES, BINARY_FEATURES, CATEGORICAL_FEATURES
+                from app.utils.clustering_loader import get_precomputed_session_id, load_full_clustering_data_from_db
+                from app.utils.merged_data_loader import load_merged_data_from_db
                 
-                hdbscan_file = PROJECT_ROOT / 'clustering_data' / 'data' / 'precomputed' / 'flc_income_clustering_hdbscan.csv'
-                if not hdbscan_file.exists():
-                    error_msg = f"HDBSCAN 데이터 파일을 찾을 수 없습니다: {hdbscan_file}"
+                # NeonDB에서 데이터 로드
+                precomputed_name = "hdbscan_default"
+                session_id = await get_precomputed_session_id(precomputed_name)
+                
+                if not session_id:
+                    error_msg = f"Precomputed 세션을 찾을 수 없습니다: name={precomputed_name}. NeonDB에 데이터가 마이그레이션되었는지 확인하세요."
                     logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
                     raise HTTPException(status_code=404, detail=error_msg)
                 
-                df = pd.read_csv(hdbscan_file)
-                cluster_col = 'cluster_hdbscan' if 'cluster_hdbscan' in df.columns else 'cluster'
+                # 클러스터링 데이터 로드 (매핑 + UMAP 좌표)
+                clustering_data = await load_full_clustering_data_from_db(session_id)
+                if not clustering_data:
+                    error_msg = f"NeonDB에서 클러스터링 데이터를 로드할 수 없습니다: session_id={session_id}"
+                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
+                    raise HTTPException(status_code=404, detail=error_msg)
                 
+                mappings_df = clustering_data.get('data')
+                if mappings_df is None or mappings_df.empty:
+                    error_msg = f"클러스터 매핑 데이터가 없습니다: session_id={session_id}"
+                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
+                    raise HTTPException(status_code=404, detail=error_msg)
+                
+                # 패널 데이터 로드 (비교 분석에 필요한 피처 포함)
+                merged_data = await load_merged_data_from_db()
+                if not merged_data:
+                    error_msg = "NeonDB에서 패널 데이터를 로드할 수 없습니다."
+                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
+                    raise HTTPException(status_code=404, detail=error_msg)
+                
+                # DataFrame 생성
+                panel_df = pd.DataFrame(list(merged_data.values()))
+                
+                # 클러스터 매핑과 병합
+                df = mappings_df.merge(panel_df, on='mb_sn', how='inner')
+                
+                cluster_col = 'cluster'
                 if cluster_col not in df.columns:
                     error_msg = f"클러스터 컬럼을 찾을 수 없습니다: {cluster_col}"
                     logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")

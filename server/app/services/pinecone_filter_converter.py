@@ -142,5 +142,15 @@ class PineconeFilterConverter:
         if income_filters:
             category_filters["직업소득"] = income_filters
         
+        # 퀵폴 응답 보유만 보기 필터
+        if quickpoll_only := filters_dict.get("quickpollOnly"):
+            if quickpoll_only is True:
+                # coverage 필드가 "qw"인 패널만 필터링
+                if "기본정보" not in category_filters:
+                    category_filters["기본정보"] = {}
+                # Pinecone 메타데이터에 coverage 필드가 있다고 가정
+                # 실제 필드명은 데이터베이스 스키마에 따라 조정 필요
+                category_filters["기본정보"]["coverage"] = "qw"
+        
         return category_filters
 

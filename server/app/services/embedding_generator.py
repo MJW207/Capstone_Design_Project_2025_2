@@ -1,6 +1,6 @@
 """임베딩 생성기"""
 from typing import Dict, List
-from langchain_upstage import UpstageEmbeddings
+from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
@@ -8,22 +8,24 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingGenerator:
-    """Upstage Solar로 임베딩 생성 (병렬 처리)"""
+    """OpenAI text-embedding-3-small로 임베딩 생성 (병렬 처리)"""
 
     def __init__(self, api_key: str):
         """
         Args:
-            api_key: Upstage API 키
+            api_key: OpenAI API 키
         """
-        self.embeddings = UpstageEmbeddings(
-            api_key=api_key,
-            model="solar-embedding-1-large-query"
-        )
+        self.client = OpenAI(api_key=api_key)
+        self.model = "text-embedding-3-small"
 
     def _generate_single(self, category: str, text: str) -> tuple[str, List[float]]:
         """단일 임베딩 생성 (병렬 처리용)"""
         try:
-            embedding = self.embeddings.embed_query(text)
+            response = self.client.embeddings.create(
+                model=self.model,
+                input=text
+            )
+            embedding = response.data[0].embedding
             logger.debug(f"✅ [{category}] 임베딩 생성 완료")
             return (category, embedding)
         except Exception as e:

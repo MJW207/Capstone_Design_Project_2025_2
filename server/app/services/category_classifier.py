@@ -16,9 +16,15 @@ class CategoryClassifier:
             category_config: 카테고리 설정 딕셔너리
             api_key: Anthropic API 키
         """
+        logger.debug(f"[CategoryClassifier] 초기화 시작")
+        logger.debug(f"[CategoryClassifier] 카테고리 설정 개수: {len(category_config)}")
+        logger.debug(f"[CategoryClassifier] 카테고리 목록: {list(category_config.keys())}")
+        logger.debug(f"[CategoryClassifier] API 키 길이: {len(api_key) if api_key else 0}")
+        
         self.category_config = category_config
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
+        logger.debug(f"[CategoryClassifier] Anthropic 클라이언트 초기화 완료, 모델: {self.model}")
 
     def _build_prompt(self, metadata: Dict[str, Any]) -> str:
         """카테고리 설명 + 메타데이터를 포함한 LLM용 프롬프트 생성"""
@@ -88,13 +94,20 @@ JSON만 반환하세요:
                 model=self.model,
                 max_tokens=1024,
                 temperature=0.2,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30.0  # 30초 타임아웃
             )
             
             raw_output = response.content[0].text.strip()
+            logger.debug(f"[카테고리 분류] LLM 원본 응답: {raw_output[:500]}")
 
             # JSON 파싱
-            mapping_tokens = self._parse_llm_output(raw_output)
+            try:
+                mapping_tokens = self._parse_llm_output(raw_output)
+                logger.debug(f"[카테고리 분류] 파싱된 매핑 토큰: {mapping_tokens}")
+            except Exception as parse_err:
+                logger.warning(f"[카테고리 분류] JSON 파싱 실패: {parse_err}, 원본: {raw_output[:200]}")
+                raise
 
             # 토큰들을 실제 메타데이터 키로 매핑
             categorized: Dict[str, List[str]] = {}
@@ -110,14 +123,16 @@ JSON만 반환하세요:
 
             # 아무 것도 매핑 안 됐으면 rule-based로 폴백
             if not categorized:
-                logger.warning("[WARN] LLM 기반 분류 결과 매핑 실패 -> rule-based로 대체")
+                logger.warning(f"[WARN] LLM 기반 분류 결과 매핑 실패 -> rule-based로 대체 (메타데이터: {metadata}, 매핑 토큰: {mapping_tokens})")
                 return self._rule_based_classify(metadata)
 
-            logger.debug(f"[카테고리 분류] {dict(categorized)}")
+            logger.info(f"[카테고리 분류] {dict(categorized)}")
             return categorized
 
         except Exception as e:
-            logger.warning(f"[WARN] LLM 분류/파싱 실패 ({e}) -> rule-based로 대체")
+            logger.warning(f"[WARN] LLM 분류/파싱 실패 ({e}) -> rule-based로 대체 (메타데이터: {metadata})")
+            import traceback
+            logger.debug(f"[WARN] 상세 오류: {traceback.format_exc()}")
             return self._rule_based_classify(metadata)
 
     def _parse_llm_output(self, raw_output: str) -> Dict[str, List[str]]:
@@ -135,7 +150,11 @@ JSON만 반환하세요:
                 pass
 
         # JSON 파싱
-        parsed = json.loads(raw_output)
+        try:
+            parsed = json.loads(raw_output)
+        except json.JSONDecodeError as e:
+            logger.warning(f"[카테고리 분류] JSON 파싱 오류: {e}, 원본: {raw_output[:200]}")
+            raise
 
         # 값들을 전부 리스트[str] 형태로 정규화
         mapping_tokens: Dict[str, List[str]] = {}

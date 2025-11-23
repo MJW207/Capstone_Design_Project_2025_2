@@ -5,15 +5,13 @@
 import json
 import logging
 from typing import Dict, Any, Optional, List, Tuple
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
 import pandas.api.types as pd_types
 import numpy as np
 
-from app.db.session import get_session
 from app.clustering.artifacts import load_artifacts
 
 logger = logging.getLogger(__name__)

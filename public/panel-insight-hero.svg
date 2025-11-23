@@ -1,0 +1,54 @@
+<svg
+  width="600"
+  height="120"
+  viewBox="0 0 600 120"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <defs>
+    <!-- Subtle Grid Background -->
+    <pattern id="grid-pattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="40" stroke="#e5e7eb" stroke-width="0.5" opacity="0.3"/>
+      <line x1="0" y1="0" x2="40" y2="0" stroke="#e5e7eb" stroke-width="0.5" opacity="0.3"/>
+    </pattern>
+    
+    <!-- Text Gradient -->
+    <linearGradient id="hero-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4b74ff" />
+      <stop offset="50%" stop-color="#8055ff" />
+      <stop offset="100%" stop-color="#c35bff" />
+    </linearGradient>
+    
+    <!-- Glow Effect -->
+    <filter id="hero-glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+      <feOffset dx="0" dy="8" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.35"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Grid Background -->
+  <rect width="600" height="120" fill="url(#grid-pattern)" opacity="0.15"/>
+  
+  <!-- Main Text -->
+  <text
+    x="300"
+    y="70"
+    font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    font-size="64"
+    font-weight="800"
+    text-anchor="middle"
+    letter-spacing="0.18em"
+    fill="url(#hero-gradient)"
+    filter="url(#hero-glow)"
+    style="text-transform: uppercase;"
+  >
+    PANEL INSIGHT
+  </text>
+</svg>

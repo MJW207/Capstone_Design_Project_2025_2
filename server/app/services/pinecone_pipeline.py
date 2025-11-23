@@ -23,7 +23,7 @@ class PanelSearchPipeline:
         pinecone_index_name: str,
         category_config: Dict[str, Any],
         anthropic_api_key: str,
-        upstage_api_key: str
+        openai_api_key: str
     ):
         """
         Args:
@@ -31,23 +31,31 @@ class PanelSearchPipeline:
             pinecone_index_name: Pinecone 인덱스 이름
             category_config: 카테고리 설정 딕셔너리
             anthropic_api_key: Anthropic API 키
-            upstage_api_key: Upstage API 키
+            openai_api_key: OpenAI API 키
         """
+        logger.debug(f"[Pipeline] 초기화 시작")
+        logger.debug(f"[Pipeline] Anthropic API 키 길이: {len(anthropic_api_key) if anthropic_api_key else 0}")
+        logger.debug(f"[Pipeline] OpenAI API 키 길이: {len(openai_api_key) if openai_api_key else 0}")
+        logger.debug(f"[Pipeline] Pinecone API 키 길이: {len(pinecone_api_key) if pinecone_api_key else 0}")
+        logger.debug(f"[Pipeline] Pinecone 인덱스 이름: {pinecone_index_name}")
+        logger.debug(f"[Pipeline] 카테고리 설정 개수: {len(category_config)}")
+        
         self.metadata_extractor = MetadataExtractor(anthropic_api_key)
         self.filter_extractor = MetadataFilterExtractor()
         self.category_classifier = CategoryClassifier(category_config, anthropic_api_key)
         self.text_generator = CategoryTextGenerator(anthropic_api_key)
-        self.embedding_generator = EmbeddingGenerator(upstage_api_key)
+        self.embedding_generator = EmbeddingGenerator(openai_api_key)
         self.searcher = PineconePanelSearcher(pinecone_api_key, pinecone_index_name, category_config)
         self.result_filter = PineconeResultFilter(self.searcher)
+        logger.debug(f"[Pipeline] 초기화 완료")
 
-    def search(self, query: str, top_k: int = 10, external_filters: Optional[Dict[str, Dict[str, Any]]] = None) -> List[str]:
+    def search(self, query: str, top_k: int = None, external_filters: Optional[Dict[str, Dict[str, Any]]] = None) -> List[str]:
         """
         자연어 쿼리로 패널 검색
 
         Args:
             query: 검색 쿼리 (예: "서울 20대 남자")
-            top_k: 반환할 패널 수
+            top_k: 반환할 패널 수 (None이면 조건 만족하는 전체 반환)
             external_filters: 외부 필터 (카테고리별 Pinecone 필터)
                 예: {"기본정보": {"지역": {"$in": ["서울"]}}, "직업소득": {...}}
 
@@ -56,6 +64,7 @@ class PanelSearchPipeline:
         """
         start_time = time.time()
         logger.info(f"[검색 시작] 쿼리: '{query}', top_k: {top_k}, 외부 필터: {bool(external_filters)}")
+        logger.info(f"[Pipeline DEBUG] PanelSearchPipeline.search() 메서드 진입")
 
         # 빈 쿼리이고 외부 필터만 있는 경우
         if (not query or not query.strip()) and external_filters:
@@ -79,80 +88,103 @@ class PanelSearchPipeline:
                 metadata = {}  # 빈 메타데이터로 계속 진행
             
             if not metadata:
-                logger.warning("[경고] 메타데이터가 비어있음, 기본 검색으로 진행")
-                metadata = {}
+                logger.error("[ERROR] 메타데이터 추출 실패 - 빈 메타데이터 반환")
+                return []  # 노트북과 동일하게 즉시 종료
+            
+            # ⭐ top_k 결정: query에서 추출 또는 파라미터 사용
+            final_count = None  # 기본값: None (전체 반환)
+            
+            if top_k is not None:
+                # 파라미터로 명시적 전달
+                final_count = top_k
+                logger.info(f"\n[인원수] 파라미터로 {final_count}명 지정됨")
+            else:
+                # metadata에서 인원수 추출 시도
+                extracted_count = metadata.get("인원수")
+                if extracted_count and isinstance(extracted_count, int) and extracted_count > 0:
+                    final_count = extracted_count
+                    logger.info(f"\n[인원수] 쿼리에서 {final_count}명 추출됨")
+                else:
+                    # ⭐ 명수 미명시 → None으로 유지 (필터링 후 남은 모든 후보 반환)
+                    final_count = None
+                    logger.info(f"\n[인원수] 쿼리에서 인원수 미명시 → 조건 만족하는 전체 패널 반환")
+
+            # 인원수 키 제거 (검색 조건이 아닌 결과 개수 지정용)
+            if "인원수" in metadata:
+                metadata.pop("인원수")
+                logger.info(f"[메타데이터 정리] '인원수' 키 제거 완료")
 
         # 2단계: 카테고리 분류
         step_start = time.time()
-        logger.info("[2단계] 카테고리 분류 시작")
+        logger.info(f"[2단계] 카테고리 분류 시작 (메타데이터: {metadata})")
         try:
             if metadata:
                 classified = self.category_classifier.classify(metadata)
+                if not classified:
+                    logger.warning(f"[2단계 경고] 카테고리 분류 결과가 비어있음 (메타데이터: {metadata})")
+                    # rule-based 폴백이 이미 시도되었을 수 있으므로, 메타데이터가 있으면 외부 필터와 병합 시도
+                    if external_filters:
+                        logger.info(f"[2단계] 외부 필터와 병합 시도: {external_filters}")
+                        classified = {cat: {} for cat in external_filters.keys()}
             else:
                 # 메타데이터가 없으면 외부 필터의 카테고리 사용
-                classified = external_filters.keys() if external_filters else {}
-                if isinstance(classified, dict):
-                    pass  # 이미 딕셔너리
+                if external_filters:
+                    classified = {cat: {} for cat in external_filters.keys()}
+                    logger.info(f"[2단계] 메타데이터 없음, 외부 필터 카테고리 사용: {list(classified.keys())}")
                 else:
-                    # 리스트나 다른 타입이면 딕셔너리로 변환
-                    classified = {cat: {} for cat in classified} if classified else {}
+                    classified = {}
+                    logger.warning(f"[2단계] 메타데이터와 외부 필터 모두 없음")
             step_time = time.time() - step_start
             logger.info(f"[2단계 완료] 카테고리 분류: {step_time:.2f}초, 결과: {classified}")
         except Exception as e:
-            logger.warning(f"[2단계 경고] 카테고리 분류 실패 (계속 진행): {e}")
+            logger.warning(f"[2단계 경고] 카테고리 분류 실패 (계속 진행): {e}", exc_info=True)
             classified = {}  # 빈 분류로 계속 진행
         
         if not classified:
-            logger.warning("[경고] 카테고리가 비어있음, 쿼리 텍스트로 직접 검색 시도")
-            # 메타데이터가 없을 때 쿼리 텍스트를 직접 임베딩하여 검색
-            try:
-                logger.info("[폴백 검색] 쿼리 텍스트를 직접 임베딩하여 검색")
-                
-                # 쿼리 텍스트를 직접 임베딩
-                query_embedding = self.embedding_generator.generate({"query": query})
-                if not query_embedding or "query" not in query_embedding:
-                    logger.warning("[폴백 검색] 임베딩 생성 실패")
+            # ⭐ 인원수만 있고 다른 메타데이터가 없는 경우: 쿼리 텍스트를 직접 임베딩해서 검색
+            if final_count is not None and not metadata and not external_filters:
+                logger.info(f"[Fallback] 인원수만 지정됨 ({final_count}명), 쿼리 텍스트 직접 검색으로 폴백")
+                # 쿼리 텍스트를 직접 임베딩해서 검색
+                try:
+                    # 모든 카테고리에서 검색 (기본정보 카테고리 사용)
+                    category_config = self.category_classifier.category_config
+                    default_category = "기본정보"  # 기본 카테고리
+                    
+                    # 쿼리 텍스트를 직접 임베딩
+                    query_text_embedding = self.embedding_generator.generate(query)
+                    
+                    # Pinecone에서 검색 (필터 없이)
+                    searcher = self.searcher
+                    results = searcher.search_by_category(
+                        query_text_embedding,
+                        default_category,
+                        top_k=final_count * 10 if final_count else 10000,  # 여유있게 검색
+                        filter_mb_sns=None,
+                        metadata_filter=None
+                    )
+                    
+                    # ⭐ 유사도 점수 기준으로 정렬 (내림차순) - Pinecone이 이미 정렬하지만 확실히 하기 위해
+                    # Pinecone의 query()는 이미 유사도 점수 기준 내림차순으로 정렬된 결과를 반환하지만,
+                    # 명시적으로 정렬하여 상위 유사도 패널만 반환하도록 보장
+                    sorted_results = sorted(results, key=lambda x: x.get("score", 0.0), reverse=True)
+                    
+                    # 최종 개수만큼 반환 (상위 유사도 패널만)
+                    final_results = sorted_results[:final_count] if final_count else sorted_results
+                    mb_sns_with_scores = [{"mb_sn": r["mb_sn"], "score": r["score"]} for r in final_results]
+                    
+                    # 디버그: 상위 5개 점수 로깅
+                    if final_results:
+                        top_scores = [r["score"] for r in final_results[:5]]
+                        logger.info(f"[Fallback] 쿼리 텍스트 직접 검색 완료: {len(mb_sns_with_scores)}개 패널 (상위 5개 점수: {top_scores})")
+                    else:
+                        logger.info(f"[Fallback] 쿼리 텍스트 직접 검색 완료: {len(mb_sns_with_scores)}개 패널")
+                    return mb_sns_with_scores
+                except Exception as e:
+                    logger.error(f"[Fallback] 쿼리 텍스트 직접 검색 실패: {e}", exc_info=True)
                     return []
-                
-                embedding = query_embedding["query"]
-                
-                # 첫 번째 카테고리만 사용 (가장 일반적인 카테고리)
-                all_categories = list(self.searcher.category_config.keys())
-                if not all_categories:
-                    logger.warning("[폴백 검색] 카테고리 설정이 없음")
-                    return []
-                
-                primary_category = all_categories[0]  # 첫 번째 카테고리만 사용
-                logger.info(f"[폴백 검색] 검색할 카테고리: {primary_category}")
-                
-                # Pinecone 검색 (메타데이터 필터 없음)
-                results = self.searcher.search_by_category(
-                    query_embedding=embedding,
-                    category=primary_category,
-                    top_k=top_k * 10,  # 더 많이 가져와서 정렬
-                    filter_mb_sns=None,  # 전체 검색
-                    metadata_filter=None  # 필터 없음
-                )
-                
-                # mb_sn 추출 및 점수 순 정렬
-                mb_sn_scores = {}
-                for r in results:
-                    mb_sn = r.get("mb_sn", "")
-                    if mb_sn:
-                        score = r.get("score", 0.0)
-                        if mb_sn not in mb_sn_scores or score > mb_sn_scores[mb_sn]:
-                            mb_sn_scores[mb_sn] = score
-                
-                # 점수 순으로 정렬하여 상위 top_k개 반환
-                sorted_panels = sorted(mb_sn_scores.items(), key=lambda x: x[1], reverse=True)
-                final_mb_sns = [mb_sn for mb_sn, _ in sorted_panels[:top_k]]
-                
-                logger.info(f"[폴백 검색 완료] {len(final_mb_sns)}개 패널 발견")
-                return final_mb_sns
-                
-            except Exception as e:
-                logger.error(f"[폴백 검색 실패] {e}", exc_info=True)
-                return []
+            else:
+                logger.error("[ERROR] 카테고리 분류 실패 - 빈 분류 결과")
+                return []  # 노트북과 동일하게 즉시 종료
 
         # 2.5단계: 카테고리별 메타데이터 필터 추출 및 정규화
         step_start = time.time()
@@ -215,11 +247,11 @@ class PanelSearchPipeline:
         step_start = time.time()
         logger.info("[4단계] 임베딩 생성 시작")
         try:
-            # 빈 텍스트가 있으면 랜덤 벡터 사용
+                # 빈 텍스트가 있으면 랜덤 벡터 사용
             if any(not text for text in texts.values()):
                 logger.info("[4단계] 빈 텍스트 감지, 랜덤 벡터 사용")
                 import numpy as np
-                dimension = 4096  # Upstage Solar embedding dimension
+                dimension = 1536  # OpenAI text-embedding-3-small embedding dimension
                 random_vector = np.random.rand(dimension).astype(np.float32).tolist()
                 norm = np.linalg.norm(random_vector)
                 if norm > 0:
@@ -245,17 +277,21 @@ class PanelSearchPipeline:
         logger.info("[5단계] 단계적 필터링 검색 시작")
 
         category_order = list(embeddings.keys())
-        final_mb_sns = self.result_filter.filter_by_categories(
+        final_results = self.result_filter.filter_by_categories(
             embeddings=embeddings,
             category_order=category_order,
-            final_count=top_k,
+            final_count=final_count,  # ⭐ None이면 전체 반환
             topic_filters=category_filters
         )
         step_time = time.time() - step_start
-        logger.info(f"[5단계 완료] 단계적 필터링: {step_time:.2f}초, 최종 결과: {len(final_mb_sns)}개")
+        logger.info(f"[5단계 완료] 단계적 필터링: {step_time:.2f}초, 최종 결과: {len(final_results)}개")
 
         total_time = time.time() - start_time
-        logger.info(f"[검색 완료] 총 소요 시간: {total_time:.2f}초, 결과: {len(final_mb_sns)}개 패널")
+        logger.info(f"[검색 완료] 총 소요 시간: {total_time:.2f}초, 결과: {len(final_results)}개 패널")
 
-        return final_mb_sns
+        # mb_sn 리스트와 score 맵 반환
+        mb_sns = [r["mb_sn"] for r in final_results]
+        score_map = {r["mb_sn"]: r["score"] for r in final_results}
+        
+        return {"mb_sns": mb_sns, "scores": score_map}
 

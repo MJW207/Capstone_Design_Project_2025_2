@@ -219,7 +219,8 @@ class CategoryTextGenerator:
                 model=self.model,
                 max_tokens=512,
                 temperature=0.3,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30.0  # 30초 타임아웃
             )
             
             text = response.content[0].text.strip()
@@ -454,7 +455,8 @@ class CategoryTextGenerator:
                 model=self.model,
                 max_tokens=512,
                 temperature=0.3,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                timeout=30.0  # 30초 타임아웃
             )
             
             text = response.content[0].text.strip()

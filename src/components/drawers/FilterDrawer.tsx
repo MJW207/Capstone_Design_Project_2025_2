@@ -106,7 +106,7 @@ export function FilterDrawer({
   onPresetSave,
 }: FilterDrawerProps) {
   const isEditMode = !!presetId;
-  const [ageRange, setAgeRange] = useState<[number, number]>(initialFilters?.ageRange || [15, 80]);
+  const [ageRange, setAgeRange] = useState<[number, number]>(initialFilters?.ageRange || [0, 120]);
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialFilters?.selectedRegions || []);
   const [selectedGenders, setSelectedGenders] = useState<string[]>(initialFilters?.selectedGenders || []);
   const [selectedIncomes, setSelectedIncomes] = useState<string[]>(initialFilters?.selectedIncomes || []);
@@ -127,7 +127,7 @@ export function FilterDrawer({
   // initialFilters나 presetName이 변경되면 상태 업데이트
   useEffect(() => {
     if (isOpen && initialFilters) {
-      setAgeRange(initialFilters.ageRange || [15, 80]);
+      setAgeRange(initialFilters.ageRange || [0, 120]);
       setSelectedRegions(initialFilters.selectedRegions || []);
       setSelectedGenders(initialFilters.selectedGenders || []);
       setSelectedIncomes(initialFilters.selectedIncomes || []);
@@ -169,7 +169,8 @@ export function FilterDrawer({
   }, [filteredResults, totalResults]);
 
   const handleReset = () => {
-    setAgeRange([15, 80]);
+    // 필터 상태 초기화
+    setAgeRange([0, 120]);
     setSelectedRegions([]);
     setSelectedGenders([]);
     setSelectedIncomes([]);
@@ -177,6 +178,22 @@ export function FilterDrawer({
     setInterests([]);
     setInterestLogic('and');
     setRegionQuery('');
+    
+    // 빈 필터로 검색 재실행 (Pinecone 검색만)
+    const emptyFilters = {
+      ageRange: [0, 120],
+      selectedRegions: [],
+      selectedGenders: [],
+      selectedIncomes: [],
+      quickpollOnly: false,
+      interests: [],
+      interestLogic: 'and',
+    };
+    
+    // 필터 적용 및 창 닫기
+    onApply?.(emptyFilters);
+    toast.success('필터가 초기화되었습니다');
+    onClose();
   };
 
   const handleApply = () => {
@@ -228,7 +245,7 @@ export function FilterDrawer({
     // 활성 필터가 있는지 확인
     const hasActiveFilters = 
       selectedGenders.length > 0 ||
-      ageRange[0] > 15 || ageRange[1] < 80 ||
+      ageRange[0] > 0 || ageRange[1] < 120 ||
       selectedIncomes.length > 0 ||
       selectedRegions.length > 0 ||
       interests.length > 0 ||

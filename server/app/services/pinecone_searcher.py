@@ -120,10 +120,15 @@ class PineconePanelSearcher:
                     filter_with_metadata[key] = value
 
             # Pinecone 검색 (메타데이터 필터 포함)
+            # ⚠️ Pinecone 제한: top_k는 최대 10000, 노트북과 동일하게 최대 10000개 검색
+            MAX_TOP_K = 10000  # Pinecone 최대 제한
+            # 노트북과 동일: top_k를 그대로 사용 (추가 배수 없음)
+            actual_top_k = min(top_k, MAX_TOP_K)
+            
             try:
                 search_results = self.index.query(
                     vector=query_embedding,
-                    top_k=top_k * 10,  # Fallback을 위해 더 많이 가져옴
+                    top_k=actual_top_k,
                     include_metadata=True,
                     filter=filter_with_metadata
                 )
@@ -140,7 +145,7 @@ class PineconePanelSearcher:
                     logger.debug(f"    ⚠️ 메타데이터 필터로 0건 → Fallback (topic만)")
                     search_results = self.index.query(
                         vector=query_embedding,
-                        top_k=top_k * 10,
+                        top_k=actual_top_k,
                         include_metadata=True,
                         filter=filter_dict  # 메타데이터 필터 제거
                     )
@@ -150,17 +155,22 @@ class PineconePanelSearcher:
                 # Fallback: 메타데이터 필터 없이 재검색
                 search_results = self.index.query(
                     vector=query_embedding,
-                    top_k=top_k * 10,
+                    top_k=actual_top_k,
                     include_metadata=True,
                     filter=filter_dict
                 )
                 valid_results = [m for m in search_results.matches if not self._is_no_response(m.metadata.get("text", ""))]
         else:
             # 메타데이터 필터 없이 검색
+            # ⚠️ Pinecone 제한: top_k는 최대 10000, 노트북과 동일하게 최대 10000개 검색
+            MAX_TOP_K = 10000  # Pinecone 최대 제한
+            # 노트북과 동일: top_k를 그대로 사용 (추가 배수 없음)
+            actual_top_k = min(top_k, MAX_TOP_K)
+            
             try:
                 search_results = self.index.query(
                     vector=query_embedding,
-                    top_k=top_k * 10,
+                    top_k=actual_top_k,
                     include_metadata=True,
                     filter=filter_dict
                 )
@@ -169,9 +179,13 @@ class PineconePanelSearcher:
                 logger.error(f"Pinecone 검색 오류: {e}")
                 return []
 
-        # 결과 변환
+        # ⭐ 유사도 점수 기준으로 명시적 정렬 (내림차순)
+        # Pinecone이 이미 정렬하지만, 무응답 제외 과정에서 순서가 유지되는지 보장하기 위해 재정렬
+        valid_results_sorted = sorted(valid_results, key=lambda x: x.score, reverse=True)
+        
+        # 결과 변환 (상위 top_k개만)
         matches = []
-        for match in valid_results[:top_k]:
+        for match in valid_results_sorted[:top_k]:
             metadata = match.metadata or {}
             matches.append({
                 "id": match.id,

@@ -4,6 +4,10 @@ import json
 from dataclasses import dataclass
 from typing import Final, Dict, Any
 from functools import lru_cache
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -64,12 +68,36 @@ PINECONE_API_KEY: Final[str] = os.getenv("PINECONE_API_KEY", "")
 PINECONE_INDEX_NAME: Final[str] = os.getenv("PINECONE_INDEX_NAME", "panel-profiles")
 PINECONE_ENVIRONMENT: Final[str] = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 
-# 카테고리 설정
-CATEGORY_CONFIG_PATH: Final[str] = os.getenv("CATEGORY_CONFIG_PATH", r"C:\Capstone_Project\category_config.json")
+# 카테고리 설정 (프로젝트 루트 기준으로 동적 경로 계산)
+# config.py 위치: server/app/core/config.py
+# 프로젝트 루트: server/app/core/../../../
+_CONFIG_FILE_DIR = Path(__file__).resolve().parent.parent.parent.parent  # server/app/core -> 프로젝트 루트
+_DEFAULT_CATEGORY_CONFIG_PATH = _CONFIG_FILE_DIR / "notebooks" / "category_config.json"
+# 환경변수가 설정되어 있고 파일이 존재하면 사용, 없거나 잘못된 경로면 기본값 사용
+_ENV_CATEGORY_CONFIG_PATH = os.getenv("CATEGORY_CONFIG_PATH")
+# 기본값 경로가 존재하는지 확인하고, 존재하면 항상 기본값 사용 (환경변수 무시)
+if _DEFAULT_CATEGORY_CONFIG_PATH.exists():
+    CATEGORY_CONFIG_PATH: Final[str] = str(_DEFAULT_CATEGORY_CONFIG_PATH)
+    if _ENV_CATEGORY_CONFIG_PATH and _ENV_CATEGORY_CONFIG_PATH != CATEGORY_CONFIG_PATH:
+        logger.warning(f"[Config] 환경변수 CATEGORY_CONFIG_PATH 무시, 기본값 사용: {CATEGORY_CONFIG_PATH}")
+    else:
+        logger.debug(f"[Config] CATEGORY_CONFIG_PATH 기본값 사용: {CATEGORY_CONFIG_PATH}")
+elif _ENV_CATEGORY_CONFIG_PATH and os.path.exists(_ENV_CATEGORY_CONFIG_PATH):
+    CATEGORY_CONFIG_PATH: Final[str] = _ENV_CATEGORY_CONFIG_PATH
+    logger.warning(f"[Config] 기본 경로가 없어 환경변수 사용: {CATEGORY_CONFIG_PATH}")
+else:
+    CATEGORY_CONFIG_PATH: Final[str] = str(_DEFAULT_CATEGORY_CONFIG_PATH)
+    logger.warning(f"[Config] CATEGORY_CONFIG_PATH 기본값 사용 (파일 존재 여부 확인 안됨): {CATEGORY_CONFIG_PATH}")
 
 # API Keys (환경변수 우선, 없으면 기본값 사용 - 보안상 .env 파일 사용 권장)
 ANTHROPIC_API_KEY: Final[str] = os.getenv("ANTHROPIC_API_KEY", "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")
 UPSTAGE_API_KEY: Final[str] = os.getenv("UPSTAGE_API_KEY", "up_2KGGBmZpBmlePxUyk3ouWBf9iqOmJ")
+OPENAI_API_KEY: Final[str] = os.getenv("OPENAI_API_KEY", "")
+
+# API 키 로드 확인 로깅
+logger.debug(f"[Config] ANTHROPIC_API_KEY 로드: {'설정됨 (길이: ' + str(len(ANTHROPIC_API_KEY)) + ')' if ANTHROPIC_API_KEY else '없음'}")
+logger.debug(f"[Config] OPENAI_API_KEY 로드: {'설정됨 (길이: ' + str(len(OPENAI_API_KEY)) + ')' if OPENAI_API_KEY else '없음'}")
+logger.debug(f"[Config] PINECONE_API_KEY 로드: {'설정됨 (길이: ' + str(len(PINECONE_API_KEY)) + ')' if PINECONE_API_KEY else '없음'}")
 
 # Pinecone 검색 폴백 설정 (Pinecone 검색 실패 시 기존 검색으로 폴백)
 FALLBACK_TO_VECTOR_SEARCH: Final[bool] = os.getenv("FALLBACK_TO_VECTOR_SEARCH", "true").lower() in ("true", "1", "yes", "on")
@@ -87,11 +115,23 @@ def load_category_config() -> Dict[str, Any]:
         FileNotFoundError: 설정 파일이 없을 경우
         json.JSONDecodeError: JSON 파싱 실패 시
     """
+    logger.debug(f"[Config] 카테고리 설정 파일 경로: {CATEGORY_CONFIG_PATH}")
+    logger.debug(f"[Config] 파일 존재 여부: {os.path.exists(CATEGORY_CONFIG_PATH)}")
+    
     if not os.path.exists(CATEGORY_CONFIG_PATH):
+        logger.error(f"[Config] 카테고리 설정 파일을 찾을 수 없습니다: {CATEGORY_CONFIG_PATH}")
         raise FileNotFoundError(f"카테고리 설정 파일을 찾을 수 없습니다: {CATEGORY_CONFIG_PATH}")
     
-    with open(CATEGORY_CONFIG_PATH, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    return config
+    try:
+        with open(CATEGORY_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        logger.debug(f"[Config] 카테고리 설정 로드 성공: {len(config)}개 카테고리")
+        logger.debug(f"[Config] 카테고리 목록: {list(config.keys())}")
+        return config
+    except json.JSONDecodeError as e:
+        logger.error(f"[Config] JSON 파싱 실패: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"[Config] 카테고리 설정 로드 실패: {e}")
+        raise
 

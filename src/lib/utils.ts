@@ -34,9 +34,9 @@ export const api = {
     let timeoutId: NodeJS.Timeout | null = null;
     
     timeoutId = setTimeout(() => {
-      console.error(`[DEBUG] ⏱️ 요청 타임아웃 (120초) [${requestId}]`);
+      console.error(`[DEBUG] ⏱️ 요청 타임아웃 (300초) [${requestId}]`);
       controller.abort();
-    }, 120000); // 120초 타임아웃 (ChromaDB 검색이 오래 걸릴 수 있음)
+    }, 300000); // 300초 타임아웃 (Pinecone 검색 + LLM 호출이 오래 걸릴 수 있음)
     
     try {
       const requestOptions = {
@@ -199,9 +199,47 @@ export const api = {
 // 검색 관련 API
 export const searchApi = {
   // 패널 검색 (텍스트 검색 포함)
-  searchPanels: async (query: string, filters?: any, page: number = 1, limit: number = 20) => {
-    const response = await api.post('/api/search', { query: query || '', filters: filters || {}, page, limit });
-    return response;
+  // limit을 전달하지 않으면 백엔드에서 반환하는 모든 결과를 받음
+  searchPanels: async (query: string, filters?: any, page: number = 1, limit?: number) => {
+    const payload: any = { query: query || '', filters: filters || {}, page };
+    // limit이 명시적으로 전달된 경우에만 포함 (백엔드에서 자동으로 결정)
+    if (limit !== undefined) {
+      payload.limit = limit;
+    }
+    
+    console.log('[DEBUG Frontend] 🔵 searchPanels 요청 시작:', {
+      query: query?.substring(0, 50),
+      filters: filters,
+      page,
+      limit,
+      payload
+    });
+    
+    try {
+      const response = await api.post('/api/search', payload);
+      
+      console.log('[DEBUG Frontend] 🟢 searchPanels 응답 받음:', {
+        query: response?.query,
+        count: response?.count,
+        total: response?.total,
+        resultsLength: response?.results?.length || 0,
+        firstResult: response?.results?.[0] ? {
+          id: response.results[0].id,
+          gender: response.results[0].gender,
+          age: response.results[0].age
+        } : null,
+        fullResponse: response
+      });
+      
+      return response;
+    } catch (error: any) {
+      console.error('[DEBUG Frontend] 🔴 searchPanels 에러:', {
+        error: error?.message,
+        stack: error?.stack,
+        detail: error
+      });
+      throw error;
+    }
   },
   
   // 패널 목록 조회
@@ -209,8 +247,12 @@ export const searchApi = {
     api.get(`/api/panels?page=${page}&limit=${limit}`),
   
   // 패널 상세 조회
-  getPanel: (id: string) => 
+  getPanel: (id: string) =>
     api.get(`/api/panels/${id}`),
+  
+  // 패널 AI 요약 생성 (상세정보 열 때만 호출)
+  getPanelAiSummary: (id: string) =>
+    api.get(`/api/panels/${id}/ai-summary`),
   
   // 패널 비교
   comparePanels: (ids: string[]) => 

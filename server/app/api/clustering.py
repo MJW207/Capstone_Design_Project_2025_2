@@ -143,38 +143,17 @@ async def cluster_from_csv(
         logger.info("[CSV 클러스터링 시작]")
         debug_info['step'] = 'load_csv'
         
-        # CSV 파일 경로 찾기
-        project_root = Path(__file__).parent.parent.parent.parent
-        csv_paths = [
-            project_root / "clustering_data" / "data" / "welcome_1st_2nd_joined.csv",
-            project_root / "clustering_data" / "welcome_1st_2nd_joined.csv",
-            project_root / "welcome_1st_2nd_joined.csv",  # 루트 디렉터리도 확인
-        ]
-        
-        logger.info(f"[CSV 파일 검색] project_root: {project_root}")
-        logger.info(f"[CSV 파일 검색] 시도할 경로: {[str(p) for p in csv_paths]}")
-        
-        csv_path = None
-        for path in csv_paths:
-            logger.info(f"[CSV 파일 검색] 확인 중: {path} (존재: {path.exists()})")
-            if path.exists():
-                csv_path = path
-                logger.info(f"[CSV 파일 발견] {csv_path}")
-                break
-        
-        if not csv_path:
-            error_msg = f"CSV 파일을 찾을 수 없습니다. 시도한 경로:\n" + "\n".join([f"  - {p}" for p in csv_paths])
-            debug_info['errors'].append(error_msg)
-            debug_info['project_root'] = str(project_root)
-            debug_info['searched_paths'] = [str(p) for p in csv_paths]
-            logger.error(f"[CSV 파일 오류] {error_msg}")
-            raise HTTPException(
-                status_code=404,
-                detail=json.dumps({
-                    "error": error_msg,
-                    "debug": debug_info
-                }, ensure_ascii=False)
-            )
+        # CSV 파일은 더 이상 사용하지 않음 - NeonDB에서만 데이터 로드
+        error_msg = "CSV 파일 기반 클러스터링은 더 이상 지원하지 않습니다. NeonDB에 데이터를 마이그레이션하세요."
+        debug_info['errors'].append(error_msg)
+        logger.error(f"[CSV 파일 오류] {error_msg}")
+        raise HTTPException(
+            status_code=400,
+            detail=json.dumps({
+                "error": error_msg,
+                "debug": debug_info
+            }, ensure_ascii=False)
+        )
         
         # CSV 파일 로드
         import pandas as pd
@@ -852,41 +831,60 @@ async def get_panel_cluster_mapping(req: PanelClusterMappingRequest):
     try:
         logger.info(f"[패널-클러스터 매핑] session_id: {req.session_id}, panel_ids: {len(req.panel_ids)}개")
         
-        # Precomputed 데이터인 경우 직접 CSV 로드
+        # Precomputed 데이터인 경우 NeonDB에서 로드
         if req.session_id == 'precomputed_default':
-            logger.info(f"[패널-클러스터 매핑] Precomputed 데이터 사용")
-            from pathlib import Path
-            import os
+            logger.info(f"[패널-클러스터 매핑] Precomputed 데이터 사용 (NeonDB)")
+            from app.utils.clustering_loader import get_precomputed_session_id, load_full_clustering_data_from_db
             
-            # 프로젝트 루트 기준 경로
-            # server/app/api/clustering.py -> parents[0]=api, parents[1]=app, parents[2]=server, parents[3]=프로젝트 루트
-            PROJECT_ROOT = Path(__file__).resolve().parents[3]
-            PRECOMPUTED_CSV = PROJECT_ROOT / 'clustering_data' / 'data' / 'precomputed' / 'clustering_results.csv'
+            # Precomputed 세션 ID 조회
+            precomputed_name = "hdbscan_default"
+            logger.debug(f"[패널-클러스터 매핑] Precomputed 세션 ID 조회: name={precomputed_name}")
+            actual_session_id = await get_precomputed_session_id(precomputed_name)
             
-            logger.debug(f"[패널-클러스터 매핑] __file__: {__file__}")
-            logger.debug(f"[패널-클러스터 매핑] PROJECT_ROOT: {PROJECT_ROOT}")
-            logger.debug(f"[패널-클러스터 매핑] PROJECT_ROOT 존재: {PROJECT_ROOT.exists()}")
-            
-            logger.debug(f"[패널-클러스터 매핑] Precomputed CSV 경로: {PRECOMPUTED_CSV}")
-            logger.debug(f"[패널-클러스터 매핑] CSV 존재 여부: {PRECOMPUTED_CSV.exists()}")
-            
-            if not PRECOMPUTED_CSV.exists():
-                logger.error(f"[패널-클러스터 매핑] Precomputed CSV 파일을 찾을 수 없음: {PRECOMPUTED_CSV}")
+            if not actual_session_id:
+                logger.error(f"[패널-클러스터 매핑] Precomputed 세션을 찾을 수 없음: name={precomputed_name}")
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Precomputed 데이터를 찾을 수 없습니다. 경로: {PRECOMPUTED_CSV}"
+                    detail=f"Precomputed 데이터를 찾을 수 없습니다. name={precomputed_name}"
                 )
             
-            df = pd.read_csv(PRECOMPUTED_CSV)
-            logger.info(f"[패널-클러스터 매핑] Precomputed CSV 로드 완료: {len(df)}행")
+            logger.info(f"[패널-클러스터 매핑] Precomputed 세션 ID 찾음: {actual_session_id}")
             
-            # cluster 컬럼에서 레이블 추출
-            if 'cluster' not in df.columns:
+            # 전체 클러스터링 데이터 로드
+            artifacts = await load_full_clustering_data_from_db(actual_session_id)
+            if not artifacts:
+                logger.error(f"[패널-클러스터 매핑] NeonDB에서 데이터를 찾을 수 없음: session_id={actual_session_id}")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Precomputed 데이터를 찾을 수 없습니다."
+                )
+            
+            df = artifacts.get('data')
+            labels_raw = artifacts.get('labels')
+            
+            if df is None or df.empty:
                 raise HTTPException(
                     status_code=400,
-                    detail="Precomputed CSV에 cluster 컬럼이 없습니다."
+                    detail="Precomputed 데이터가 비어있습니다."
                 )
-            labels = df['cluster'].tolist()
+            
+            logger.info(f"[패널-클러스터 매핑] NeonDB에서 데이터 로드 완료: {len(df)}행")
+            
+            # labels 처리
+            if labels_raw is not None:
+                if isinstance(labels_raw, np.ndarray):
+                    labels = labels_raw.tolist()
+                elif isinstance(labels_raw, list):
+                    labels = labels_raw
+                else:
+                    labels = list(labels_raw)
+            elif 'cluster' in df.columns:
+                labels = df['cluster'].tolist()
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="클러스터 레이블을 찾을 수 없습니다."
+                )
         else:
             # 일반 세션: artifacts에서 로드
             from app.clustering.artifacts import load_artifacts
@@ -1049,28 +1047,10 @@ def load_full_data_cached(file_path: Optional[str] = None):
     global _cached_data, _cached_file_mtime, _cached_file_path
     
     if file_path is None:
-        # 프로젝트 루트 기준 경로
-        PROJECT_ROOT = Path(__file__).resolve().parents[3]
-        # 여러 경로 시도
-        possible_paths = [
-            PROJECT_ROOT / 'clustering_data' / 'data' / 'welcome_1st_2nd_joined.csv',
-            PROJECT_ROOT / 'clustering_data' / 'welcome_1st_2nd_joined.csv',
-            PROJECT_ROOT / 'welcome_1st_2nd_joined.csv',
-        ]
-        
-        file_path = None
-        for path in possible_paths:
-            if path.exists():
-                file_path = str(path)
-                break
-        
-        if file_path is None:
-            raise FileNotFoundError(
-                f"데이터 파일을 찾을 수 없습니다. 다음 경로들을 확인하세요:\n" +
-                "\n".join([f"  - {p}" for p in possible_paths]) +
-                f"\n\nCSV 파일을 생성하려면 다음 명령을 실행하세요:\n" +
-                f"  python server/scripts/generate_welcome_joined_csv.py"
-            )
+        # CSV 파일 기반 로드는 더 이상 지원하지 않음
+        raise FileNotFoundError(
+            "CSV 파일 기반 데이터 로드는 더 이상 지원하지 않습니다. NeonDB에서 데이터를 로드하세요."
+        )
     
     file_path = Path(file_path)
     
@@ -1158,154 +1138,105 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
         logger.info(f"[📋 검색 패널 ID 타입] {[type(pid).__name__ for pid in req.search_panel_ids[:5]]}")
         logger.info("=" * 80)
         
-        # 1. 데이터 로드 (캐싱 활용)
-        logger.info(f"[1단계] 전체 데이터 로드 시작")
-        try:
-            X_full_scaled, df_full, available_features, scaler = load_full_data_cached()
-            logger.info(f"[✅ 1단계 완료] 전체 데이터 로드 성공")
-            logger.info(f"  - 데이터 행 수: {len(df_full)}")
-            logger.info(f"  - 피처 수: {len(available_features)}")
-            logger.info(f"  - 피처 목록: {available_features}")
-            logger.info(f"  - mb_sn 컬럼 존재: {'mb_sn' in df_full.columns}")
-            if 'mb_sn' in df_full.columns:
-                mb_sn_sample = df_full['mb_sn'].head(10).astype(str).str.strip().str.lower().tolist()
-                logger.info(f"  - mb_sn 샘플 (정규화): {mb_sn_sample}")
-                logger.info(f"  - mb_sn 타입: {df_full['mb_sn'].dtype}")
-                logger.info(f"  - mb_sn 고유값 수: {df_full['mb_sn'].nunique()}")
-        except Exception as e:
-            logger.error(f"[❌ 1단계 실패] 데이터 로드 실패: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"데이터 로드 실패: {str(e)}"
-            )
+        # 1. Precomputed HDBSCAN 데이터 로드 (NeonDB에서 로드, df_full 제거)
+        logger.info(f"[2단계] Precomputed 데이터 로드 시작 (NeonDB)")
+        from app.utils.clustering_loader import get_precomputed_session_id, load_full_clustering_data_from_db
         
-        # 2. Precomputed HDBSCAN 데이터 로드 (HDBSCAN 결과 사용)
-        PROJECT_ROOT = Path(__file__).resolve().parents[3]
-        # HDBSCAN 결과 우선 사용
-        hdbscan_file = PROJECT_ROOT / 'clustering_data' / 'data' / 'precomputed' / 'flc_income_clustering_hdbscan.csv'
-        results_file = hdbscan_file if hdbscan_file.exists() else PROJECT_ROOT / 'clustering_data' / 'data' / 'precomputed' / 'clustering_results.csv'
+        # Precomputed 세션 ID 조회
+        precomputed_name = "hdbscan_default"
+        actual_session_id = await get_precomputed_session_id(precomputed_name)
         
-        if not results_file.exists():
-            logger.error(f"[확장 클러스터링] Precomputed CSV 파일을 찾을 수 없음: {results_file}")
+        if not actual_session_id:
+            logger.error(f"[확장 클러스터링] Precomputed 세션을 찾을 수 없음: name={precomputed_name}")
             raise HTTPException(
                 status_code=404,
-                detail=f"Precomputed 데이터를 찾을 수 없습니다. 경로: {results_file}"
+                detail=f"Precomputed 데이터를 찾을 수 없습니다. name={precomputed_name}"
             )
         
-        df_precomputed = pd.read_csv(results_file)
-        logger.info(f"[확장 클러스터링] Precomputed CSV 로드 완료: {len(df_precomputed)}행 (HDBSCAN: {hdbscan_file.exists()})")
+        logger.info(f"[확장 클러스터링] Precomputed 세션 ID 찾음: {actual_session_id}")
         
-        # Precomputed 패널 → UMAP 좌표 매핑
-        precomputed_panel_to_umap = {}
+        # 전체 클러스터링 데이터 로드
+        artifacts = await load_full_clustering_data_from_db(actual_session_id)
+        if not artifacts:
+            logger.error(f"[확장 클러스터링] NeonDB에서 데이터를 찾을 수 없음: session_id={actual_session_id}")
+            raise HTTPException(
+                status_code=404,
+                detail="Precomputed 데이터를 찾을 수 없습니다."
+            )
+        
+        df_precomputed = artifacts.get('data')
+        if df_precomputed is None or df_precomputed.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Precomputed 데이터가 비어있습니다."
+            )
+        
+        logger.info(f"[확장 클러스터링] NeonDB에서 Precomputed 데이터 로드 완료: {len(df_precomputed)}행")
+        
+        # Precomputed 데이터에서 패널 ID 컬럼 확인
         panel_id_col = 'mb_sn' if 'mb_sn' in df_precomputed.columns else 'panel_id'
         
         if panel_id_col not in df_precomputed.columns:
             raise HTTPException(
                 status_code=400,
-                detail=f"Precomputed CSV에 패널 ID 컬럼이 없습니다. (mb_sn 또는 panel_id 필요)"
+                detail=f"Precomputed 데이터에 패널 ID 컬럼이 없습니다. (mb_sn 또는 panel_id 필요)"
             )
         
-        # 클러스터 컬럼명 확인 (HDBSCAN 또는 일반)
-        cluster_col = 'cluster_hdbscan' if 'cluster_hdbscan' in df_precomputed.columns else 'cluster'
+        # 클러스터 컬럼명 확인
+        cluster_col = 'cluster'
         has_cluster_col = cluster_col in df_precomputed.columns
         
-        for _, row in df_precomputed.iterrows():
-            panel_id = str(row[panel_id_col]).strip()
-            cluster_value = int(row[cluster_col]) if has_cluster_col else -1
-            precomputed_panel_to_umap[panel_id] = {
-                'umap_x': float(row['umap_x']),
-                'umap_y': float(row['umap_y']),
-                'original_cluster': cluster_value
-            }
-        
-        logger.info(f"[확장 클러스터링] UMAP 좌표 매핑 완료: {len(precomputed_panel_to_umap)}개 패널")
-        
-        # 3. 검색 패널 인덱스 찾기 (df_full 기준, mb_sn으로 매칭)
-        logger.info(f"[3단계] 검색 패널 인덱스 찾기 시작")
+        # 3. 검색 패널을 Precomputed 데이터에서 직접 매칭 (df_full 제거, NeonDB 데이터만 사용)
+        logger.info(f"[3단계] 검색 패널을 Precomputed 데이터에서 직접 매칭 시작")
         logger.info(f"  - 요청된 패널 ID 수: {len(req.search_panel_ids)}개")
         logger.info(f"  - 요청된 패널 ID 샘플: {req.search_panel_ids[:5]}")
+        logger.info(f"  - Precomputed 데이터 행 수: {len(df_precomputed)}개")
         
-        # mb_sn 컬럼을 정규화하여 매칭 테이블 생성 (성능 최적화)
-        df_full_normalized = df_full.copy()
-        df_full_normalized['mb_sn_normalized'] = df_full['mb_sn'].astype(str).str.strip().str.lower()
-        mb_sn_to_index = {}
-        for idx, row in df_full_normalized.iterrows():
-            mb_sn_norm = str(row['mb_sn_normalized']).lower()
-            if mb_sn_norm not in mb_sn_to_index:
-                mb_sn_to_index[mb_sn_norm] = idx
+        # Precomputed 데이터의 mb_sn을 정규화하여 매칭 테이블 생성
+        df_precomputed_normalized = df_precomputed.copy()
+        df_precomputed_normalized['mb_sn_normalized'] = df_precomputed[panel_id_col].astype(str).str.strip().str.lower()
+        precomputed_mb_sn_set = set(df_precomputed_normalized['mb_sn_normalized'].values)
         
-        logger.info(f"[3단계] 매칭 테이블 생성 완료: {len(mb_sn_to_index)}개 고유 패널 ID")
-        logger.info(f"[3단계] 매칭 테이블 샘플 키: {list(mb_sn_to_index.keys())[:10]}")
-        logger.info(f"[3단계] 요청된 패널 ID 샘플: {[str(pid).strip().lower() for pid in req.search_panel_ids[:5]]}")
+        logger.info(f"[3단계] Precomputed 매칭 테이블 생성 완료: {len(precomputed_mb_sn_set)}개 고유 패널 ID")
+        logger.info(f"[3단계] Precomputed 샘플 키: {list(precomputed_mb_sn_set)[:10]}")
         
-        search_indices_in_full = []
+        # 검색 패널 ID 정규화 및 매칭
+        search_panel_mb_sns = set()
         not_found_panels = []
         found_panels = []
         
-        for idx, panel_id in enumerate(req.search_panel_ids):
+        for panel_id in req.search_panel_ids:
             panel_id_normalized = str(panel_id).strip().lower()
             
-            logger.info(f"[3단계-{idx}] 패널 ID 매칭 시도: '{panel_id}' -> '{panel_id_normalized}'")
-            
-            # 정규화된 매칭 테이블에서 찾기
-            if panel_id_normalized in mb_sn_to_index:
-                found_idx = mb_sn_to_index[panel_id_normalized]
-                found_mb_sn = df_full.loc[found_idx, 'mb_sn']
-                search_indices_in_full.append(found_idx)
+            if panel_id_normalized in precomputed_mb_sn_set:
+                search_panel_mb_sns.add(panel_id_normalized)
                 found_panels.append(panel_id)
-                logger.info(f"[✅ 3단계-{idx}] 매칭 성공: '{panel_id}' -> 인덱스 {found_idx}, mb_sn='{found_mb_sn}'")
+                logger.debug(f"[✅ 3단계] 매칭 성공: '{panel_id}'")
             else:
-                # 추가 시도: 부분 매칭 (앞 10자리만 비교)
-                panel_id_prefix = panel_id_normalized[:10] if len(panel_id_normalized) > 10 else panel_id_normalized
-                matching_keys = [k for k in mb_sn_to_index.keys() if panel_id_prefix in k or k in panel_id_prefix]
-                
-                if matching_keys:
-                    found_key = matching_keys[0]
-                    found_idx = mb_sn_to_index[found_key]
-                    found_mb_sn = df_full.loc[found_idx, 'mb_sn']
-                    search_indices_in_full.append(found_idx)
-                    found_panels.append(panel_id)
-                    logger.info(f"[✅ 3단계-{idx}] 부분 매칭 성공: '{panel_id}' -> 인덱스 {found_idx}, mb_sn='{found_mb_sn}'")
-                else:
-                    not_found_panels.append(panel_id)
-                    logger.warning(f"[❌ 3단계-{idx}] 매칭 실패: '{panel_id}'")
-                    # 디버깅: 유사한 패널 ID 찾기
-                    similar_keys = [k for k in list(mb_sn_to_index.keys())[:50] if panel_id_normalized[:5] in k or k[:5] in panel_id_normalized]
-                    logger.info(f"[3단계-{idx}] 유사한 키 샘플: {similar_keys[:5]}")
+                not_found_panels.append(panel_id)
+                logger.debug(f"[❌ 3단계] 매칭 실패: '{panel_id}'")
         
         logger.info(f"[3단계 결과]")
-        logger.info(f"  - 찾은 패널: {len(found_panels)}개")
+        logger.info(f"  - 찾은 패널: {len(found_panels)}개 / {len(req.search_panel_ids)}개")
         logger.info(f"  - 찾지 못한 패널: {len(not_found_panels)}개")
-        logger.info(f"  - 찾은 패널 샘플: {found_panels[:5]}")
-        logger.info(f"  - 찾지 못한 패널 샘플: {not_found_panels[:5]}")
+        if found_panels:
+            logger.info(f"  - 찾은 패널 샘플: {found_panels[:5]}")
+        if not_found_panels:
+            logger.warning(f"  - 찾지 못한 패널 샘플: {not_found_panels[:5]}")
         
         # 매칭 실패 시 전체 precomputed 데이터 반환
-        if len(search_indices_in_full) == 0:
+        if len(search_panel_mb_sns) == 0:
             logger.warning(f"[⚠️ 3단계] 모든 패널을 찾지 못함 - 전체 precomputed 데이터 반환")
-            logger.warning(f"  - 요청된 패널 ID: {req.search_panel_ids}")
-            logger.warning(f"  - 데이터프레임 mb_sn 샘플: {df_full['mb_sn'].head(10).tolist()}")
-            logger.warning(f"  - 데이터프레임 총 행 수: {len(df_full)}")
-            logger.warning(f"  - 데이터프레임 mb_sn 고유값 수: {df_full['mb_sn'].nunique()}")
-            
-            # 디버깅: 요청된 ID와 실제 데이터의 차이 분석
             requested_set = set(str(pid).strip().lower() for pid in req.search_panel_ids)
-            actual_set = set(df_full['mb_sn'].astype(str).str.strip().str.lower().unique())
-            common = requested_set & actual_set
-            logger.warning(f"  - 요청된 ID 수: {len(requested_set)}")
-            logger.warning(f"  - 실제 데이터 ID 수: {len(actual_set)}")
-            logger.warning(f"  - 겹치는 ID 수: {len(common)}")
-            logger.warning(f"  - 겹치지 않는 요청 ID 샘플: {list(requested_set - actual_set)[:10]}")
             
             # 전체 precomputed 데이터 반환 (클러스터링 없이)
             logger.info(f"[전체 데이터 반환] precomputed UMAP 데이터 전체 반환")
             
-            # cluster 컬럼 존재 여부 확인
-            has_cluster_col = cluster_col in df_precomputed.columns
-            
             result_panels = []
             for _, row in df_precomputed.iterrows():
                 panel_id = str(row[panel_id_col]).strip()
-                is_search = panel_id.lower() in requested_set
+                panel_id_lower = panel_id.lower()
+                is_search = panel_id_lower in requested_set
                 
                 # cluster 값 (없으면 -1)
                 cluster_value = int(row[cluster_col]) if has_cluster_col else -1
@@ -1340,7 +1271,7 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
                 'success': True,
                 'session_id': 'precomputed_default',
                 'n_total_panels': len(result_panels),
-                'n_search_panels': 0,  # 매칭된 검색 패널 없음
+                'n_search_panels': 0,
                 'n_extended_panels': 0,
                 'n_clusters': len(cluster_stats),
                 'silhouette_score': None,
@@ -1349,22 +1280,16 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
                 'features_used': [],
                 'dispersion_warning': False,
                 'dispersion_ratio': 1.0,
-                'warning': f'검색 패널을 클러스터링 데이터에서 찾을 수 없어 전체 데이터를 표시합니다. 요청된 {len(requested_set)}개 중 {len(common)}개만 데이터에 존재합니다.'
+                'warning': f'검색 패널을 클러스터링 데이터에서 찾을 수 없어 전체 데이터를 표시합니다. 요청된 {len(requested_set)}개 중 0개만 데이터에 존재합니다.'
             }
         
         if len(not_found_panels) > 0:
             logger.warning(f"[⚠️ 3단계 경고] {len(not_found_panels)}개 패널을 찾지 못했습니다. (계속 진행)")
         
-        logger.info(f"[✅ 3단계 완료] 검색 패널 인덱스 찾기 완료: {len(search_indices_in_full)}개")
+        logger.info(f"[✅ 3단계 완료] 검색 패널 매칭 완료: {len(search_panel_mb_sns)}개")
         
         # 4. Precomputed HDBSCAN 결과에서 검색된 패널이 속한 클러스터 찾기 (재클러스터링 없이)
         logger.info(f"[4단계] HDBSCAN 결과에서 검색된 패널의 클러스터 찾기 (재클러스터링 없음)")
-        
-        # 검색된 패널의 mb_sn 추출
-        search_panel_mb_sns = set()
-        for idx in search_indices_in_full:
-            mb_sn = str(df_full.loc[idx, 'mb_sn']).strip().lower()
-            search_panel_mb_sns.add(mb_sn)
         
         # Precomputed 데이터에서 검색된 패널이 속한 클러스터 찾기
         has_cluster_col = cluster_col in df_precomputed.columns
@@ -1440,27 +1365,23 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
         
         best_k = len(searched_cluster_ids)
         
-        # 8. HDBSCAN 메타데이터에서 품질 지표 가져오기
-        hdbscan_metadata_file = PROJECT_ROOT / 'clustering_data' / 'data' / 'precomputed' / 'flc_income_clustering_hdbscan_metadata.json'
+        # 5. 세션 정보에서 품질 지표 가져오기 (NeonDB에서)
+        from app.utils.clustering_loader import load_clustering_session_from_db
         quality_metrics = {}
-        if hdbscan_metadata_file.exists():
-            try:
-                import json
-                with open(hdbscan_metadata_file, 'r', encoding='utf-8') as f:
-                    hdbscan_metadata = json.load(f)
-                    quality_metrics['silhouette_score'] = hdbscan_metadata.get('silhouette_score')
-                    quality_metrics['davies_bouldin_score'] = hdbscan_metadata.get('davies_bouldin_index')
-                    quality_metrics['calinski_harabasz_score'] = hdbscan_metadata.get('calinski_harabasz_index')
-            except Exception as e:
-                logger.warning(f"[품질 지표 로드] 실패: {str(e)}")
+        try:
+            session_data = await load_clustering_session_from_db(actual_session_id)
+            if session_data:
+                quality_metrics['silhouette_score'] = session_data.get('silhouette_score')
+                quality_metrics['davies_bouldin_score'] = session_data.get('davies_bouldin_score')
+                quality_metrics['calinski_harabasz_score'] = session_data.get('calinski_harabasz_score')
+        except Exception as e:
+            logger.warning(f"[품질 지표 로드] 실패: {str(e)}")
         
-        # 9. 세션 ID 생성 (참고용, 실제로는 precomputed 데이터 사용)
-        session_id = f"search_extended_{uuid.uuid4().hex[:8]}"
-        logger.info(f"[HDBSCAN 결과 사용 완료] 세션 ID: {session_id}, 클러스터 수: {best_k} (재클러스터링 없음)")
+        logger.info(f"[HDBSCAN 결과 사용 완료] 세션 ID: {actual_session_id}, 클러스터 수: {best_k} (재클러스터링 없음)")
         
         return {
             'success': True,
-            'session_id': session_id,
+            'session_id': actual_session_id,
             'n_total_panels': len(result_panels),
             'n_search_panels': len(search_panel_mb_sns),
             'n_extended_panels': len(extended_panel_ids) - len(search_panel_mb_sns),
@@ -1470,10 +1391,10 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
             'calinski_harabasz_score': quality_metrics.get('calinski_harabasz_score'),
             'panels': result_panels,
             'cluster_stats': cluster_stats,
-            'features_used': available_features,
+            'features_used': [],  # Precomputed 데이터는 피처 정보 없음
             'dispersion_warning': False,
             'dispersion_ratio': 1.0,
-            'method': 'HDBSCAN (precomputed, no re-clustering)',
+            'method': 'HDBSCAN (precomputed from NeonDB, no re-clustering)',
         }
         
     except HTTPException:

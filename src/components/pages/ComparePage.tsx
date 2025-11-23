@@ -217,38 +217,44 @@ export function ComparePage() {
         const groupALabel = selectedGroupA?.label || `C${clusterAId + 1}`;
         const groupBLabel = selectedGroupB?.label || `C${clusterBId + 1}`;
         
-        // comparison 데이터에서 highlights 생성
+        // API에서 제공하는 highlights 사용 (NeonDB에서 계산된 것)
         const allComparisons = data.comparison || [];
+        const apiHighlights = data.highlights || {};
         
-        // 연속형 변수: cohens_d 기준으로 정렬 (cohens_d가 있는 것만, 절댓값 기준)
-        const continuousComparisons = allComparisons
-          .filter((item: any) => item.type === 'continuous' && item.cohens_d !== undefined && item.cohens_d !== null)
-          .map((item: any) => ({
-            ...item,
-            abs_cohens_d: Math.abs(item.cohens_d || 0),
-          }))
-          .sort((a: any, b: any) => b.abs_cohens_d - a.abs_cohens_d)
-          .slice(0, 5) // 상위 5개
-          .map((item: any) => {
-            // abs_cohens_d 제거 (타입에 없음)
-            const { abs_cohens_d, ...rest } = item;
-            return rest;
-          });
+        // API highlights가 있으면 사용, 없으면 프론트엔드에서 계산 (fallback)
+        let continuousComparisons = apiHighlights.num_top || [];
+        let binaryComparisons = apiHighlights.bin_cat_top || [];
         
-        // 이진형 변수: abs_diff_pct 기준으로 정렬 (abs_diff_pct가 있는 것만)
-        const binaryComparisons = allComparisons
-          .filter((item: any) => item.type === 'binary' && (item.abs_diff_pct !== undefined && item.abs_diff_pct !== null))
-          .map((item: any) => ({
-            ...item,
-            abs_diff_pct_value: Math.abs(item.abs_diff_pct || 0),
-          }))
-          .sort((a: any, b: any) => b.abs_diff_pct_value - a.abs_diff_pct_value)
-          .slice(0, 5) // 상위 5개
-          .map((item: any) => {
-            // abs_diff_pct_value 제거 (타입에 없음)
-            const { abs_diff_pct_value, ...rest } = item;
-            return rest;
-          });
+        // Fallback: API highlights가 없으면 프론트엔드에서 계산
+        if (continuousComparisons.length === 0 && binaryComparisons.length === 0) {
+          // 연속형 변수: cohens_d 기준으로 정렬
+          continuousComparisons = allComparisons
+            .filter((item: any) => item.type === 'continuous' && item.cohens_d !== undefined && item.cohens_d !== null)
+            .map((item: any) => ({
+              ...item,
+              abs_cohens_d: Math.abs(item.cohens_d || 0),
+            }))
+            .sort((a: any, b: any) => b.abs_cohens_d - a.abs_cohens_d)
+            .slice(0, 5)
+            .map((item: any) => {
+              const { abs_cohens_d, ...rest } = item;
+              return rest;
+            });
+          
+          // 이진형 변수: abs_diff_pct 기준으로 정렬
+          binaryComparisons = allComparisons
+            .filter((item: any) => item.type === 'binary' && (item.abs_diff_pct !== undefined && item.abs_diff_pct !== null))
+            .map((item: any) => ({
+              ...item,
+              abs_diff_pct_value: Math.abs(item.abs_diff_pct || 0),
+            }))
+            .sort((a: any, b: any) => b.abs_diff_pct_value - a.abs_diff_pct_value)
+            .slice(0, 5)
+            .map((item: any) => {
+              const { abs_diff_pct_value, ...rest } = item;
+              return rest;
+            });
+        }
         
         // API 응답을 ClusterComparisonData 형식으로 변환
         const totalCount = (data.group_a?.count ?? 0) + (data.group_b?.count ?? 0);

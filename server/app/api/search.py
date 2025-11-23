@@ -1,19 +1,16 @@
 """패널 검색 API 엔드포인트"""
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 import logging
-
-from app.db.session import get_session
+import asyncio
 from app.core.config import (
     PINECONE_SEARCH_ENABLED,
     PINECONE_API_KEY,
     PINECONE_INDEX_NAME,
     ANTHROPIC_API_KEY,
-    UPSTAGE_API_KEY,
+    OPENAI_API_KEY,
     load_category_config
 )
 from app.services.pinecone_filter_converter import PineconeFilterConverter
@@ -172,7 +169,7 @@ def _get_pipeline():
                     pinecone_index_name=PINECONE_INDEX_NAME,
                     category_config=category_config,
                     anthropic_api_key=ANTHROPIC_API_KEY,
-                    upstage_api_key=UPSTAGE_API_KEY
+                    openai_api_key=OPENAI_API_KEY
                 )
                 logger.info("Pinecone 파이프라인 초기화 완료")
     
@@ -185,7 +182,7 @@ async def _search_with_pinecone(
     use_cache: bool = True,
     force_refresh: bool = False,
     filters_dict: Optional[Dict[str, Any]] = None
-) -> Optional[List[str]]:
+) -> Optional[Dict[str, Any]]:
     """
     Pinecone을 사용한 패널 검색 (비동기 실행, 파이프라인 재사용, 캐싱 지원)
     
@@ -196,7 +193,8 @@ async def _search_with_pinecone(
         force_refresh: 강제 새로고침 (캐시 무시)
         
     Returns:
-        mb_sn 리스트 또는 None (실패 시)
+        {"mb_sns": [...], "scores": {...}} 또는 None (실패 시)
+        호환성을 위해 List[str]도 반환 가능
     """
     if not PINECONE_SEARCH_ENABLED:
         return None
@@ -210,32 +208,55 @@ async def _search_with_pinecone(
     
     try:
         import asyncio
+        import time
+        
+        logger.info(f"[Pinecone 검색 DEBUG] _search_with_pinecone 시작: query='{query_text}', top_k={top_k}")
+        search_start_time = time.time()
         
         # 싱글톤 파이프라인 가져오기
+        logger.info(f"[Pinecone 검색 DEBUG] 파이프라인 가져오기 시작")
         pipeline = _get_pipeline()
+        logger.info(f"[Pinecone 검색 DEBUG] 파이프라인 가져오기 완료: {time.time() - search_start_time:.2f}초")
         
         # 프론트엔드 필터를 Pinecone 필터로 변환
         external_filters = None
         if filters_dict:
+            logger.info(f"[Pinecone 검색 DEBUG] 필터 변환 시작: {filters_dict}")
             converter = PineconeFilterConverter()
             external_filters = converter.convert_to_pinecone_filters(filters_dict)
             if external_filters:
                 logger.info(f"[Pinecone 검색] 외부 필터 적용: {external_filters}")
+            logger.info(f"[Pinecone 검색 DEBUG] 필터 변환 완료: {time.time() - search_start_time:.2f}초")
         
         # 동기 함수를 비동기로 실행 (LLM 호출 등 블로킹 작업 포함)
         # 별도 스레드 풀 사용 (기본 executor는 I/O 작업에 최적화)
+        # 타임아웃 설정: 240초 (LLM 호출이 여러 단계에서 발생하므로 여유있게 설정)
+        logger.info(f"[Pinecone 검색 DEBUG] pipeline.search 호출 시작 (executor에서 실행, 타임아웃: 240초)")
+        executor_start_time = time.time()
         loop = asyncio.get_event_loop()
-        mb_sn_list = await loop.run_in_executor(
-            None, 
-            lambda: pipeline.search(query_text, top_k=top_k, external_filters=external_filters)
-        )
+        try:
+            search_result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, 
+                    lambda: pipeline.search(query_text, top_k=top_k, external_filters=external_filters)
+                ),
+                timeout=240.0  # 240초 타임아웃
+            )
+            executor_time = time.time() - executor_start_time
+            logger.info(f"[Pinecone 검색 DEBUG] pipeline.search 완료: {executor_time:.2f}초")
+        except asyncio.TimeoutError:
+            executor_time = time.time() - executor_start_time
+            logger.error(f"[Pinecone 검색 DEBUG] pipeline.search 타임아웃: {executor_time:.2f}초 경과 (240초 초과)")
+            raise Exception(f"검색이 타임아웃되었습니다 (240초 초과). 서버 로그를 확인하세요.")
         
-        # 검색 성공 시 캐시에 저장
-        if mb_sn_list is not None and use_cache:
-            _set_cached_result(query_text, top_k, mb_sn_list)
+        # 검색 성공 시 캐시에 저장 (호환성을 위해 mb_sn 리스트만 캐시)
+        if search_result is not None and use_cache:
+            mb_sns = search_result.get("mb_sns", []) if isinstance(search_result, dict) else search_result
+            if mb_sns:
+                _set_cached_result(query_text, top_k, mb_sns)
         
-        logger.info(f"Pinecone 검색 완료: {len(mb_sn_list) if mb_sn_list else 0}개 패널 발견")
-        return mb_sn_list
+        logger.info(f"Pinecone 검색 완료: {len(search_result.get('mb_sns', [])) if isinstance(search_result, dict) else (len(search_result) if search_result else 0)}개 패널 발견")
+        return search_result
         
     except Exception as e:
         logger.error(f"Pinecone 검색 실패: {e}", exc_info=True)
@@ -250,15 +271,23 @@ async def _search_with_pinecone(
 
 @router.post("/api/search")
 async def api_search_post(
-    payload: Dict[str, Any],
-    session: AsyncSession = Depends(get_session)
+    payload: Dict[str, Any]
 ):
     """패널 검색 API - Pinecone 검색 사용, 필터 지원"""
+    import time
+    request_start_time = time.time()
+    logger.info(f"[API DEBUG] ========== /api/search 요청 수신 ==========")
+    logger.info(f"[API DEBUG] 요청 payload: {payload}")
+    logger.info(f"[API DEBUG] 요청 타임스탬프: {datetime.now().isoformat()}")
+    logger.info(f"[API DEBUG] 서버가 요청을 받았습니다. 처리 시작...")
+    
     try:
         filters_dict = payload.get("filters") or {}
         query_text = payload.get("query") or filters_dict.get("query")
         page = int(payload.get("page", 1))
-        limit = int(payload.get("limit", 20))
+        limit = int(payload.get("limit", 20))  # 페이지네이션용 limit (기본값 20)
+        
+        logger.info(f"[API DEBUG] 파싱된 파라미터: query='{query_text}', page={page}, limit={limit}, filters={filters_dict}")
         
         # 쿼리가 있는 경우: Pinecone 검색
         if query_text and str(query_text).strip():
@@ -278,15 +307,20 @@ async def api_search_post(
             
             import time
             api_start = time.time()
+            
+            # 프론트엔드에서 요청한 limit 값은 페이지네이션용이므로 무시
+            # 쿼리에서 인원수를 추출하거나, 없으면 기본값 10 사용 (명수 미설정 시)
+            # 실제 검색 개수는 파이프라인에서 쿼리에서 추출한 인원수 또는 기본값 10 사용
+            # 여기서는 None을 전달하여 파이프라인에서 처리하도록 함
+            search_top_k = None  # 파이프라인에서 쿼리에서 인원수 추출 또는 기본값 10 사용
+            
             logger.info(f"[API] ========== Pinecone 검색 시작 ==========")
             logger.info(f"[API] 쿼리: '{query_text}'")
-            logger.info(f"[API] 최대 반환 개수: 10개")
+            logger.info(f"[API] 최대 반환 개수: {search_top_k if search_top_k else '전체'}개")
             
-            # 패널 검색 (테스트용: 10개로 제한)
-            search_top_k = 10  # 테스트용으로 10개로 제한
             force_refresh = payload.get("force_refresh", False)  # 재검색 버튼 클릭 시 True
             pinecone_start = time.time()
-            pinecone_mb_sns = await _search_with_pinecone(
+            pinecone_result = await _search_with_pinecone(
                 query_text, 
                 top_k=search_top_k,
                 use_cache=True,
@@ -294,61 +328,68 @@ async def api_search_post(
                 filters_dict=filters_dict  # 필터 전달
             )
             pinecone_time = time.time() - pinecone_start
+            
+            # 결과 형식 확인 (기존 List[str] 또는 새로운 Dict 형태)
+            if pinecone_result is None:
+                pinecone_mb_sns = None
+                pinecone_scores = {}
+            elif isinstance(pinecone_result, dict):
+                pinecone_mb_sns = pinecone_result.get("mb_sns", [])
+                pinecone_scores = pinecone_result.get("scores", {})
+            else:
+                # 기존 형식 (List[str]) - 호환성 유지
+                pinecone_mb_sns = pinecone_result
+                pinecone_scores = {}
+            
             logger.info(f"[API] Pinecone 검색 완료: {pinecone_time:.2f}초, 결과: {len(pinecone_mb_sns) if pinecone_mb_sns else 0}개, 캐시 사용: {not force_refresh}")
             
             if pinecone_mb_sns:
                 # ⭐ 필터는 이미 Pinecone 검색 시 적용됨 (PostgreSQL 필터 제거)
-                filtered_mb_sns = pinecone_mb_sns
-                logger.info(f"[API] Pinecone 필터 적용 완료, 결과: {len(filtered_mb_sns)}개 패널")
+                logger.info(f"[API] Pinecone 필터 적용 완료, 결과: {len(pinecone_mb_sns)}개 패널")
                 
-                if filtered_mb_sns:
-                    # 최대 10개로 제한
-                    limit_start = time.time()
-                    filtered_mb_sns = filtered_mb_sns[:10]
-                    limit_time = time.time() - limit_start
-                    logger.info(f"[API] 10개로 제한 완료: {limit_time:.4f}초, 최종: {len(filtered_mb_sns)}개 패널")
-                    
-                    # 필터링된 결과를 기존 API 형식으로 변환 (Pinecone 메타데이터 사용)
-                    convert_start = time.time()
-                    panel_details = await _get_panel_details_from_pinecone(
-                        filtered_mb_sns, 1, 10
-                    )
-                    convert_time = time.time() - convert_start
-                    logger.info(f"[API] 결과 변환 완료: {convert_time:.2f}초, 반환 결과: {len(panel_details['results'])}개")
-                    
-                    total_time = time.time() - api_start
-                    logger.info(f"[API] ========== 전체 검색 완료 ==========")
-                    logger.info(f"[API] 총 소요 시간: {total_time:.2f}초")
-                    logger.info(f"[API]   - Pinecone 검색: {pinecone_time:.2f}초")
-                    logger.info(f"[API]   - 결과 변환: {convert_time:.2f}초")
-                    logger.info(f"[API] 최종 반환 개수: {len(panel_details['results'])}개")
-                    
-                    return {
-                        "query": query_text,
-                        "page": 1,
-                        "page_size": len(panel_details["results"]),
-                        "count": len(panel_details["results"]),
-                        "total": len(panel_details["results"]),
-                        "pages": 1,
-                        "mode": "pinecone",
-                        "results": panel_details["results"]
-                    }
-                else:
-                    # 필터로 인해 결과가 0개
-                    return {
-                        "query": query_text,
-                        "page": page,
-                        "page_size": limit,
-                        "count": 0,
-                        "total": 0,
-                        "pages": 0,
-                        "mode": "pinecone",
-                        "error": "필터 조건에 맞는 결과가 없습니다.",
-                        "results": []
-                    }
+                # 백엔드에서 반환하는 모든 결과 사용 (제한 없음)
+                logger.info(f"[API] 전체 결과 사용: {len(pinecone_mb_sns)}개 패널")
+                
+                # 필터링된 결과를 기존 API 형식으로 변환 (Pinecone 메타데이터 사용)
+                convert_start = time.time()
+                panel_details = await _get_panel_details_from_pinecone(
+                    pinecone_mb_sns, 1, len(pinecone_mb_sns), similarity_scores=pinecone_scores
+                )
+                convert_time = time.time() - convert_start
+                total_time = time.time() - api_start
+                
+                logger.info(f"[API] 결과 변환 완료: {convert_time:.2f}초, 반환 결과: {len(panel_details['results'])}개")
+                logger.info(f"[API] ========== 전체 검색 완료 ==========")
+                logger.info(f"[API] 총 소요 시간: {total_time:.2f}초 (Pinecone: {pinecone_time:.2f}초, 변환: {convert_time:.2f}초)")
+                
+                response_data = {
+                    "query": query_text,
+                    "page": 1,
+                    "page_size": len(panel_details["results"]),
+                    "count": len(panel_details["results"]),
+                    "total": len(panel_details["results"]),
+                    "pages": 1,
+                    "mode": "pinecone",
+                    "results": panel_details["results"]
+                }
+                
+                return response_data
             else:
-                # Pinecone 검색 실패 시 필터 검색으로 폴백
-                logger.info("Pinecone 검색 실패, 필터 검색으로 폴백")
+                # 필터로 인해 결과가 0개
+                return {
+                    "query": query_text,
+                    "page": page,
+                    "page_size": limit,
+                    "count": 0,
+                    "total": 0,
+                    "pages": 0,
+                    "mode": "pinecone",
+                    "error": "필터 조건에 맞는 결과가 없습니다.",
+                    "results": []
+                }
+        else:
+            # Pinecone 검색 실패 시 필터 검색으로 폴백
+            logger.info("Pinecone 검색 실패, 필터 검색으로 폴백")
         
         # 쿼리가 없거나 Pinecone 검색 실패 시: 필터만으로 Pinecone 검색
         if filters_dict and any(filters_dict.values()):
@@ -408,9 +449,16 @@ async def api_search_post(
         }
     except Exception as e:
         import traceback
+        import time
         error_detail = traceback.format_exc()
-        logger.error(f"검색 API 오류: {e}\n{error_detail}")
+        request_duration = time.time() - request_start_time
+        logger.error(f"[API DEBUG] ========== 검색 API 오류 발생 ==========")
+        logger.error(f"[API DEBUG] 오류 발생 시간: {request_duration:.2f}초 경과")
+        logger.error(f"[API DEBUG] 오류 타입: {type(e).__name__}")
+        logger.error(f"[API DEBUG] 오류 메시지: {str(e)}")
+        logger.error(f"[API DEBUG] 오류 상세:\n{error_detail}")
+        logger.error(f"[API DEBUG] ========================================")
         raise HTTPException(
             status_code=500,
-            detail=f"검색 중 오류 발생: {str(e)}"
+            detail=f"검색 중 오류 발생: {str(e)} (처리 시간: {request_duration:.2f}초)"
         )

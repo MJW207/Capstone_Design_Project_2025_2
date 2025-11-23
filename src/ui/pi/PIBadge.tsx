@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../base/utils';
 
-export type PIBadgeKind = 'coverage-qw' | 'coverage-w' | 'cluster' | 'new' | 'info';
+export type PIBadgeKind = 'coverage-qw' | 'coverage-w' | 'coverage-q' | 'cluster' | 'new' | 'info';
 export type PIBadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info' | 'accent' | 'secondary' | 'outline';
 export type PIBadgeSize = 'sm' | 'md';
 
@@ -11,11 +11,13 @@ interface PIBadgeProps {
   size?: PIBadgeSize;
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 const kindStyles: Record<PIBadgeKind, string> = {
   'coverage-qw': 'bg-[var(--accent-blue)] text-white',
   'coverage-w': 'bg-[var(--accent-amber)] text-white',
+  'coverage-q': 'bg-[var(--accent-blue)] text-white',
   cluster: 'bg-gradient-to-r from-[var(--accent-blue)] to-[#8B5CF6] text-white',
   new: 'bg-[var(--accent-green)] text-white',
   info: 'bg-[var(--neutral-200)] text-[var(--primary-500)]',
@@ -37,18 +39,19 @@ const sizeStyles: Record<PIBadgeSize, string> = {
   md: 'px-2 py-0.5 text-xs',
 };
 
-export function PIBadge({ kind, variant, size = 'md', children, className }: PIBadgeProps) {
+export function PIBadge({ kind, variant, size = 'md', children, className, style }: PIBadgeProps) {
   // Use kind if provided (legacy), otherwise use variant
-  const style = kind ? kindStyles[kind] : (variant ? variantStyles[variant] : variantStyles.default);
+  const styleClass = kind ? kindStyles[kind] : (variant ? variantStyles[variant] : variantStyles.default);
   
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-full font-medium border',
-        style,
+        styleClass,
         sizeStyles[size],
         className
       )}
+      style={style}
     >
       {children}
     </span>

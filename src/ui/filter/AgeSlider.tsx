@@ -12,8 +12,8 @@ export function AgeSlider({ value, onChange }: AgeSliderProps) {
       <Slider
         value={value}
         onValueChange={(vals) => onChange([vals[0], vals[1]])}
-        min={15}
-        max={80}
+        min={0}
+        max={120}
         step={1}
         className="w-full"
         style={{

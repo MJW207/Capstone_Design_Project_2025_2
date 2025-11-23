@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { StartPage } from './components/pages/StartPage';
 import { ResultsPage } from './components/pages/ResultsPage';
 import { ClusterLabPage } from './components/pages/ClusterLabPage';
@@ -144,6 +144,18 @@ export default function App() {
       setLocatedPanelId(null);
     }, 3000);
   };
+
+  // 검색 결과 변경 핸들러 (메모이제이션)
+  const handleDataChange = useCallback((data: any[]) => {
+    setSearchResults(data);
+    // 검색 결과 캐시 업데이트
+    const searchKey = getSearchKey(query, filters);
+    setSearchCache({
+      key: searchKey,
+      results: data,
+      total: totalResults,
+    });
+  }, [query, filters, totalResults]);
   
 
 
@@ -294,16 +306,7 @@ export default function App() {
                 filters={filters}
                 onQueryChange={setQuery}
                 onSearch={handleSearch}
-                onDataChange={(data) => {
-                  setSearchResults(data);
-                  // 검색 결과 캐시 업데이트
-                  const searchKey = getSearchKey(query, filters);
-                  setSearchCache({
-                    key: searchKey,
-                    results: data,
-                    total: totalResults,
-                  });
-                }}
+                onDataChange={handleDataChange}
                 onFiltersChange={(newFilters) => {
                   setFilters(newFilters);
                   setIsFilterOpen(false);
@@ -354,11 +357,25 @@ export default function App() {
             setEditingPreset(null);
           }}
           onApply={(appliedFilters) => {
-            setFilters(appliedFilters);
+            // 필터가 모두 초기화된 경우 (빈 필터) 완전히 제거
+            const isEmpty = 
+              (!appliedFilters.selectedGenders || appliedFilters.selectedGenders.length === 0) &&
+              (!appliedFilters.selectedRegions || appliedFilters.selectedRegions.length === 0) &&
+              (!appliedFilters.selectedIncomes || appliedFilters.selectedIncomes.length === 0) &&
+              (!appliedFilters.interests || appliedFilters.interests.length === 0) &&
+              (!appliedFilters.quickpollOnly || appliedFilters.quickpollOnly === false) &&
+              (!appliedFilters.ageRange || (appliedFilters.ageRange[0] === 0 && appliedFilters.ageRange[1] === 120));
+            
+            if (isEmpty) {
+              setFilters({});
+            } else {
+              setFilters(appliedFilters);
+            }
+            
             if (view === 'start') {
               setView('results');
             }
-            // 필터 적용 시 자동으로 검색 실행
+            // 필터 적용 시 자동으로 검색 실행 (Pinecone 검색만)
             if (query) {
               handleSearch(query);
             }

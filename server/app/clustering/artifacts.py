@@ -2,11 +2,14 @@
 import uuid
 import json
 import joblib
+import logging
+import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
 import pandas as pd
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
 BASE = Path("runs")
 BASE.mkdir(exist_ok=True)
@@ -79,7 +82,7 @@ def save_artifacts(
 
 def load_artifacts(session_id: str) -> Optional[Dict[str, Any]]:
     """
-    아티팩트 로드
+    아티팩트 로드 (NeonDB 우선, 파일 시스템 fallback)
     
     Parameters:
     -----------
@@ -91,9 +94,37 @@ def load_artifacts(session_id: str) -> Optional[Dict[str, Any]]:
     dict, optional
         아티팩트 딕셔너리 (None이면 찾을 수 없음)
     """
+    logger.info(f"[Artifacts] 아티팩트 로드 시작: session_id={session_id}")
+    
+    # 1. NeonDB에서 로드 시도
+    try:
+        from app.utils.clustering_loader import load_full_clustering_data_from_db
+        
+        logger.debug(f"[Artifacts] NeonDB에서 로드 시도: session_id={session_id}")
+        
+        # 비동기 함수를 동기적으로 실행
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        artifacts = loop.run_until_complete(load_full_clustering_data_from_db(session_id))
+        
+        if artifacts:
+            logger.info(f"[Artifacts] NeonDB에서 로드 성공: session_id={session_id}")
+            return artifacts
+        else:
+            logger.warning(f"[Artifacts] NeonDB에서 세션을 찾을 수 없음, 파일 시스템 fallback: session_id={session_id}")
+    except Exception as e:
+        logger.warning(f"[Artifacts] NeonDB 로드 실패, 파일 시스템 fallback: session_id={session_id}, 오류: {str(e)}")
+    
+    # 2. 파일 시스템에서 로드 (fallback)
+    logger.debug(f"[Artifacts] 파일 시스템에서 로드 시도: session_id={session_id}")
     session_dir = BASE / session_id
     
     if not session_dir.exists():
+        logger.warning(f"[Artifacts] 세션 디렉터리 없음: {session_dir}")
         return None
 
     artifacts = {}
@@ -101,31 +132,47 @@ def load_artifacts(session_id: str) -> Optional[Dict[str, Any]]:
     # 1. 데이터 로드
     data_path = session_dir / "data.csv"
     if data_path.exists():
+        logger.debug(f"[Artifacts] 데이터 파일 로드: {data_path}")
         artifacts['data'] = pd.read_csv(data_path)
+    else:
+        logger.warning(f"[Artifacts] 데이터 파일 없음: {data_path}")
     
     # 2. 레이블 로드
     labels_path = session_dir / "labels.npy"
     if labels_path.exists():
+        logger.debug(f"[Artifacts] 레이블 파일 로드 (NPY): {labels_path}")
         artifacts['labels'] = np.load(labels_path)
     else:
         # CSV에서 로드 시도
         labels_csv_path = session_dir / "labels.csv"
         if labels_csv_path.exists():
+            logger.debug(f"[Artifacts] 레이블 파일 로드 (CSV): {labels_csv_path}")
             labels_df = pd.read_csv(labels_csv_path)
             artifacts['labels'] = labels_df['cluster'].values
+        else:
+            logger.warning(f"[Artifacts] 레이블 파일 없음: {labels_path}, {labels_csv_path}")
     
     # 3. 메타데이터 로드
     meta_path = session_dir / "meta.json"
     if meta_path.exists():
+        logger.debug(f"[Artifacts] 메타데이터 파일 로드: {meta_path}")
         with open(meta_path, 'r', encoding='utf-8') as f:
             artifacts['meta'] = json.load(f)
+    else:
+        logger.warning(f"[Artifacts] 메타데이터 파일 없음: {meta_path}")
     
     # 4. 모델 로드 (있는 경우)
     model_path = session_dir / "model.joblib"
     if model_path.exists():
+        logger.debug(f"[Artifacts] 모델 파일 로드: {model_path}")
         artifacts['model'] = joblib.load(model_path)
     
-    return artifacts if artifacts else None
+    if artifacts:
+        logger.info(f"[Artifacts] 파일 시스템에서 로드 성공: session_id={session_id}, 키: {list(artifacts.keys())}")
+        return artifacts
+    else:
+        logger.warning(f"[Artifacts] 아티팩트를 찾을 수 없음: session_id={session_id}")
+        return None
 
 
 def _make_json_serializable(obj: Any) -> Any:

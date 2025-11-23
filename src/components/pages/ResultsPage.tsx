@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PIPagination } from '../../ui/pi/PIPagination';
-import { Search, Filter, Download, Quote, MapPin, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Loader2, RefreshCw } from 'lucide-react';
+import { Search, Filter, Download, Quote, MapPin, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Loader2, RefreshCw, Users, Briefcase, DollarSign, GraduationCap, Home, TrendingUp } from 'lucide-react'; 
 import { PITextField } from '../../ui/pi/PITextField';
 import { PIButton } from '../../ui/pi/PIButton';
 import { PIChip } from '../../ui/pi/PIChip';
@@ -47,9 +47,25 @@ interface Panel {
   responses: any;
   created_at: string;
   embedding?: number[];
-  coverage?: 'qw' | 'w' | string;
   income?: string;
   aiSummary?: string;
+  welcome1_info?: {
+    gender?: string;
+    age?: number;
+    region?: string;
+    detail_location?: string;
+    age_group?: string;
+    marriage?: string;
+    children?: number;
+    family?: string;
+    education?: string;
+  };
+  welcome2_info?: {
+    job?: string;
+    job_role?: string;
+    personal_income?: string;
+    household_income?: string;
+  };
   metadata?: {
     결혼여부?: string;
     자녀수?: number;
@@ -203,31 +219,44 @@ export function ResultsPage({
     });
   };
 
-  // 전체 결과를 가져오는 함수 (모든 페이지)
+  // 전체 결과를 가져오는 함수 (백엔드에서 반환하는 모든 결과를 한 번에 받음)
   const fetchAllResults = async (queryText: string, filters: any): Promise<Panel[]> => {
-    const allResults: Panel[] = [];
-    let currentPageNum = 1;
-    let hasMore = true;
+    console.log('[DEBUG Frontend] 🟡 fetchAllResults 시작:', { queryText: queryText?.substring(0, 50), filters });
     
-    while (hasMore) {
-      const response = await searchApi.searchPanels(queryText.trim(), filters, currentPageNum, pageSize);
+    try {
+      // limit을 전달하지 않아서 백엔드에서 자동으로 결정하도록 함
+      const response = await searchApi.searchPanels(queryText.trim(), filters, 1);
+      
+      console.log('[DEBUG Frontend] 🟡 fetchAllResults 응답 받음:', {
+        responseType: typeof response,
+        hasResults: !!response?.results,
+        resultsLength: response?.results?.length || 0,
+        resultsType: Array.isArray(response?.results) ? 'array' : typeof response?.results,
+        firstResult: response?.results?.[0] ? {
+          id: response.results[0].id,
+          keys: Object.keys(response.results[0]).slice(0, 10)
+        } : null
+      });
+      
       const results = response.results || [];
       
-      if (results.length === 0) {
-        hasMore = false;
-      } else {
-        allResults.push(...results);
-        currentPageNum++;
-        
-        // 전체 페이지 수 확인
-        const totalPages = response.pages || 1;
-        if (currentPageNum > totalPages) {
-          hasMore = false;
-        }
-      }
+      console.log('[DEBUG Frontend] 🟡 fetchAllResults 결과 추출:', {
+        resultsLength: results.length,
+        firstResult: results[0] ? {
+          id: results[0].id,
+          type: typeof results[0],
+          keys: Object.keys(results[0]).slice(0, 10)
+        } : null
+      });
+      
+      return results;
+    } catch (error: any) {
+      console.error('[DEBUG Frontend] 🔴 fetchAllResults 에러:', {
+        error: error?.message,
+        stack: error?.stack
+      });
+      throw error;
     }
-    
-    return allResults;
   };
 
   // 서버 검색 (텍스트 일치 + 페이지네이션)
@@ -271,9 +300,13 @@ export function ResultsPage({
       setCurrentPage(pageNum);
       setTotalPages(searchCache.pages);
       
-      // Q+W, W only 카운트 (현재 페이지만)
-      setQwCount(paginatedResults.filter((p: Panel) => p.coverage === 'qw').length);
-      setWOnlyCount(paginatedResults.filter((p: Panel) => p.coverage === 'w').length);
+      // 응답 보유 패널 카운트 (현재 페이지만)
+      setQwCount(paginatedResults.filter((p: Panel) => 
+        p.responses && p.responses.length > 0
+      ).length);
+      setWOnlyCount(paginatedResults.filter((p: Panel) => 
+        !p.responses || p.responses.length === 0
+      ).length);
       
       return;
     }
@@ -288,9 +321,26 @@ export function ResultsPage({
     
     try {
       // 전체 결과 가져오기
+      console.log('[DEBUG Frontend] 🟠 searchPanels - fetchAllResults 호출 전');
       const allResults = await fetchAllResults(query.trim(), filtersToSend);
+      console.log('[DEBUG Frontend] 🟠 searchPanels - fetchAllResults 완료:', {
+        allResultsLength: allResults.length,
+        allResultsType: Array.isArray(allResults) ? 'array' : typeof allResults,
+        firstResult: allResults[0] ? {
+          id: allResults[0].id,
+          type: typeof allResults[0]
+        } : null
+      });
+      
       const total = allResults.length;
       const pages = Math.max(1, Math.ceil(total / pageSize));
+      
+      console.log('[DEBUG Frontend] 🟠 searchPanels - 페이지 계산:', {
+        total,
+        pages,
+        pageSize,
+        pageNum
+      });
       
       // 캐시에 저장
       setSearchCache({
@@ -300,19 +350,39 @@ export function ResultsPage({
         pages: pages
       });
       
+      // 전체 결과를 상위 컴포넌트에 전달 (클러스터링용)
+      onDataChange?.(allResults);
+      
       // 현재 페이지 결과 추출
       const startIdx = (pageNum - 1) * pageSize;
       const endIdx = startIdx + pageSize;
       const paginatedResults = allResults.slice(startIdx, endIdx);
       
+      console.log('[DEBUG Frontend] 🟠 searchPanels - 페이지네이션 결과:', {
+        startIdx,
+        endIdx,
+        paginatedResultsLength: paginatedResults.length,
+        firstPaginatedResult: paginatedResults[0] ? {
+          id: paginatedResults[0].id,
+          type: typeof paginatedResults[0]
+        } : null
+      });
+      
+      console.log('[DEBUG Frontend] 🟠 searchPanels - setPanels 호출 전');
       setPanels(paginatedResults);
+      console.log('[DEBUG Frontend] 🟠 searchPanels - setPanels 호출 완료');
+      
       setTotalResults(total);
       setCurrentPage(pageNum);
       setTotalPages(pages);
       
       // Q+W, W only 카운트 (전체 결과 기준)
-      setQwCount(allResults.filter((p: Panel) => p.coverage === 'qw').length);
-      setWOnlyCount(allResults.filter((p: Panel) => p.coverage === 'w').length);
+      setQwCount(allResults.filter((p: Panel) => 
+        p.responses && p.responses.length > 0
+      ).length);
+      setWOnlyCount(allResults.filter((p: Panel) => 
+        !p.responses || p.responses.length === 0
+      ).length);
       
       // 히스토리 저장 (전체 개수 사용)
       const historyItem = historyManager.createQueryHistory(query.trim(), filtersToSend, total);
@@ -392,11 +462,8 @@ export function ResultsPage({
   }, [query, propFilters]);
 
   // 검색 결과가 변경될 때 상위 컴포넌트에 전달
-  useEffect(() => {
-    if (panels.length > 0) {
-      onDataChange?.(panels);
-    }
-  }, [panels, onDataChange]);
+  // ⚠️ 전체 결과는 searchPanels에서 직접 전달하므로 여기서는 제거
+  // (panels는 페이지네이션된 결과만 포함하므로 전체 결과 전달에는 부적합)
 
   // 페이지 변경 핸들러 (캐시에서 가져오기)
   const handlePageChange = (page: number) => {
@@ -452,10 +519,28 @@ export function ResultsPage({
 
   // 퀵 인사이트 데이터/뷰 제거
 
-  // Sort panels by response date
+  // Sort panels by similarity score (default) or response date
   const sortedPanels = useMemo(() => {
-    return [...panels].sort((a, b) => {
-      // Handle null dates (W-only) - always put at the end
+    let filtered = [...panels];
+    
+    // 응답 보유만 보기 필터 적용 (topic 기반)
+    if (propFilters.quickpollOnly) {
+      filtered = filtered.filter((p: Panel) => 
+        p.responses && p.responses.length > 0
+      );
+    }
+    
+    return filtered.sort((a, b) => {
+      // 기본값: 유사도 점수 높은 순으로 정렬
+      const similarityA = (a as any).similarity || 0;
+      const similarityB = (b as any).similarity || 0;
+      
+      // 유사도 점수가 있으면 유사도 기준으로 정렬 (높은 순)
+      if (similarityA > 0 || similarityB > 0) {
+        return similarityB - similarityA; // 내림차순 (높은 점수 먼저)
+      }
+      
+      // 유사도 점수가 없으면 날짜 기준으로 정렬 (기존 로직)
       if (!a.created_at && !b.created_at) return 0;
       if (!a.created_at) return 1;
       if (!b.created_at) return 1;
@@ -465,7 +550,7 @@ export function ResultsPage({
       
       return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
     });
-  }, [panels, sortOrder]);
+  }, [panels, sortOrder, propFilters.quickpollOnly]);
 
   // 퀵 인사이트 데이터 계산
   const quickInsightData = useMemo(() => {
@@ -688,13 +773,18 @@ export function ResultsPage({
         </div>
       </section>
 
-      {/* Summary Bar - 현재 검색 결과(panels) 기준으로 계산 */}
+      {/* Summary Bar - 전체 검색 결과 기준으로 계산 */}
       {(() => {
-        // 현재 검색 결과(panels) 기준으로 통계 계산
-        const currentPanels = panels; // 현재 페이지의 패널들
-        const currentTotal = currentPanels.length;
-        const currentQCount = currentPanels.filter((p: Panel) => p.coverage === 'qw').length;
-        const currentWOnlyCount = currentPanels.filter((p: Panel) => p.coverage === 'w').length;
+        // 전체 검색 결과 기준으로 통계 계산 (페이지네이션과 무관하게 전체 결과 사용)
+        const allResults = searchCache?.allResults || panels; // 전체 결과 우선, 없으면 현재 페이지 결과 사용
+        const currentPanels = allResults; // 전체 결과를 사용
+        const currentTotal = allResults.length || totalResults; // 전체 결과 수
+        const currentQCount = allResults.filter((p: Panel) => 
+          p.responses && p.responses.length > 0
+        ).length;
+        const currentWOnlyCount = allResults.filter((p: Panel) => 
+          !p.responses || p.responses.length === 0
+        ).length;
 
         // 성별 통계 (현재 검색 결과 기준)
         const genders = currentPanels.map((p: Panel) => {
@@ -1052,93 +1142,181 @@ export function ResultsPage({
             <>
               {sortedPanels.length === 0 ? null : (
                 <div className="cards-grid">
-                  {sortedPanels.map((panel) => (
-              <PICard
-                key={panel.id}
-                variant="panel"
-                onClick={() => onPanelDetailOpen(panel.id)}
-              >
-                <div className="space-y-3">
-                  {/* Header */}
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-0.5 flex-1">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="p-1 rounded-lg transition-colors flex-shrink-0"
-                          style={{
-                            background: 'transparent'
-                          }}
-                          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => {
-                            e.currentTarget.style.background = 'rgba(250, 204, 21, 0.1)';
-                          }}
-                          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => {
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <PIBookmarkStar
-                            panelId={panel.id}
-                            isBookmarked={bookmarkedPanels.has(panel.id)}
-                            onToggle={(id) => handleToggleBookmark(id, panel)}
-                            size="sm"
-                          />
-                        </div>
-                        <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{panel.name}</span>
-                      </div>
-                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>생성일: {new Date(panel.created_at).toLocaleDateString()}</p>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigator.clipboard.writeText(panel.id).then(() => {
-                            toast.success(`${panel.id} 복사됨`);
-                          }).catch(() => {
-                            toast.error('클립보드 복사 실패');
-                          });
-                        }}
-                        className="p-1.5 rounded-lg transition-colors"
-                        style={{
-                          background: 'transparent'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--muted)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                        }}
-                        title="패널 ID 복사"
+                  {sortedPanels.map((panel) => {
+                    const similarity = (panel as any).similarity || 0;
+                    const hasResponses = panel.responses && panel.responses.length > 0;
+                    const similarityColor = similarity > 0.8 ? '#10B981' : similarity > 0.6 ? '#F59E0B' : '#6B7280';
+                    
+                    return (
+                      <PICard
+                        key={panel.id}
+                        variant="panel"
+                        onClick={() => onPanelDetailOpen(panel.id)}
+                        className="group relative overflow-hidden"
                       >
-                        <Copy className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />
-                      </button>
-                      <PIBadge kind={panel.coverage === 'qw' ? 'coverage-qw' : 'coverage-w'}>
-                        {panel.coverage === 'qw' ? 'Q+W' : 'W'}
-                      </PIBadge>
-                    </div>
-                  </div>
+                        {/* ⭐ 그라데이션 배경 (유사도 기반) */}
+                        <div 
+                          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                          style={{
+                            background: similarity > 0 
+                              ? `linear-gradient(135deg, ${similarityColor}08, ${similarityColor}03)`
+                              : 'transparent'
+                          }}
+                        />
+                        
+                        <div className="relative space-y-3">
+                          {/* Header */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div
+                                  className="p-1 rounded-lg transition-colors flex-shrink-0"
+                                  style={{
+                                    background: 'transparent'
+                                  }}
+                                  onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => {
+                                    e.currentTarget.style.background = 'rgba(250, 204, 21, 0.15)';
+                                  }}
+                                  onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleBookmark(panel.id, panel);
+                                  }}
+                                >
+                                  <PIBookmarkStar
+                                    panelId={panel.id}
+                                    isBookmarked={bookmarkedPanels.has(panel.id)}
+                                    onToggle={(id) => handleToggleBookmark(id, panel)}
+                                    size="sm"
+                                  />
+                                </div>
+                                <span className="text-base font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                                  {panel.name}
+                                </span>
+                                {similarity > 0 && (
+                                  <PIBadge 
+                                    variant="secondary" 
+                                    className="text-xs px-1.5 py-0.5"
+                                    style={{ 
+                                      background: `${similarityColor}15`,
+                                      color: similarityColor,
+                                      borderColor: `${similarityColor}40`
+                                    }}
+                                  >
+                                    {Math.round(similarity * 100)}%
+                                  </PIBadge>
+                                )}
+                              </div>
+                              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                                {new Date(panel.created_at).toLocaleDateString('ko-KR', { 
+                                  year: 'numeric', 
+                                  month: 'short', 
+                                  day: 'numeric' 
+                                })}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {hasResponses && (
+                                <div 
+                                  className="px-2 py-1 rounded-md text-xs font-medium"
+                                  style={{
+                                    background: 'rgba(16, 185, 129, 0.1)',
+                                    color: '#10B981'
+                                  }}
+                                >
+                                  Q+W
+                                </div>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(panel.id).then(() => {
+                                    toast.success('패널 ID 복사됨');
+                                  }).catch(() => {
+                                    toast.error('클립보드 복사 실패');
+                                  });
+                                }}
+                                className="p-1.5 rounded-lg transition-all"
+                                style={{
+                                  background: 'transparent'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'var(--surface-2)';
+                                  e.currentTarget.style.transform = 'scale(1.1)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'transparent';
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                }}
+                                title="패널 ID 복사"
+                              >
+                                <Copy className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                              </button>
+                            </div>
+                          </div>
 
-                  {/* Meta Chips */}
-                  <div className="flex flex-wrap gap-1.5">
-                    <PIChip type="tag">{panel.gender}</PIChip>
-                    <PIChip type="tag">{panel.age}세</PIChip>
-                    <PIChip type="tag">{panel.region}</PIChip>
-                  </div>
+                          {/* ⭐ 주요 정보 (아이콘과 함께) */}
+                          <div className="flex flex-wrap gap-2">
+                            {panel.gender && (
+                              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.1)' }}>
+                                <Users className="w-3.5 h-3.5" style={{ color: '#3B82F6' }} />
+                                <PIChip type="tag" className="text-xs">{panel.gender}</PIChip>
+                              </div>
+                            )}
+                            {panel.age > 0 && (
+                              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(139, 92, 246, 0.1)' }}>
+                                <span className="text-xs font-medium" style={{ color: '#8B5CF6' }}>{panel.age}세</span>
+                              </div>
+                            )}
+                            {panel.region && (
+                              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>
+                                <MapPin className="w-3.5 h-3.5" style={{ color: '#10B981' }} />
+                                <PIChip type="tag" className="text-xs">{panel.region}</PIChip>
+                              </div>
+                            )}
+                          </div>
 
-                  {/* AI 인사이트 */}
-                  {panel.aiSummary && (
-                    <div className="pt-2 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
-                      <div className="flex gap-2">
-                        <Quote className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--brand-blue-300)' }} />
-                        <div className="flex-1">
-                          <p className="text-xs italic line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
-                            {panel.aiSummary}
-                          </p>
+                          {/* ⭐ 추가 메타데이터 (직업, 소득 등) */}
+                          {(panel.metadata?.직업 || panel.income || panel.metadata?.["월평균 개인소득"]) && (
+                            <div className="pt-2 border-t space-y-1.5" style={{ borderColor: 'var(--border-secondary)' }}>
+                              {panel.metadata?.직업 && (
+                                <div className="flex items-center gap-2">
+                                  <Briefcase className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    {panel.metadata.직업}
+                                  </span>
+                                </div>
+                              )}
+                              {(panel.income || panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"]) && (
+                                <div className="flex items-center gap-2">
+                                  <DollarSign className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* AI 인사이트 */}
+                          {panel.aiSummary && (
+                            <div className="pt-2 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
+                              <div className="flex gap-2">
+                                <Quote className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--brand-blue-300)' }} />
+                                <div className="flex-1">
+                                  <p className="text-xs italic line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
+                                    {panel.aiSummary}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </PICard>
-                  ))}
+                      </PICard>
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -1148,155 +1326,298 @@ export function ResultsPage({
           {!loading && !error && totalResults > 0 && viewMode === 'table' && (
             <>
               {sortedPanels.length === 0 ? null : (
-                <div className="rounded-[var(--radius-card)] border overflow-hidden" style={{ 
+                <div className="rounded-xl border overflow-hidden shadow-sm" style={{ 
                   background: 'var(--surface-1)', 
-                  borderColor: 'var(--border-primary)' 
+                  borderColor: 'var(--border-primary)',
+                  boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
                 }}>
-                  <table className="w-full">
-              <thead className="border-b" style={{
-                background: 'var(--bg-0)',
-                borderColor: 'var(--border-primary)'
-              }}>
-                <tr>
-                  <th className="px-4 py-3 w-12">
-                    <input
-                      type="checkbox"
-                      checked={selectedPanels.length === panels.length && panels.length > 0}
-                      onChange={() => {
-                        if (selectedPanels.length === panels.length) {
-                          setSelectedPanels([]);
-                        } else {
-                          setSelectedPanels(panels.map(p => p.id));
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                  </th>
-                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>이름</th>
-                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>성별</th>
-                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>나이</th>
-                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>지역/구</th>
-                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>직업</th>
-                  <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>소득</th>
-                  <th className="px-4 py-3 text-center text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)', verticalAlign: 'middle' }}>북마크</th>
-                  <th className="px-4 py-3 text-center text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>위치</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedPanels.map((panel, index) => (
-                  <tr
-                    key={panel.id}
-                    className="border-b transition-all"
-                    style={{ 
-                      borderColor: 'var(--border-secondary)',
-                      background: 'var(--surface-1)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--surface-2)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'var(--surface-1)';
-                    }}
-                  >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedPanels.includes(panel.id)}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          if (selectedPanels.includes(panel.id)) {
-                            setSelectedPanels(selectedPanels.filter(id => id !== panel.id));
-                          } else {
-                            setSelectedPanels([...selectedPanels, panel.id]);
-                          }
-                        }}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td 
-                      className="px-4 py-3 text-lg cursor-pointer transition-colors"
-                      style={{ color: 'var(--text-secondary)' }}
-                      onClick={() => onPanelDetailOpen(panel.id)}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = 'var(--brand-blue-300)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }}
-                    >
-                      {panel.name}
-                    </td>
-                    <td className="px-4 py-3 text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {panel.gender || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {panel.age ? `${panel.age}세` : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {panel.region || panel.metadata?.location || '-'}
-                        </span>
-                        {panel.metadata?.detail_location && panel.metadata.detail_location !== '무응답' && (
-                          <span className="text-base" style={{ color: 'var(--text-tertiary)' }}>
-                            {panel.metadata.detail_location}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-lg" style={{ color: 'var(--text-secondary)' }}>
-                      {panel.metadata?.직업 || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-lg" style={{ color: 'var(--text-secondary)' }}>
-                      {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-center" style={{ verticalAlign: 'middle' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <PIBookmarkStar
-                          panelId={panel.id}
-                          isBookmarked={bookmarkedPanels.has(panel.id)}
-                          onToggle={(id) => handleToggleBookmark(id, panel)}
-                          size="sm"
-                        />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {onLocatePanel && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onLocatePanel(panel.id);
-                          }}
-                          className="p-2 rounded-lg transition-colors btn--ghost"
-                          style={{ color: 'var(--brand-blue-300)' }}
-                          title="UMAP에서 위치 표시"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(37, 99, 235, 0.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <MapPin className="w-5 h-5" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                  </tbody>
-                </table>
-              </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead style={{
+                        background: 'linear-gradient(135deg, var(--bg-0), var(--surface-2))',
+                        borderBottom: '2px solid var(--border-primary)'
+                      }}>
+                        <tr>
+                          <th className="px-5 py-4 w-12">
+                            <input
+                              type="checkbox"
+                              checked={selectedPanels.length === panels.length && panels.length > 0}
+                              onChange={() => {
+                                if (selectedPanels.length === panels.length) {
+                                  setSelectedPanels([]);
+                                } else {
+                                  setSelectedPanels(panels.map(p => p.id));
+                                }
+                              }}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </th>
+                          <th className="px-5 py-4 text-left text-sm font-bold whitespace-nowrap uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                            패널 정보
+                          </th>
+                          <th className="px-5 py-4 text-left text-sm font-bold whitespace-nowrap uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                            <div className="flex items-center gap-1.5">
+                              <Users className="w-4 h-4" />
+                              기본정보
+                            </div>
+                          </th>
+                          <th className="px-5 py-4 text-left text-sm font-bold whitespace-nowrap uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                            <div className="flex items-center gap-1.5">
+                              <MapPin className="w-4 h-4" />
+                              지역
+                            </div>
+                          </th>
+                          <th className="px-5 py-4 text-left text-sm font-bold whitespace-nowrap uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                            <div className="flex items-center gap-1.5">
+                              <Briefcase className="w-4 h-4" />
+                              직업·소득
+                            </div>
+                          </th>
+                          <th className="px-5 py-4 text-center text-sm font-bold whitespace-nowrap uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                            유사도
+                          </th>
+                          <th className="px-5 py-4 text-center text-sm font-bold whitespace-nowrap uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                            액션
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedPanels.map((panel, index) => {
+                          const similarity = (panel as any).similarity || 0;
+                          const hasResponses = panel.responses && panel.responses.length > 0;
+                          const similarityColor = similarity > 0.8 ? '#10B981' : similarity > 0.6 ? '#F59E0B' : '#6B7280';
+                          const isEven = index % 2 === 0;
+                          
+                          return (
+                            <tr
+                              key={panel.id}
+                              className="border-b transition-all group"
+                              style={{ 
+                                borderColor: 'var(--border-secondary)',
+                                background: isEven ? 'var(--surface-1)' : 'var(--surface-0)'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'var(--surface-2)';
+                                e.currentTarget.style.transform = 'scale(1.001)';
+                                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = isEven ? 'var(--surface-1)' : 'var(--surface-0)';
+                                e.currentTarget.style.transform = 'scale(1)';
+                                e.currentTarget.style.boxShadow = 'none';
+                              }}
+                            >
+                              <td className="px-5 py-4">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedPanels.includes(panel.id)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    if (selectedPanels.includes(panel.id)) {
+                                      setSelectedPanels(selectedPanels.filter(id => id !== panel.id));
+                                    } else {
+                                      setSelectedPanels([...selectedPanels, panel.id]);
+                                    }
+                                  }}
+                                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                />
+                              </td>
+                              <td 
+                                className="px-5 py-4 cursor-pointer transition-all"
+                                onClick={() => onPanelDetailOpen(panel.id)}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-base font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                                        {panel.name}
+                                      </span>
+                                      {hasResponses && (
+                                        <PIBadge 
+                                          variant="secondary" 
+                                          className="text-xs px-1.5 py-0.5"
+                                          style={{ 
+                                            background: 'rgba(16, 185, 129, 0.1)',
+                                            color: '#10B981',
+                                            borderColor: 'rgba(16, 185, 129, 0.3)'
+                                          }}
+                                        >
+                                          Q+W
+                                        </PIBadge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigator.clipboard.writeText(panel.id).then(() => {
+                                            toast.success('ID 복사됨');
+                                          });
+                                        }}
+                                        className="p-1 rounded transition-all opacity-0 group-hover:opacity-100"
+                                        style={{ color: 'var(--text-tertiary)' }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = 'var(--surface-2)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = 'transparent';
+                                        }}
+                                        title="ID 복사"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                      <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                                        {panel.id.substring(0, 8)}...
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-3">
+                                  {panel.gender && (
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(59, 130, 246, 0.1)' }}>
+                                      <Users className="w-3.5 h-3.5" style={{ color: '#3B82F6' }} />
+                                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                                        {panel.gender}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {panel.age > 0 && (
+                                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                      {panel.age}세
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                                      {panel.region || panel.metadata?.location || '-'}
+                                    </span>
+                                    {panel.metadata?.detail_location && panel.metadata.detail_location !== '무응답' && (
+                                      <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                                        {panel.metadata.detail_location}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex flex-col gap-1.5">
+                                  {panel.metadata?.직업 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <Briefcase className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                        {panel.metadata.직업}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {(panel.income || panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"]) && (
+                                    <div className="flex items-center gap-1.5">
+                                      <DollarSign className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                        {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {!panel.metadata?.직업 && !panel.income && !panel.metadata?.["월평균 개인소득"] && (
+                                    <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>-</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-5 py-4 text-center">
+                                {similarity > 0 ? (
+                                  <div className="flex items-center justify-center">
+                                    <PIBadge 
+                                      variant="secondary" 
+                                      className="text-xs px-2 py-1"
+                                      style={{ 
+                                        background: `${similarityColor}15`,
+                                        color: similarityColor,
+                                        borderColor: `${similarityColor}40`,
+                                        fontWeight: 600
+                                      }}
+                                    >
+                                      <TrendingUp className="w-3 h-3 inline mr-1" />
+                                      {Math.round(similarity * 100)}%
+                                    </PIBadge>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>-</span>
+                                )}
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center justify-center gap-2">
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleBookmark(panel.id, panel);
+                                    }}
+                                    className="p-2 rounded-lg transition-all cursor-pointer"
+                                    style={{ color: bookmarkedPanels.has(panel.id) ? '#FCD34D' : 'var(--text-tertiary)' }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.background = 'rgba(250, 204, 21, 0.1)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.background = 'transparent';
+                                    }}
+                                  >
+                                    <PIBookmarkStar
+                                      panelId={panel.id}
+                                      isBookmarked={bookmarkedPanels.has(panel.id)}
+                                      onToggle={(id) => handleToggleBookmark(id, panel)}
+                                      size="sm"
+                                    />
+                                  </div>
+                                  {onLocatePanel && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onLocatePanel(panel.id);
+                                      }}
+                                      className="p-2 rounded-lg transition-all"
+                                      style={{ color: 'var(--brand-blue-300)' }}
+                                      title="UMAP에서 위치 표시"
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'rgba(37, 99, 235, 0.1)';
+                                        e.currentTarget.style.transform = 'scale(1.1)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = 'transparent';
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                      }}
+                                    >
+                                      <MapPin className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </>
           )}
 
           {/* Pagination */}
           {!loading && !error && totalResults > 0 && (
-            <div className="mt-8 flex justify-center">
+            <div className="mt-8 w-full">
               <PIPagination
                 count={totalPages}
                 page={currentPage}
                 onChange={handlePageChange}
+                total={totalResults}
+                pageSize={pageSize}
+                showInfo={true}
+                showFirstLast={true}
+                compact={false}
               />
             </div>
           )}

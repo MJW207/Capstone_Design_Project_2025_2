@@ -1,6 +1,7 @@
 """LLM 기반 메타데이터 추출기"""
 import json
 import re
+import time
 from typing import Dict, Any
 from anthropic import Anthropic
 import logging
@@ -16,8 +17,17 @@ class MetadataExtractor:
         Args:
             api_key: Anthropic API 키
         """
+        logger.debug(f"[MetadataExtractor] 초기화 시작, API 키 길이: {len(api_key) if api_key else 0}")
+        if not api_key:
+            logger.error("[MetadataExtractor] API 키가 비어있습니다!")
+        elif len(api_key) < 50:
+            logger.warning(f"[MetadataExtractor] API 키가 너무 짧습니다 (길이: {len(api_key)})")
+        else:
+            logger.debug(f"[MetadataExtractor] API 키 시작: {api_key[:20]}...")
+        
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
+        logger.debug(f"[MetadataExtractor] Anthropic 클라이언트 초기화 완료, 모델: {self.model}")
 
     def extract(self, query: str) -> Dict[str, Any]:
         """
@@ -29,6 +39,9 @@ class MetadataExtractor:
         Returns:
             메타데이터 딕셔너리 (예: {"지역": "서울", "지역구": "강남구", "나이": 27, "연령대": "20대", "성별": "남", "결혼여부": "기혼"})
         """
+        extract_start = time.time()
+        logger.info(f"[MetadataExtractor DEBUG] extract() 시작: query='{query}'")
+        
         prompt = f"""당신은 자연어 질의에서 메타데이터를 추출하는 전문가입니다.
 
 자연어 질의를 분석하여 모든 정보를 메타데이터로 추출하세요.
@@ -111,6 +124,14 @@ class MetadataExtractor:
 12. **수도권 특별 처리**
    - "수도권" → "지역": ["서울", "경기", "인천"]
 
+13. **인원수 추출** (⭐⭐⭐ 매우 중요!)
+   - 반드시 "인원수" 키만 사용 (다른 키 사용 절대 금지!)
+   - "10명", "10명 찾아줘", "10개", "10개 패널" → "인원수": 10
+   - "5명", "5개 패널" → "인원수": 5
+   - "20명", "20개" → "인원수": 20
+   - 숫자 + "명" 또는 숫자 + "개" 패턴을 찾아서 "인원수" 키로 추출
+   - ⚠️ "가족수", "자녀수"와 혼동하지 말 것! 검색 결과 개수를 의미하는 경우만 "인원수" 사용
+
 === 예시 ===
 
 입력: "서울 강남구 27세 기혼 남자"
@@ -130,6 +151,14 @@ class MetadataExtractor:
     "직업": "전문직"
 }}
 
+입력: "서울 20대 10명"
+출력:
+{{
+    "지역": "서울",
+    "연령대": "20대",
+    "인원수": 10
+}}
+
 질의: {query}
 
 ⚠️⚠️⚠️ 필수 주의사항:
@@ -138,6 +167,8 @@ class MetadataExtractor:
 - 가족/가구 관련 정보는 반드시 "가족수" 키만 사용!
 - "혼자 사는", "1인 가구", "독거" 등은 모두 "가족수": 1로 변환!
 - "XX세 이하"는 해당 연령대까지 모든 연령대를 리스트로 반환
+- **검색 결과 개수를 의미하는 숫자 + "명"/"개"는 반드시 "인원수" 키로 추출!** ⭐⭐⭐
+- "인원수"는 정수(integer)로 반환 (예: 10, 5, 20)
 
 JSON만 반환하세요. 다른 설명은 하지 마세요.
 """
@@ -148,14 +179,35 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                 logger.warning("[메타데이터 추출] Anthropic API 키가 설정되지 않았습니다. 빈 메타데이터 반환")
                 return {}
             
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                temperature=0.0,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            # 실제 사용되는 API 키 확인
+            actual_api_key = getattr(self.client, 'api_key', None)
+            if actual_api_key:
+                logger.debug(f"[메타데이터 추출] 실제 사용되는 API 키 길이: {len(actual_api_key)}")
+                logger.debug(f"[메타데이터 추출] 실제 사용되는 API 키 시작: {actual_api_key[:30]}...")
+                logger.debug(f"[메타데이터 추출] 실제 사용되는 API 키 끝: ...{actual_api_key[-10:]}")
+            else:
+                logger.error("[메타데이터 추출] 클라이언트에 API 키가 없습니다!")
+                return {}
+            
+            logger.info(f"[MetadataExtractor DEBUG] Anthropic API 호출 시작 (모델: {self.model})")
+            llm_call_start = time.time()
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=1024,
+                    temperature=0.0,
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=30.0  # 30초 타임아웃
+                )
+                llm_call_time = time.time() - llm_call_start
+                logger.info(f"[MetadataExtractor DEBUG] Anthropic API 호출 완료: {llm_call_time:.2f}초")
 
-            text = response.content[0].text
+                text = response.content[0].text
+                logger.debug(f"[메타데이터 추출] LLM 원본 응답: {text[:500]}")  # 처음 500자만 로깅
+            except Exception as llm_error:
+                llm_call_time = time.time() - llm_call_start
+                logger.error(f"[MetadataExtractor DEBUG] Anthropic API 호출 실패: {llm_call_time:.2f}초, 에러: {llm_error}")
+                raise
             
             # JSON 파싱 (코드블록 제거)
             if '```json' in text:
@@ -165,7 +217,17 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
             else:
                 json_text = text.strip()
             
-            metadata = json.loads(json_text)
+            logger.debug(f"[메타데이터 추출] 파싱할 JSON 텍스트: {json_text[:500]}")
+            
+            try:
+                metadata = json.loads(json_text)
+            except json.JSONDecodeError as json_err:
+                logger.warning(f"[메타데이터 추출] JSON 파싱 실패: {json_err}, 원본 텍스트: {json_text[:200]}")
+                # 빈 JSON이나 잘못된 형식인 경우 빈 딕셔너리 반환
+                metadata = {}
+            
+            if not metadata:
+                logger.warning(f"[메타데이터 추출] LLM이 빈 메타데이터를 반환했습니다. 원본 응답: {text[:300]}")
             
             # ===== 후처리: 키 이름 및 값 정규화 =====
             logger.debug(f"[메타데이터 추출 - LLM 원본] {metadata}")
@@ -235,11 +297,46 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                             normalized.append(g)
                     metadata["성별"] = normalized
             
+            # 7. 인원수 키 정규화 (공백 제거)
+            # "인원 수", " 인원수" 등 공백이 있는 키를 "인원수"로 정규화
+            for key in list(metadata.keys()):
+                if "인원" in key and "수" in key and key != "인원수":
+                    if "인원수" not in metadata:
+                        metadata["인원수"] = metadata.pop(key)
+                        logger.debug(f"   [후처리] '{key}' → '인원수'로 키 정규화")
+                    else:
+                        metadata.pop(key)  # 중복 키 제거
+            
+            # 8. 인원수 정규화 (문자열을 정수로 변환)
+            if "인원수" in metadata:
+                count = metadata["인원수"]
+                if isinstance(count, str):
+                    # "10명", "10개" 등에서 숫자만 추출
+                    match = re.search(r'(\d+)', count)
+                    if match:
+                        metadata["인원수"] = int(match.group(1))
+                        logger.debug(f"   [후처리] 인원수 '{count}' → {metadata['인원수']}로 변환")
+                    else:
+                        # 숫자를 찾을 수 없으면 제거
+                        metadata.pop("인원수")
+                        logger.debug(f"   [후처리] 인원수 '{count}'에서 숫자를 찾을 수 없어 제거")
+                elif isinstance(count, (int, float)):
+                    # 이미 숫자면 정수로 변환
+                    metadata["인원수"] = int(count)
+                else:
+                    # 다른 타입이면 제거
+                    metadata.pop("인원수")
+                    logger.debug(f"   [후처리] 인원수 타입이 올바르지 않아 제거: {type(count)}")
+            
             logger.debug(f"[메타데이터 추출 - 최종] {metadata}")
+            extract_time = time.time() - extract_start
+            logger.info(f"[MetadataExtractor DEBUG] extract() 완료: {extract_time:.2f}초, 결과: {metadata}")
             return metadata
 
         except Exception as e:
+            extract_time = time.time() - extract_start if 'extract_start' in locals() else 0
             error_msg = str(e)
+            logger.error(f"[메타데이터 추출] 오류 발생: {extract_time:.2f}초, 에러: {e}", exc_info=True)
             # 인증 오류인 경우 경고만 출력하고 빈 메타데이터 반환
             if "401" in error_msg or "authentication" in error_msg.lower() or "invalid x-api-key" in error_msg.lower():
                 logger.warning(f"[메타데이터 추출] Anthropic API 인증 오류: {error_msg}. 빈 메타데이터로 계속 진행")

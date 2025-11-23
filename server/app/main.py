@@ -16,62 +16,76 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from sqlalchemy import text
 from pathlib import Path
 from dotenv import load_dotenv
 import os
 import logging
 import traceback
 
-# 로깅 설정 (INFO 레벨 - DEBUG는 너무 많음)
+# 로깅 설정 (DEBUG 레벨로 변경하여 상세 로그 확인)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# HTTP 관련 로그 억제
+# HTTP 관련 로그는 WARNING으로 유지
 logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('httpx').setLevel(logging.INFO)  # httpx는 INFO로 (API 호출 확인용)
 
-# 앱 관련 로거는 INFO 레벨 (필요시 DEBUG로 변경 가능)
-logging.getLogger('app.services').setLevel(logging.INFO)
-logging.getLogger('app.api.search').setLevel(logging.INFO)
-logging.getLogger('app.api.panels').setLevel(logging.INFO)  # panels API 로거 추가
-
-# 중요한 검색 단계만 DEBUG로
-logging.getLogger('app.services.pinecone_pipeline').setLevel(logging.INFO)
+# 앱 관련 로거는 DEBUG 레벨로 설정
+logging.getLogger('app.services').setLevel(logging.DEBUG)
+logging.getLogger('app.api.search').setLevel(logging.DEBUG)
+logging.getLogger('app.api.panels').setLevel(logging.DEBUG)
+logging.getLogger('app.core.config').setLevel(logging.DEBUG)
+logging.getLogger('app.services.metadata_extractor').setLevel(logging.DEBUG)
+logging.getLogger('app.services.category_classifier').setLevel(logging.DEBUG)
+logging.getLogger('app.services.pinecone_pipeline').setLevel(logging.DEBUG)
 
 # 환경 변수 로드 - Path 사용으로 경로 안정화
 ENV_PATH = (Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(ENV_PATH, override=True)
-
-# 비동기 엔진 import (lifespan에서 사용)
-from app.db.session import engine as async_engine
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     앱 수명주기 관리 (startup/shutdown)
     """
-    # startup: 간단 DB ping
-    try:
-        if async_engine is not None:
-            async with async_engine.begin() as conn:
-                await conn.execute(text("SELECT 1"))
-    except Exception:
-        pass  # 실패해도 계속 진행
-    
+    # startup
     yield
     
-    # shutdown: 엔진 정리
-    if async_engine is not None:
-        await async_engine.dispose()
+    # shutdown
 
 
 # FastAPI 앱 초기화 (lifespan 포함)
 app = FastAPI(title="Panel Insight API", version="0.1.0", lifespan=lifespan)
+
+# 요청 미들웨어: 모든 요청 로깅
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """모든 요청을 로깅하는 미들웨어"""
+    import time
+    start_time = time.time()
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"[REQUEST] {request.method} {request.url.path} - 요청 수신")
+    if request.method == "POST":
+        try:
+            body = await request.body()
+            logger.info(f"[REQUEST] Body: {body[:200] if len(body) > 200 else body}")
+        except:
+            pass
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        logger.info(f"[REQUEST] {request.method} {request.url.path} - 응답 완료: {response.status_code} ({process_time:.2f}초)")
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(f"[REQUEST] {request.method} {request.url.path} - 에러 발생 ({process_time:.2f}초): {e}", exc_info=True)
+        raise
 
 # 전역 예외 핸들러 (개발 환경에서 상세 오류 정보 반환)
 @app.exception_handler(Exception)

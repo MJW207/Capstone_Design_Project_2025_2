@@ -28,6 +28,7 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isBookmarkPanelOpen, setIsBookmarkPanelOpen] = useState(false);
   const [bookmarkCount, setBookmarkCount] = useState(0);
+  const [showFloatAnimation, setShowFloatAnimation] = useState(false);
   const [presetCount, setPresetCount] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [mouseVelocity, setMouseVelocity] = useState({ vx: 0, vy: 0 });
@@ -56,6 +57,14 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
     // 프리셋이 변경될 때마다 개수 업데이트 (간단한 polling 방식)
     const interval = setInterval(updatePresetCount, 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Hero title animation: after initial float-up, start continuous floating
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowFloatAnimation(true);
+    }, 1200); // 1.2초 후 floating 시작
+    return () => clearTimeout(timer);
   }, []);
 
   const handleSearch = () => {
@@ -347,7 +356,7 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
           {/* PANEL INSIGHT Typo */}
           <div className="flex flex-col items-center gap-2">
             <h1
-              className="inline-block uppercase font-extrabold"
+              className={`inline-block uppercase font-extrabold ${showFloatAnimation ? 'hero-title-float' : 'hero-title-enter'}`}
               style={{
                 fontSize: 'clamp(32px, 5vw, 64px)',
                 letterSpacing: '0.18em',
@@ -358,7 +367,6 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
                 WebkitTextFillColor: 'transparent',
                 textShadow: '0 8px 24px rgba(88, 104, 255, 0.35)',
                 filter: 'drop-shadow(0 8px 24px rgba(88, 104, 255, 0.35))',
-                transform: 'translateX',
               }}
             >
               PANEL&nbsp;INSIGHT
@@ -466,18 +474,6 @@ export function StartPage({ onSearch, onFilterOpen, onPresetApply, currentFilter
 
               {/* Trailing Icons */}
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                <button
-                  type="button"
-                  className="p-2 rounded-lg btn--ghost transition-fast group"
-                  title="도움말"
-                  style={{
-                    padding: '8px',
-                    borderRadius: '8px',
-                  }}
-                >
-                  <Info className="w-[18px] h-[18px] transition-colors" style={{ color: 'var(--muted-foreground)' }} />
-                </button>
-                
                 <button
                   type="button"
                   onClick={onFilterOpen}

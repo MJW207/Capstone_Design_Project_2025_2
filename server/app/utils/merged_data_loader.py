@@ -207,6 +207,127 @@ def load_merged_data() -> Dict[str, Any]:
         return _load_merged_data_from_json_fallback()
 
 
+async def get_panels_from_merged_db_batch(panel_ids: list[str]) -> Dict[str, Dict[str, Any]]:
+    """merged.panel_data 테이블에서 여러 패널 데이터를 한 번에 조회
+    
+    Args:
+        panel_ids: 패널 ID 리스트 (mb_sn)
+        
+    Returns:
+        mb_sn을 키로 하는 딕셔너리 (패널 ID -> 패널 데이터)
+    """
+    logger.info(f"[Merged Data] 배치 패널 조회 시작: {len(panel_ids)}개")
+    try:
+        # 먼저 캐시에서 확인
+        global _merged_data_cache
+        if _merged_data_cache is not None:
+            result = {}
+            for panel_id in panel_ids:
+                panel_data = _merged_data_cache.get(panel_id)
+                if panel_data:
+                    result[panel_id] = panel_data
+            if len(result) == len(panel_ids):
+                logger.info(f"[Merged Data] 캐시에서 모든 패널 조회 성공: {len(result)}개")
+                return result
+            else:
+                logger.info(f"[Merged Data] 캐시에서 일부 패널 조회: {len(result)}/{len(panel_ids)}개, 나머지는 DB에서 조회")
+        
+        # 캐시가 없거나 일부만 있으면 DB에서 직접 조회
+        import os
+        from dotenv import load_dotenv
+        from sqlalchemy.ext.asyncio import create_async_engine
+        import sys
+        
+        load_dotenv(override=True)
+        
+        uri = os.getenv("ASYNC_DATABASE_URI")
+        if not uri:
+            logger.error("[Merged Data] ASYNC_DATABASE_URI 환경변수가 설정되지 않았습니다.")
+            return {}
+        
+        # postgresql://를 postgresql+psycopg://로 변환
+        if uri.startswith("postgresql://"):
+            uri = uri.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif "postgresql+asyncpg" in uri:
+            uri = uri.replace("postgresql+asyncpg", "postgresql+psycopg", 1)
+        
+        # Windows 이벤트 루프 정책 설정
+        if sys.platform == 'win32':
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        
+        # 새 엔진 생성
+        temp_engine = create_async_engine(uri, echo=False, pool_pre_ping=True, poolclass=None)
+        
+        logger.info(f"[Merged Data] DB에서 배치 패널 조회 시작: {len(panel_ids)}개")
+        
+        try:
+            async with temp_engine.begin() as conn:
+                # merged 스키마로 search_path 설정
+                await conn.execute(text('SET search_path TO "merged", public'))
+                
+                # 여러 패널을 한 번에 조회 (IN 절 사용)
+                result = await conn.execute(
+                    text("SELECT * FROM merged.panel_data WHERE mb_sn = ANY(:mb_sns)"),
+                    {"mb_sns": panel_ids}
+                )
+                
+                rows = result.mappings().all()
+                logger.info(f"[Merged Data] DB에서 {len(rows)}개 행 조회 완료")
+                
+                # mb_sn을 키로 하는 딕셔너리로 변환
+                result_dict = {}
+                for row in rows:
+                    row_dict = dict(row)
+                    mb_sn = row_dict.get('mb_sn')
+                    if not mb_sn:
+                        continue
+                    
+                    # base_profile JSONB 파싱
+                    base_profile = row_dict.get('base_profile', {})
+                    if not isinstance(base_profile, dict):
+                        import json
+                        if isinstance(base_profile, str):
+                            base_profile = json.loads(base_profile)
+                        else:
+                            base_profile = {}
+                    
+                    quick_answers = row_dict.get('quick_answers', {})
+                    if not isinstance(quick_answers, dict):
+                        import json
+                        if isinstance(quick_answers, str):
+                            quick_answers = json.loads(quick_answers)
+                        else:
+                            quick_answers = {}
+                    
+                    # base_profile의 모든 필드를 평탄화하여 저장
+                    panel_data = {
+                        'mb_sn': mb_sn,
+                        **base_profile  # base_profile의 모든 필드를 펼침
+                    }
+                    
+                    # quick_answers가 있으면 추가
+                    if quick_answers:
+                        panel_data['quick_answers'] = quick_answers
+                    
+                    result_dict[mb_sn] = panel_data
+                
+                logger.info(f"[Merged Data] DB에서 배치 패널 조회 완료: {len(result_dict)}개")
+                await temp_engine.dispose()
+                return result_dict
+                
+        except Exception as db_error:
+            logger.error(f"[Merged Data] DB 배치 조회 중 오류 발생: {str(db_error)}", exc_info=True)
+            try:
+                await temp_engine.dispose()
+            except:
+                pass
+            raise
+            
+    except Exception as e:
+        logger.error(f"[ERROR] merged.panel_data에서 배치 패널 조회 실패: {str(e)}", exc_info=True)
+        return {}
+
+
 async def get_panel_from_merged_db(panel_id: str) -> Optional[Dict[str, Any]]:
     """merged.panel_data 테이블에서 특정 패널 데이터 조회
     

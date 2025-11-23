@@ -1,6 +1,7 @@
 """패널 상세 API 엔드포인트"""
 from fastapi import APIRouter, HTTPException
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
 import logging
 
 from app.api.pinecone_panel_detail import get_panel_from_pinecone
@@ -10,6 +11,10 @@ from app.core.config import ANTHROPIC_API_KEY
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class BatchPanelRequest(BaseModel):
+    panel_ids: List[str]
 
 
 @router.get("/api/panels/{panel_id}")
@@ -269,6 +274,79 @@ async def get_panel(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Panel fetch failed: {str(e)}")
+
+
+@router.post("/api/panels/batch")
+async def get_panels_batch(
+    request: BatchPanelRequest
+):
+    """여러 패널의 상세 정보를 한 번에 조회 (배치 API)"""
+    logger.info(f"[Panel API] ========== 배치 패널 조회 시작: {len(request.panel_ids)}개 ==========")
+    
+    try:
+        if not request.panel_ids:
+            return {"results": []}
+        
+        # NeonDB에서 배치로 조회
+        from app.utils.merged_data_loader import get_panels_from_merged_db_batch
+        
+        # 배치로 merged 데이터 조회
+        merged_data_map = await get_panels_from_merged_db_batch(request.panel_ids)
+        
+        results = []
+        for panel_id in request.panel_ids:
+            merged_data = merged_data_map.get(panel_id)
+            
+            if not merged_data:
+                # merged 데이터가 없으면 기본 정보만 반환
+                results.append({
+                    "id": panel_id,
+                    "name": panel_id,
+                    "gender": "",
+                    "age": 0,
+                    "region": "",
+                    "income": "",
+                    "metadata": {},
+                    "responses": []
+                })
+                continue
+            
+            # merged_data로부터 기본 필드 추출
+            gender = merged_data.get("gender", "")
+            age = merged_data.get("age", 0)
+            location = merged_data.get("location", "")
+            detail_location = merged_data.get("detail_location", "")
+            region = location
+            if detail_location:
+                region = f"{location} {detail_location}".strip() if location else detail_location
+            
+            # metadata 필드 생성
+            metadata = {}
+            exclude_fields = ['mb_sn', 'quick_answers', 'id', 'name', 'gender', 'age', 'region', 'income']
+            for key, value in merged_data.items():
+                if key not in exclude_fields and value is not None:
+                    metadata[key] = value
+            
+            # 결과 생성
+            result = {
+                "id": merged_data.get('mb_sn', panel_id),
+                "name": merged_data.get('mb_sn', panel_id),
+                "gender": gender,
+                "age": age if age else 0,
+                "region": region,
+                "income": merged_data.get('월평균 개인소득', '') or merged_data.get('월평균 가구소득', ''),
+                "metadata": metadata,
+                "responses": []  # 배치 조회에서는 응답 제외 (필요시 개별 조회)
+            }
+            
+            results.append(result)
+        
+        logger.info(f"[Panel API] ========== 배치 패널 조회 완료: {len(results)}개 ==========")
+        return {"results": results}
+        
+    except Exception as e:
+        logger.error(f"[Panel API] 배치 패널 조회 실패: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch panel fetch failed: {str(e)}")
 
 
 @router.get("/api/panels/{panel_id}/ai-summary")

@@ -61,9 +61,14 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
     - `min_dist`: 0.1
     - `metric`: cosine
   * **참고 논문**: McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. arXiv preprint arXiv:1802.03426.
-- **클러스터 프로필**: tag와 characteristic을 포함한 각 cluster의 상세 분석
+  * **성능 최적화**: 
+    - 호버 기반 툴팁 렌더링 (기본 정보는 표시하지 않음)
+    - NeonDB에서 패널 프로필 정보를 지연 로드 (on-hover)
+    - `useMemo`, `useCallback`을 활용한 렌더링 최적화
+- **클러스터 프로필**: NeonDB에서 로드되는 tag, insights, segments, insights_by_category를 포함한 각 cluster의 상세 분석
 - **품질 지표**: silhouette score, Calinski-Harabasz index, Davies-Bouldin index
 - **클러스터 필터링**: 특정 클러스터만 선택하여 분석
+- **확장 클러스터링**: 검색된 패널 주변의 클러스터 분석 (Precomputed HDBSCAN 결과 활용)
 
 ### 🔄 비교 분석
 
@@ -342,12 +347,18 @@ panel-insight/
   * 유사도 0.9 이상 결과만 반환
 - `GET /api/panels/{panel_id}` - 패널 상세정보 조회
   * 실제 데이터 기반 정보 표시 (태그, 근거, 응답이력)
+  * NeonDB `merged.panel_data` 테이블에서 로드
+- `POST /api/panels/batch` - 여러 패널 상세정보 배치 조회
+  * 효율적인 대량 패널 데이터 로드 (내보내기 기능 최적화)
 
 ### 클러스터링
-- `GET /api/precomputed/clusters` - 사전 계산된 클러스터 정보 조회
-- `GET /api/precomputed/umap` - UMAP 좌표 조회
-- `GET /api/precomputed/comparison` - 클러스터 비교 데이터 조회
-- `GET /api/precomputed/profiles` - 클러스터 프로필 조회
+- `GET /api/precomputed/clusters` - 사전 계산된 클러스터 정보 조회 (NeonDB)
+- `GET /api/precomputed/umap` - UMAP 좌표 조회 (NeonDB)
+- `GET /api/precomputed/comparison` - 클러스터 비교 데이터 조회 (NeonDB)
+- `GET /api/precomputed/profiles` - 클러스터 프로필 조회 (NeonDB 우선, 파일 시스템 fallback)
+- `POST /api/clustering/cluster-around-search` - 검색된 패널 주변 클러스터 분석
+  * Precomputed HDBSCAN 결과 활용
+  * NeonDB에서 UMAP 좌표 및 클러스터 매핑 로드
 
 ### Health Check
 - `GET /health` - 기본 Health check
@@ -484,8 +495,16 @@ Panel Insight은 Pinecone을 활용한 의미 기반 벡터 검색 시스템을 
 - **Pinecone** (벡터 검색용, 클라우드 기반)
   * Pinecone API 키 필요
   * 인덱스 이름: `panel-profiles` (기본값)
-- **PostgreSQL 12+** (선택적, 세션 관리 및 일부 메타데이터용)
-- **merged_final.json** (패널 상세 정보용, 로컬 파일)
+- **NeonDB (PostgreSQL)** (클러스터링 데이터 및 패널 정보 저장)
+  * **스키마**: `merged` 스키마에 패널 데이터, 클러스터링 세션, UMAP 좌표, 클러스터 프로필, 비교 분석 데이터 저장
+  * **주요 테이블**:
+    - `merged.panel_data`: 패널 기본 정보 및 프로필
+    - `merged.clustering_sessions`: 클러스터링 세션 메타데이터
+    - `merged.panel_cluster_mappings`: 패널-클러스터 매핑
+    - `merged.umap_coordinates`: UMAP 2D 좌표
+    - `merged.cluster_profiles`: 클러스터 프로필 (insights, tags, segments 등)
+    - `merged.cluster_comparisons`: 클러스터 간 비교 분석 데이터
+  * **데이터 마이그레이션**: 모든 클러스터링 관련 데이터가 파일 시스템에서 NeonDB로 마이그레이션 완료
 
 ## 클러스터링 방법론
 
@@ -612,8 +631,19 @@ umap.UMAP(
 
 - **클러스터링 스크립트**: `server/app/clustering/flc_income_hdbscan_analysis.py`
 - **API 엔드포인트**: `GET /api/precomputed/clusters`
-- **사전 계산 데이터**: `clustering_data/data/precomputed/`
+- **데이터 저장소**: NeonDB `merged` 스키마 (모든 클러스터링 데이터)
 - **상세 분석 보고서**: `docs/server/scripts/HDBSCAN_CLUSTERING_ANALYSIS.md`
+
+### 최근 개선 사항 (2025-01-24)
+
+- **데이터 마이그레이션 완료**: 모든 클러스터링 관련 데이터를 파일 시스템에서 NeonDB로 마이그레이션
+- **UMAP 렌더링 최적화**: 
+  - 호버 기반 툴팁 렌더링으로 초기 렌더링 성능 향상
+  - NeonDB에서 패널 프로필 정보를 지연 로드 (on-hover)
+  - React `useMemo`, `useCallback`을 활용한 불필요한 리렌더링 방지
+- **배치 API 구현**: 패널 내보내기 기능 최적화를 위한 배치 조회 API 추가
+- **확장 클러스터링 개선**: Precomputed HDBSCAN 결과만 활용하여 불필요한 데이터 로드 제거
+- **프로젝트 정리**: 불필요한 파일 및 폴더 삭제 (`Chroma_db`, `clustering_data`, `runs` 등)
 
 ## 문제 해결
 

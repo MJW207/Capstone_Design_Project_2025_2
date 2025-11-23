@@ -634,19 +634,17 @@ export function ClusterDetailDrawer({ isOpen, onClose, clusterData, searchedPane
                   >
                     <div className="flex items-start gap-3">
                       <div 
-                        className="p-2 rounded-lg flex-shrink-0 mt-0.5"
+                        className="p-2 rounded-lg flex-shrink-0"
                         style={{
                           background: `linear-gradient(135deg, ${clusterData.color}, ${clusterData.color}CC)`,
                           color: 'white',
                         }}
                       >
-                        <Award className="w-3.5 h-3.5" />
+                        <Award className="w-4 h-4" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm leading-relaxed" style={{ color: colors.text.secondary }}>
-                          {insight}
-                        </p>
-                      </div>
+                      <p className="text-sm leading-relaxed flex-1" style={{ color: colors.text.secondary }}>
+                        {insight}
+                      </p>
                     </div>
                   </div>
                 ))}

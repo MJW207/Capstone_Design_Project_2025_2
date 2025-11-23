@@ -5,6 +5,7 @@ import { PISegmentedControl } from '../../ui/pi/PISegmentedControl';
 import { Checkbox } from '../../ui/base/checkbox';
 import { Label } from '../../ui/base/label';
 import { toast } from 'sonner';
+import { searchApi } from '../../lib/utils';
 
 interface ExportDrawerProps {
   isOpen: boolean;
@@ -57,14 +58,67 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
         }
       }
 
+      // ⭐ NeonDB에서 완전한 패널 데이터 가져오기 (배치 API 사용)
+      toast.info(`${finalData.length}개 패널의 상세 정보를 불러오는 중...`);
+      
+      // 패널 ID 리스트 추출
+      const panelIds = finalData
+        .map(panel => panel.id || panel.mb_sn || panel.name)
+        .filter(id => id);
+      
+      let enrichedData = finalData;
+      
+      if (panelIds.length > 0) {
+        try {
+          // 배치 API로 한 번에 조회
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8004'}/api/panels/batch`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ panel_ids: panelIds }),
+          });
+          
+          if (response.ok) {
+            const batchData = await response.json();
+            const panelDataMap = new Map(
+              batchData.results.map((p: any) => [p.id, p])
+            );
+            
+            // 기존 데이터와 병합
+            enrichedData = finalData.map(panel => {
+              const panelId = panel.id || panel.mb_sn || panel.name;
+              const fullPanelData = panelDataMap.get(panelId);
+              
+              if (fullPanelData) {
+                return {
+                  ...panel,
+                  ...fullPanelData,
+                  // metadata 필드 보완
+                  metadata: fullPanelData.metadata || panel.metadata || {},
+                  // responses 필드 보완
+                  responses: fullPanelData.responses || panel.responses || [],
+                };
+              }
+              return panel;
+            });
+          } else {
+            console.warn('배치 패널 조회 실패, 기존 데이터 사용');
+          }
+        } catch (error) {
+          console.warn('배치 패널 조회 중 오류:', error);
+          // 실패해도 기존 데이터 사용
+        }
+      }
+
       // 파일 다운로드
       if (format === 'csv') {
-        const csvContent = convertToCSV(finalData);
+        const csvContent = convertToCSV(enrichedData);
         downloadCSV(csvContent, `panel_export_${new Date().toISOString().split('T')[0]}.csv`);
       } else if (format === 'json') {
-        downloadJSON(finalData, `panel_export_${new Date().toISOString().split('T')[0]}.json`);
+        downloadJSON(enrichedData, `panel_export_${new Date().toISOString().split('T')[0]}.json`);
       } else if (format === 'pdf') {
-        downloadTXT(finalData, query, filters);
+        downloadTXT(enrichedData, query, filters);
       }
 
       toast.success(`${format.toUpperCase()} 파일이 다운로드되었습니다`);

@@ -19,12 +19,8 @@ interface PanelDetailDrawerProps {
 interface PanelResponse {
   key: string;
   title: string;
-  question?: string;  // qpoll 질문
   answer: string;
-  date?: string;
-  index?: string | number;  // 커버리지 표시용
-  is_quick_answer?: boolean;
-  [key: string]: any;  // 추가 속성 허용
+  date: string;
 }
 
 interface PanelEvidence {
@@ -40,40 +36,12 @@ interface PanelData {
   age: number;
   region: string;
   income: string;
-  coverage?: 'qw' | 'w' | 'qw1' | 'qw2' | 'q' | 'w1' | 'w2';
+  coverage: 'qw' | 'w';
   tags: string[];
   responses: PanelResponse[];
   evidence: PanelEvidence[];
   aiSummary: string;
   created_at: string;
-  welcome1_info?: {
-    gender?: string;
-    age?: number | string;
-    region?: string;
-    detail_location?: string;
-    age_group?: string;
-    marriage?: string;
-    children?: number;
-    family?: string;
-    education?: string;
-  };
-  welcome2_info?: {
-    job?: string;
-    job_role?: string;
-    personal_income?: string;
-    household_income?: string;
-  };
-  responses_by_topic?: {
-    [key: string]: Array<{
-      key: string;
-      title: string;
-      question?: string;
-      answer: string;
-      date?: string;
-      index?: string | number;
-      is_quick_answer?: boolean;
-    }>;
-  };
   metadata?: {
     결혼여부?: string;
     자녀수?: number;
@@ -260,62 +228,16 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
     setError(null);
     
     try {
-      // API에서 패널 데이터 로드
+      // 특정 패널 ID에 대해 하드코딩된 데이터 사용 (일반 API 호출로 변경)
+      // 하드코딩 제거 - 모든 패널은 API에서 로드
+      
+      // 일반 패널은 API에서 로드
       const panelData = await searchApi.getPanel(panelId);
-      
-      // 데이터 검증 및 기본값 설정
-      const processedData: PanelData = {
-        id: panelData.id || panelData.mb_sn || panelId,
-        name: panelData.name || panelData.mb_sn || panelId,
-        gender: panelData.gender || panelData.welcome1_info?.gender || '',
-        age: panelData.age || panelData.welcome1_info?.age || 0,
-        region: panelData.region || panelData.welcome1_info?.region || '',
-        income: panelData.income || panelData.welcome2_info?.personal_income || panelData.welcome2_info?.household_income || '',
-        coverage: panelData.coverage,
-        tags: panelData.tags || [],
-        responses: panelData.responses || [],
-        evidence: panelData.evidence || [],
-        aiSummary: panelData.aiSummary || '',
-        created_at: panelData.created_at || new Date().toISOString(),
-        welcome1_info: panelData.welcome1_info,
-        welcome2_info: panelData.welcome2_info,
-        responses_by_topic: panelData.responses_by_topic,
-        metadata: panelData.metadata || {},
-      };
-      
-      console.log('[PanelDetailDrawer] 로드된 패널 데이터:', {
-        id: processedData.id,
-        name: processedData.name,
-        gender: processedData.gender,
-        age: processedData.age,
-        region: processedData.region,
-        hasWelcome1: !!processedData.welcome1_info,
-        hasWelcome2: !!processedData.welcome2_info,
-        metadataKeys: Object.keys(processedData.metadata || {}),
-      });
-      
-      setPanel(processedData);
-      
-      // AI 요약 로드 (비동기로 별도 호출)
-      if (!processedData.aiSummary) {
-        try {
-          const apiBaseUrl = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8004';
-          const aiSummaryResponse = await fetch(`${apiBaseUrl}/api/panels/${panelId}/ai-summary`);
-          if (aiSummaryResponse.ok) {
-            const aiData = await aiSummaryResponse.json();
-            if (aiData.aiSummary) {
-              setPanel(prev => prev ? { ...prev, aiSummary: aiData.aiSummary } : prev);
-            }
-          }
-        } catch (aiErr) {
-          console.warn('AI 요약 로드 실패:', aiErr);
-          // AI 요약 실패는 무시 (필수 기능 아님)
-        }
-      }
+      setPanel(panelData);
       
       // 패널 상세정보 히스토리 저장
-      const panelName = processedData.name || processedData.id || panelId;
-      const historyItem = historyManager.createPanelHistory(panelId, panelName, processedData);
+      const panelName = panelData.name || panelData.id || panelId;
+      const historyItem = historyManager.createPanelHistory(panelId, panelName, panelData);
       historyManager.save(historyItem);
     } catch (err: any) {
       setError(err.message || '패널 정보를 불러오는데 실패했습니다.');
@@ -531,20 +453,9 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                     ID: {panel.id}
                   </p>
                 </div>
-                {panel.coverage && (
-                  <PIBadge kind={panel.coverage === 'qw' ? 'coverage-qw' : 
-                                panel.coverage === 'w' ? 'coverage-w' :
-                                panel.coverage === 'q' ? 'coverage-q' : 'coverage-qw'}>
-                    {panel.coverage === 'qw' ? 'W1+W2+Q' : 
-                     panel.coverage === 'qw1' ? 'W1+Q' :
-                     panel.coverage === 'qw2' ? 'W2+Q' :
-                     panel.coverage === 'q' ? 'Q' :
-                     panel.coverage === 'w' ? 'W1+W2' :
-                     panel.coverage === 'w1' ? 'W1' :
-                     panel.coverage === 'w2' ? 'W2' :
-                     String(panel.coverage).toUpperCase()}
-                  </PIBadge>
-                )}
+                <PIBadge kind={`coverage-${panel.coverage}`}>
+                  {panel.coverage.toUpperCase()}
+                </PIBadge>
               </div>
             </div>
             <button
@@ -617,44 +528,34 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                 </h3>
               </div>
               <div className="flex flex-wrap gap-2">
-                {(panel.gender || panel.welcome1_info?.gender) && (
-                  <PIChip type="tag" className="flex items-center gap-1.5 px-3 py-1.5">
-                    <User className="w-3.5 h-3.5" />
-                    <span className="text-sm font-medium">{panel.gender || panel.welcome1_info?.gender}</span>
+                {panel.gender && (
+                  <PIChip type="tag" className="flex items-center gap-1">
+                    <User className="w-3 h-3" />
+                    {panel.gender}
                   </PIChip>
                 )}
-                {((panel.age && panel.age > 0) || panel.welcome1_info?.age) && (
-                  <PIChip type="tag" className="flex items-center gap-1.5 px-3 py-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span className="text-sm font-medium">
-                      {panel.age || panel.welcome1_info?.age}
-                      {typeof (panel.age || panel.welcome1_info?.age) === 'number' ? '세' : ''}
-                    </span>
+                {panel.age > 0 && (
+                  <PIChip type="tag" className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {panel.age}세
                   </PIChip>
                 )}
-                {(panel.region || panel.welcome1_info?.region) && (
-                  <PIChip type="tag" className="flex items-center gap-1.5 px-3 py-1.5">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span className="text-sm font-medium">
-                      {panel.region || panel.welcome1_info?.region}
-                      {panel.welcome1_info?.detail_location && ` ${panel.welcome1_info.detail_location}`}
-                    </span>
+                {panel.region && (
+                  <PIChip type="tag" className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    {panel.region}
                   </PIChip>
                 )}
-                {(panel.income || panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.welcome2_info?.personal_income || panel.welcome2_info?.household_income) && (
-                  <PIChip type="tag" className="flex items-center gap-1.5 px-3 py-1.5">
-                    <DollarSign className="w-3.5 h-3.5" />
-                    <span className="text-sm font-medium">
-                      {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.welcome2_info?.personal_income || panel.welcome2_info?.household_income || panel.income}
-                    </span>
+                {(panel.income || panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"]) && (
+                  <PIChip type="tag" className="flex items-center gap-1">
+                    <DollarSign className="w-3 h-3" />
+                    {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income}
                   </PIChip>
                 )}
-                {panel.created_at && (
-                  <PIChip type="tag" className="flex items-center gap-1.5 px-3 py-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span className="text-sm font-medium">{new Date(panel.created_at).toLocaleDateString('ko-KR')}</span>
-                  </PIChip>
-                )}
+                <PIChip type="tag" className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {new Date(panel.created_at).toLocaleDateString('ko-KR')}
+                </PIChip>
               </div>
             </div>
 
@@ -688,8 +589,7 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                   className="text-2xl font-bold"
                   style={{ color: '#3B82F6' }}
                 >
-                  {(panel.responses_by_topic ? Object.values(panel.responses_by_topic).reduce((acc, arr) => acc + arr.length, 0) : 0) || 
-                   (panel.responses?.length || 0)}
+                  {panel.responses?.length || 0}
                 </div>
                 <div className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>개</div>
               </div>
@@ -727,222 +627,6 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
               </div>
             </div>
 
-            {/* Welcome1 정보 */}
-            {panel.welcome1_info && Object.keys(panel.welcome1_info).length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <div 
-                    className="p-2 rounded-xl shadow-sm"
-                    style={{
-                      background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
-                      color: 'white',
-                    }}
-                  >
-                    <User className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 
-                      className="text-lg font-bold"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
-                      Welcome 1차 정보
-                    </h3>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                      기본 인구통계 정보
-                    </p>
-                  </div>
-                </div>
-                <div 
-                  className="p-6 rounded-2xl space-y-4 shadow-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(37, 99, 235, 0.1))',
-                    border: '1px solid rgba(59, 130, 246, 0.25)',
-                  }}
-                >
-                  <div className="grid grid-cols-2 gap-4">
-                    {panel.welcome1_info.gender && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-                          <User className="w-4 h-4" style={{ color: '#3B82F6' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>성별</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome1_info.gender}</div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome1_info.age && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-                          <Calendar className="w-4 h-4" style={{ color: '#3B82F6' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>나이</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                            {panel.welcome1_info.age}{typeof panel.welcome1_info.age === 'number' ? '세' : ''}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome1_info.region && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-                          <MapPin className="w-4 h-4" style={{ color: '#3B82F6' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>지역</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                            {panel.welcome1_info.region}{panel.welcome1_info.detail_location ? ` ${panel.welcome1_info.detail_location}` : ''}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome1_info.age_group && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-                          <Calendar className="w-4 h-4" style={{ color: '#3B82F6' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>연령대</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome1_info.age_group}</div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome1_info.marriage && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(236, 72, 153, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(236, 72, 153, 0.15)' }}>
-                          <Heart className="w-4 h-4" style={{ color: '#EC4899' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>결혼여부</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome1_info.marriage}</div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome1_info.children !== undefined && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(245, 158, 11, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(245, 158, 11, 0.15)' }}>
-                          <Users className="w-4 h-4" style={{ color: '#F59E0B' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>자녀수</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome1_info.children}명</div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome1_info.family && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.15)' }}>
-                          <Home className="w-4 h-4" style={{ color: '#10B981' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>가족수</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome1_info.family}</div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome1_info.education && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg col-span-2" style={{ background: 'rgba(99, 102, 241, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(99, 102, 241, 0.15)' }}>
-                          <GraduationCap className="w-4 h-4" style={{ color: '#6366F1' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>최종학력</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome1_info.education}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Welcome2 정보 */}
-            {panel.welcome2_info && Object.keys(panel.welcome2_info).length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <div 
-                    className="p-2 rounded-xl shadow-sm"
-                    style={{
-                      background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
-                      color: 'white',
-                    }}
-                  >
-                    <Briefcase className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 
-                      className="text-lg font-bold"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
-                      Welcome 2차 정보
-                    </h3>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                      직업 및 소득 정보
-                    </p>
-                  </div>
-                </div>
-                <div 
-                  className="p-6 rounded-2xl space-y-4 shadow-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(124, 58, 237, 0.1))',
-                    border: '1px solid rgba(139, 92, 246, 0.25)',
-                  }}
-                >
-                  <div className="grid grid-cols-2 gap-4">
-                    {panel.welcome2_info.job && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(139, 92, 246, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(139, 92, 246, 0.15)' }}>
-                          <Briefcase className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>직업</div>
-                          <div className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }} title={panel.welcome2_info.job}>
-                            {panel.welcome2_info.job}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome2_info.job_role && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(139, 92, 246, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(139, 92, 246, 0.15)' }}>
-                          <Briefcase className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>직무</div>
-                          <div className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }} title={panel.welcome2_info.job_role}>
-                            {panel.welcome2_info.job_role}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome2_info.personal_income && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.15)' }}>
-                          <DollarSign className="w-4 h-4" style={{ color: '#10B981' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>개인소득</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome2_info.personal_income}</div>
-                        </div>
-                      </div>
-                    )}
-                    {panel.welcome2_info.household_income && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.05)' }}>
-                        <div className="p-1.5 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.15)' }}>
-                          <DollarSign className="w-4 h-4" style={{ color: '#10B981' }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>가구소득</div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.welcome2_info.household_income}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* 상세 메타데이터 */}
             {panel.metadata && Object.keys(panel.metadata).length > 0 && (
               <div className="space-y-4">
@@ -964,93 +648,76 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                   </h3>
                 </div>
                 
-                {/* 인구통계 정보 - Welcome 1차 정보와 중복 제거 */}
-                {(() => {
-                  // Welcome 1차 정보에 이미 표시된 필드 제외
-                  const hasMarriage = panel.metadata.결혼여부 && !panel.welcome1_info?.marriage;
-                  const hasChildren = panel.metadata.자녀수 !== undefined && panel.welcome1_info?.children === undefined;
-                  const hasFamily = panel.metadata.가족수 && !panel.welcome1_info?.family;
-                  const hasEducation = panel.metadata.최종학력 && !panel.welcome1_info?.education;
-                  const hasJob = panel.metadata.직업 && !panel.welcome2_info?.job;
-                  const hasJobRole = panel.metadata.직무 && !panel.welcome2_info?.job_role;
-                  
-                  // 표시할 필드가 있는지 확인
-                  const hasAnyField = hasMarriage || hasChildren || hasFamily || hasEducation || hasJob || hasJobRole;
-                  
-                  if (!hasAnyField) return null;
-                  
-                  return (
+                {/* 인구통계 정보 */}
+                <div 
+                  className="p-4 rounded-xl space-y-3"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.08))',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
                     <div 
-                      className="p-4 rounded-xl space-y-3"
+                      className="p-1.5 rounded-lg"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.08))',
-                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        background: 'linear-gradient(135deg, #10B981, #059669)',
+                        color: 'white',
                       }}
                     >
-                      <div className="flex items-center gap-2 mb-3">
-                        <div 
-                          className="p-1.5 rounded-lg"
-                          style={{
-                            background: 'linear-gradient(135deg, #10B981, #059669)',
-                            color: 'white',
-                          }}
-                        >
-                          <Users className="w-4 h-4" />
-                        </div>
-                        <h4 
-                          className="text-sm font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          인구통계
-                        </h4>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        {hasMarriage && (
-                          <div className="flex items-center gap-2">
-                            <Heart className="w-4 h-4" style={{ color: '#EC4899' }} />
-                            <span style={{ color: 'var(--text-tertiary)' }}>결혼여부: </span>
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.결혼여부}</span>
-                          </div>
-                        )}
-                        {hasChildren && (
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4" style={{ color: '#F59E0B' }} />
-                            <span style={{ color: 'var(--text-tertiary)' }}>자녀수: </span>
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.자녀수}명</span>
-                          </div>
-                        )}
-                        {hasFamily && (
-                          <div className="flex items-center gap-2">
-                            <Home className="w-4 h-4" style={{ color: '#10B981' }} />
-                            <span style={{ color: 'var(--text-tertiary)' }}>가족수: </span>
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.가족수}</span>
-                          </div>
-                        )}
-                        {hasEducation && (
-                          <div className="flex items-center gap-2">
-                            <GraduationCap className="w-4 h-4" style={{ color: '#6366F1' }} />
-                            <span style={{ color: 'var(--text-tertiary)' }}>최종학력: </span>
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.최종학력}</span>
-                          </div>
-                        )}
-                        {hasJob && (
-                          <div className="col-span-2 flex items-center gap-2">
-                            <Briefcase className="w-4 h-4" style={{ color: '#3B82F6' }} />
-                            <span style={{ color: 'var(--text-tertiary)' }}>직업: </span>
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.직업}</span>
-                          </div>
-                        )}
-                        {hasJobRole && (
-                          <div className="col-span-2 flex items-center gap-2">
-                            <Briefcase className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-                            <span style={{ color: 'var(--text-tertiary)' }}>직무: </span>
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.직무}</span>
-                          </div>
-                        )}
-                      </div>
+                      <Users className="w-4 h-4" />
                     </div>
-                  );
-                })()}
+                    <h4 
+                      className="text-sm font-semibold"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      인구통계
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    {panel.metadata.결혼여부 && (
+                      <div className="flex items-center gap-2">
+                        <Heart className="w-4 h-4" style={{ color: '#EC4899' }} />
+                        <span style={{ color: 'var(--text-tertiary)' }}>결혼여부: </span>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.결혼여부}</span>
+                      </div>
+                    )}
+                    {panel.metadata.자녀수 !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4" style={{ color: '#F59E0B' }} />
+                        <span style={{ color: 'var(--text-tertiary)' }}>자녀수: </span>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.자녀수}명</span>
+                      </div>
+                    )}
+                    {panel.metadata.가족수 && (
+                      <div className="flex items-center gap-2">
+                        <Home className="w-4 h-4" style={{ color: '#10B981' }} />
+                        <span style={{ color: 'var(--text-tertiary)' }}>가족수: </span>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.가족수}</span>
+                      </div>
+                    )}
+                    {panel.metadata.최종학력 && (
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4" style={{ color: '#6366F1' }} />
+                        <span style={{ color: 'var(--text-tertiary)' }}>최종학력: </span>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.최종학력}</span>
+                      </div>
+                    )}
+                    {panel.metadata.직업 && (
+                      <div className="col-span-2 flex items-center gap-2">
+                        <Briefcase className="w-4 h-4" style={{ color: '#3B82F6' }} />
+                        <span style={{ color: 'var(--text-tertiary)' }}>직업: </span>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.직업}</span>
+                      </div>
+                    )}
+                    {panel.metadata.직무 && (
+                      <div className="col-span-2 flex items-center gap-2">
+                        <Briefcase className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+                        <span style={{ color: 'var(--text-tertiary)' }}>직무: </span>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.직무}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 {/* 보유 제품 정보 */}
                 {panel.metadata.보유전제품 && panel.metadata.보유전제품.length > 0 && (
@@ -1233,10 +900,10 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                         <div className="flex flex-wrap gap-2 mt-1">
                           {Array.isArray(panel.metadata["흡연경험 담배브랜드"]) ? (
                             panel.metadata["흡연경험 담배브랜드"].map((brand, idx) => (
-                              <PIChip key={idx} type="tag">{brand}</PIChip>
+                              <PIChip key={idx} type="tag" variant="secondary">{brand}</PIChip>
                             ))
                           ) : (
-                            <PIChip type="tag">{panel.metadata["흡연경험 담배브랜드"]}</PIChip>
+                            <PIChip type="tag" variant="secondary">{panel.metadata["흡연경험 담배브랜드"]}</PIChip>
                           )}
                         </div>
                       </div>
@@ -1280,60 +947,54 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
               </div>
             )}
 
-            {/* AI 인사이트 - 개요 탭 맨 하단 */}
+            {/* AI Summary - 맨 밑으로 이동 */}
             {panel.aiSummary && (
               <div 
-                className="p-5 rounded-xl relative overflow-hidden mt-6"
+                className="p-5 rounded-xl relative overflow-hidden"
                 style={{
                   background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(124, 58, 237, 0.12))',
                   border: '1px solid rgba(139, 92, 246, 0.3)',
                 }}
               >
-                {/* 배경 장식 아이콘 - 더 작고 덜 방해되도록 개선 */}
-                <div className="absolute top-2 right-2 w-16 h-16 opacity-5 pointer-events-none">
+                <div className="absolute top-0 right-0 w-32 h-32 opacity-10">
                   <Sparkles className="w-full h-full" style={{ color: '#8B5CF6' }} />
                 </div>
-                
-                {/* 헤더 영역 */}
-                <div className="flex items-start gap-3 mb-4 relative z-10">
+                <div className="flex items-center gap-3 mb-4 relative z-10">
                   <div 
-                    className="p-2 rounded-lg flex-shrink-0"
+                    className="p-2 rounded-lg"
                     style={{
                       background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
                       color: 'white',
                     }}
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="w-5 h-5" />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1">
                     <h3 
-                      className="font-semibold text-base mb-1"
+                      className="font-semibold text-base"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      AI 인사이트
+                      AI 요약
                     </h3>
-                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                      라이프스타일 분석 기반 패널 특성 요약
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                      패널 특성 분석
                     </p>
                   </div>
+{/* 태그는 panel.tags에서 가져옴 */}
                   {panel.tags && panel.tags.length > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {panel.tags.slice(0, 5).map((tag, idx) => (
                         <PIBadge key={idx} variant="outline">{tag}</PIBadge>
                       ))}
                     </div>
                   )}
                 </div>
-                
-                {/* 인사이트 텍스트 - 아이콘이 가리지 않도록 충분한 여백 확보 */}
-                <div className="relative z-10 pr-4">
-                  <p 
-                    className="text-sm leading-relaxed"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {panel.aiSummary}
-                  </p>
-                </div>
+                <p 
+                  className="text-sm leading-relaxed relative z-10"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {panel.aiSummary}
+                </p>
               </div>
             )}
           </TabsContent>
@@ -1360,8 +1021,7 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
               >
                 응답 이력
               </h3>
-              {((panel.responses && panel.responses.length > 0) || 
-                (panel.responses_by_topic && Object.keys(panel.responses_by_topic).length > 0)) && (
+              {panel.responses && panel.responses.length > 0 && (
                 <span 
                   className="text-xs px-2 py-0.5 rounded-full"
                   style={{
@@ -1369,176 +1029,91 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                     color: '#3B82F6',
                   }}
                 >
-                  {(panel.responses?.length || 0) + 
-                   (panel.responses_by_topic ? Object.values(panel.responses_by_topic).reduce((acc, arr) => acc + arr.length, 0) : 0)}개
+                  {panel.responses.length}개
                 </span>
               )}
             </div>
-
-            {/* 모든 응답 이력 (topic별로 표시) */}
-            {panel.responses_by_topic && Object.keys(panel.responses_by_topic).length > 0 ? (
-              <div className="space-y-4">
-                {Object.entries(panel.responses_by_topic).map(([topic, responses]) => {
-                  // 각 topic별로 응답 표시
-                  if (!responses || responses.length === 0) {
-                    return null;
-                  }
-                  
+            
+            {panel.responses && panel.responses.length > 0 ? (
+              panel.responses.map((response, i) => {
+                // Qpoll 응답 없음 메시지인 경우 특별 처리
+                if (response.key === 'no_qpoll') {
                   return (
-                    <div key={topic} className="space-y-3">
-                      {responses.map((response, idx) => {
-                        const isQuickAnswer = response.is_quick_answer || false;
-                        // quick_answer인 경우 항상 질문-답변 형식으로 표시 (질문이 없으면 topic을 질문으로 사용)
-                        const displayQuestion = isQuickAnswer ? (response.question || response.title || topic) : null;
-                        // qpoll 응답 없음 메시지인 경우 특별 처리
-                        const isNoQpoll = response.key === 'no_qpoll';
-                        
-                        return (
-                          <div 
-                            key={`${topic}-${idx}`}
-                            className="p-5 rounded-xl border transition-all hover:shadow-md"
-                            style={{
-                              background: isNoQpoll
-                                ? 'linear-gradient(135deg, rgba(156, 163, 175, 0.05), rgba(107, 114, 128, 0.08))'
-                                : isQuickAnswer 
-                                  ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.03), rgba(5, 150, 105, 0.05))'
-                                  : 'linear-gradient(135deg, rgba(59, 130, 246, 0.03), rgba(139, 92, 246, 0.05))',
-                              borderColor: isNoQpoll
-                                ? 'rgba(156, 163, 175, 0.2)'
-                                : isQuickAnswer 
-                                  ? 'rgba(16, 185, 129, 0.2)'
-                                  : 'rgba(59, 130, 246, 0.2)',
-                            }}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div 
-                                className="p-2 rounded-lg flex-shrink-0"
-                                style={{
-                                  background: isNoQpoll
-                                    ? 'rgba(156, 163, 175, 0.2)'
-                                    : isQuickAnswer
-                                      ? 'linear-gradient(135deg, #10B981, #059669)'
-                                      : 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
-                                  color: isNoQpoll ? '#9CA3AF' : 'white',
-                                }}
-                              >
-                                {isNoQpoll ? (
-                                  <MessageSquare className="w-4 h-4" />
-                                ) : isQuickAnswer ? (
-                                  <CheckCircle2 className="w-4 h-4" />
-                                ) : (
-                                  <FileText className="w-4 h-4" />
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                      <h4 
-                                        className="font-semibold text-sm"
-                                        style={{ color: 'var(--text-primary)' }}
-                                      >
-                                        {response.title || topic}
-                                      </h4>
-                                      {panel.coverage && (
-                                        <PIBadge kind={panel.coverage === 'qw' ? 'coverage-qw' : 
-                                                          panel.coverage === 'w' ? 'coverage-w' :
-                                                          panel.coverage === 'q' ? 'coverage-q' : 'coverage-qw'}>
-                                          {panel.coverage === 'qw' ? 'W1+W2+Q' : 
-                                           panel.coverage === 'qw1' ? 'W1+Q' :
-                                           panel.coverage === 'qw2' ? 'W2+Q' :
-                                           panel.coverage === 'q' ? 'Q' :
-                                           panel.coverage === 'w' ? 'W1+W2' :
-                                           panel.coverage === 'w1' ? 'W1' :
-                                           panel.coverage === 'w2' ? 'W2' :
-                                           String(panel.coverage).toUpperCase()}
-                                        </PIBadge>
-                                      )}
-                                    </div>
-                                    {/* 질문 표시 (quick_answer인 경우 항상 표시, no_qpoll 제외) */}
-                                    {displayQuestion && !isNoQpoll && (
-                                      <div 
-                                        className="p-3 rounded-lg mb-2"
-                                        style={{
-                                          background: 'rgba(16, 185, 129, 0.08)',
-                                          borderLeft: '3px solid #10B981',
-                                        }}
-                                      >
-                                        <div className="text-xs font-medium mb-1" style={{ color: '#10B981' }}>
-                                          질문
-                                        </div>
-                                        <p 
-                                          className="text-sm font-medium"
-                                          style={{ color: 'var(--text-primary)' }}
-                                        >
-                                          {displayQuestion}
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
-                                  {response.date && (
-                                    <span 
-                                      className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
-                                      style={{
-                                        background: isQuickAnswer
-                                          ? 'rgba(16, 185, 129, 0.1)'
-                                          : 'rgba(59, 130, 246, 0.1)',
-                                        color: isQuickAnswer ? '#10B981' : '#3B82F6',
-                                      }}
-                                    >
-                                      {response.date}
-                                    </span>
-                                  )}
-                                </div>
-                                {/* 답변 표시 - quick_answer인 경우 항상 질문-답변 형식 */}
-                                {isNoQpoll ? (
-                                  <div 
-                                    className="p-4 rounded-lg text-center"
-                                    style={{
-                                      background: 'rgba(156, 163, 175, 0.05)',
-                                    }}
-                                  >
-                                    <p 
-                                      className="text-sm"
-                                      style={{ color: 'var(--text-tertiary)' }}
-                                    >
-                                      {response.answer}
-                                    </p>
-                                  </div>
-                                ) : displayQuestion ? (
-                                  <div 
-                                    className="p-3 rounded-lg"
-                                    style={{
-                                      background: 'rgba(0, 0, 0, 0.02)',
-                                    }}
-                                  >
-                                    <div className="text-xs font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>
-                                      답변
-                                    </div>
-                                    <p 
-                                      className="text-sm leading-relaxed"
-                                      style={{ color: 'var(--text-secondary)' }}
-                                    >
-                                      {response.answer}
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <p 
-                                    className="text-sm leading-relaxed"
-                                    style={{ color: 'var(--text-secondary)' }}
-                                  >
-                                    {response.answer}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div 
+                      key={i} 
+                      className="p-6 rounded-xl border text-center"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(156, 163, 175, 0.05), rgba(107, 114, 128, 0.08))',
+                        borderColor: 'rgba(156, 163, 175, 0.2)',
+                      }}
+                    >
+                      <div 
+                        className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center"
+                        style={{
+                          background: 'rgba(156, 163, 175, 0.1)',
+                          color: '#9CA3AF',
+                        }}
+                      >
+                        <MessageSquare className="w-6 h-6" />
+                      </div>
+                      <p 
+                        className="text-sm"
+                        style={{ color: 'var(--text-tertiary)' }}
+                      >
+                        {response.answer}
+                      </p>
                     </div>
                   );
-                })}
-              </div>
+                }
+                
+                return (
+                  <div 
+                    key={i} 
+                    className="p-5 rounded-xl border transition-all hover:shadow-md"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.03), rgba(139, 92, 246, 0.05))',
+                      borderColor: 'rgba(59, 130, 246, 0.2)',
+                    }}
+                  >
+                    <div className="flex items-start gap-3 mb-3">
+                      <div 
+                        className="p-2 rounded-lg flex-shrink-0"
+                        style={{
+                          background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
+                          color: 'white',
+                        }}
+                      >
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between mb-1">
+                          <h4 
+                            className="text-sm font-semibold"
+                            style={{ color: 'var(--text-primary)' }}
+                          >
+                            {response.title}
+                          </h4>
+                          <span 
+                            className="text-xs px-2 py-1 rounded-full flex-shrink-0 ml-2"
+                            style={{
+                              background: 'rgba(59, 130, 246, 0.1)',
+                              color: '#3B82F6',
+                            }}
+                          >
+                            {response.date}
+                          </span>
+                        </div>
+                        <p 
+                          className="text-sm leading-relaxed whitespace-pre-wrap mt-2"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          {response.answer}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div 
                 className="text-center py-12"

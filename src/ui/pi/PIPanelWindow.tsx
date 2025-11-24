@@ -132,9 +132,9 @@ export function PIPanelWindow({
     // date가 있으면 date로 정렬, 없으면 인덱스 순서 유지
     return sorted.sort((a, b) => {
       if (a.date && b.date) {
-        const dateA = new Date(a.date.replace(/\./g, '-')).getTime();
-        const dateB = new Date(b.date.replace(/\./g, '-')).getTime();
-        return responseSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      const dateA = new Date(a.date.replace(/\./g, '-')).getTime();
+      const dateB = new Date(b.date.replace(/\./g, '-')).getTime();
+      return responseSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
       }
       // date가 없으면 원래 순서 유지
       return 0;

@@ -79,5 +79,12 @@ tatus
 *echo*
 *afety*
 *저장*
+*로드*
+
+# Jupyter notebooks (except notebooks directory)
 *.ipynb
 !notebooks/**/*.ipynb
+
+# Temporary/duplicate files
+app.py
+run_server.py

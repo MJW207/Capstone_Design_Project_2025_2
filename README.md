@@ -20,14 +20,19 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 
 ### 🔍 검색 및 분석
 
-- **의미 기반 벡터 검색**: Pinecone과 Upstage Embeddings를 활용한 임베딩 기반 검색
+- **의미 기반 벡터 검색**: Pinecone과 OpenAI Embeddings를 활용한 임베딩 기반 검색
   * 자연어 쿼리를 벡터로 변환하여 의미 기반 검색
   * Pinecone을 통한 코사인 유사도 검색
   * 단계적 필터링 및 메타데이터 기반 검색
+  * QuickPoll 응답 여부 자동 감지 (Q+W / W 표시)
 - **고급 필터링**: 나이, 성별, 지역, 소득 등 다중 필터 조합
 - **실시간 결과**: pagination과 result count를 포함한 live search
-- **패널 상세정보**: 실제 데이터 기반 상세 정보 표시 (태그, 근거, 응답이력)
+- **패널 상세정보**: NeonDB 기반 실제 데이터 표시 (태그, 근거, 응답이력)
 - **프리셋 관리**: 자주 사용하는 필터 조합을 프리셋으로 저장 및 재사용
+- **SummaryBar 통계**: 검색 결과의 통계 정보를 한눈에 확인
+  * 전체 Found 수, 평균 연령, 성비, 주요 지역, Q+W 비율
+  * 평균 월수입, 기혼/미혼 비율, 차량 보유율, 주요 스마트폰 브랜드
+  * 클릭 가능한 칩으로 상세 분포 그래프 확인
 
 ### 📊 클러스터링 및 시각화
 
@@ -100,6 +105,15 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 - **반응형 디자인**: 다양한 화면 크기에 최적화
 - **애니메이션**: Framer Motion을 활용한 부드러운 전환 효과
 - **탭 음영 처리**: 선택된 탭(검색 결과/군집 분석/비교 분석)을 명확하게 구분
+- **인터랙티브 통계 그래프**: SummaryBar 칩 클릭 시 상세 분포 그래프 표시
+  * 지역 분포 (막대그래프)
+  * 차량 브랜드 분포 (막대그래프)
+  * 스마트폰 브랜드 분포 (막대그래프)
+  * 직업 분포 (막대그래프)
+  * 소득 분포 (막대그래프)
+  * 연령 분포 (막대그래프)
+  * 기혼인 사람의 자녀 분포 (막대그래프)
+  * 리사이즈 가능한 drawer (400px ~ 1200px)
 
 ## 기술 스택
 
@@ -118,17 +132,17 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
 ### Backend
 
 - **FastAPI** with Python 3.13
-- **PostgreSQL** (세션 관리 및 일부 메타데이터용, 선택적)
+- **NeonDB (PostgreSQL)** 패널 데이터 저장 및 클러스터링 데이터 관리
 - **Pinecone** 벡터 검색 엔진 (클라우드 기반)
-- **Upstage Embeddings** (임베딩 생성)
-  * 모델: `solar-embedding-1-large`
+- **OpenAI Embeddings** (임베딩 생성)
+  * 모델: `text-embedding-3-small`
 - **Pinecone Client** Pinecone 통합
 - **SQLAlchemy** (비동기 ORM)
 - **NumPy & SciPy** 수치 계산
 - **Scikit-learn** 머신러닝
 - **HDBSCAN** 밀도 기반 클러스터링
 - **UMAP** 차원 축소
-- **Anthropic Claude** (메타데이터 추출 및 카테고리 분류)
+- **Anthropic Claude** (메타데이터 추출 및 카테고리 분류, 텍스트 생성)
 
 ## 🚀 빠른 시작
 
@@ -183,11 +197,11 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
    
    **설치되는 주요 패키지 카테고리**:
    - **Web Framework**: FastAPI, Uvicorn
-   - **Database**: PostgreSQL (psycopg), pgvector, SQLAlchemy (선택적)
+   - **Database**: PostgreSQL (psycopg), pgvector, SQLAlchemy (비동기)
    - **Configuration**: python-dotenv, pydantic-settings
    - **Data Processing**: pandas, numpy, scipy, pyyaml, pyarrow
    - **Machine Learning & Clustering**: scikit-learn, HDBSCAN, UMAP
-   - **Pinecone 검색**: anthropic, langchain-upstage, pinecone
+   - **벡터 검색**: anthropic, openai, pinecone
    - **HTTP Client**: httpx
    - **Testing**: pytest
    
@@ -207,8 +221,8 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
    PINECONE_INDEX_NAME=panel-profiles
    PINECONE_ENVIRONMENT=us-east-1
    
-   # 임베딩 설정 (Upstage)
-   UPSTAGE_API_KEY=your_upstage_api_key_here
+   # 임베딩 설정 (OpenAI)
+   OPENAI_API_KEY=your_openai_api_key_here
    
    # Anthropic API (메타데이터 추출 및 카테고리 분류용)
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
@@ -295,7 +309,7 @@ panel-insight/
 │   │   ├── services/            # 비즈니스 로직
 │   │   │   ├── pinecone_pipeline.py # Pinecone 검색 파이프라인
 │   │   │   ├── metadata_extractor.py # 메타데이터 추출
-│   │   │   └── embedding_generator.py # Upstage 임베딩 생성
+│   │   │   └── embedding_generator.py # OpenAI 임베딩 생성
 │   ├── configs/                 # 설정 파일
 │   ├── sql/                     # SQL 스크립트
 │   ├── tests/                   # 테스트 파일
@@ -315,8 +329,16 @@ panel-insight/
 ### 검색 및 결과
 - **StartPage**: quick action이 포함된 main search interface
 - **ResultsPage**: table view와 pagination이 포함된 search results
+  * 카드 뷰 및 테이블 뷰 지원
+  * Q+W/W 배지 표시 (QuickPoll 응답 여부)
+  * 아이콘 및 색상으로 정보 시각화
 - **FilterDrawer**: 고급 filtering options (나이, 성별, 지역, 소득 등)
 - **PanelDetailDrawer**: 패널 상세 정보 표시 (태그, 근거, 응답이력)
+- **SummaryBar**: 검색 결과 통계 요약 및 인터랙티브 그래프
+  * 클릭 가능한 칩으로 상세 분포 그래프 확인
+  * 리사이즈 가능한 drawer (기본 최대 크기)
+- **SummaryStatDrawer**: 통계 분포 그래프 표시
+  * 지역, 차량, 스마트폰, 직업, 소득, 연령, 자녀 분포
 
 ### 클러스터링
 - **ClusterLabPage**: interactive clustering analysis with UMAP visualization
@@ -462,8 +484,8 @@ Panel Insight은 Pinecone을 활용한 의미 기반 벡터 검색 시스템을 
 
 #### 4단계: 임베딩 생성
 - **목적**: 자연어 텍스트를 벡터 임베딩으로 변환
-- **도구**: Upstage Embeddings API
-- **모델**: `solar-embedding-1-large`
+- **도구**: OpenAI Embeddings API
+- **모델**: `text-embedding-3-small` (1536차원)
 - **출력**: 카테고리별 벡터 임베딩
 
 #### 5단계: 단계적 필터링 검색

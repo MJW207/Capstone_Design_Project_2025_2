@@ -6,12 +6,11 @@ import { PIOutdatedBanner } from '../../ui/pi/PIOutdatedBanner';
 import { PIClusterProfileCard } from '../../ui/pi/PIClusterProfileCard';
 import { PISectionHeader } from '../../ui/pi/PISectionHeader';
 import { PIActionBar } from '../../ui/pi/PIActionBar';
-import { PILocatorStrip } from '../../ui/pi/PILocatorStrip';
 import { PIModelBadge, ModelStatus } from '../../ui/pi/PIModelBadge';
 // SVG 기반 UMAP 차트로 변경 (Recharts 제거)
 import { toast } from 'sonner';
 import { historyManager } from '../../lib/history';
-import { Loader2, BarChart3 } from 'lucide-react';
+import { Loader2, BarChart3, Search } from 'lucide-react';
 import { API_URL } from '../../lib/config';
 import { PIProfilingView } from '../../ui/profiling-ui-kit/components/PIProfilingView';
 import { useDarkMode, useThemeColors } from '../../lib/DarkModeSystem';
@@ -179,7 +178,6 @@ const getColorByAttribute = (point: any, colorBy: string) => {
 
 
 interface ClusterLabPageProps {
-  locatedPanelId?: string | null;
   searchResults?: any[]; // 검색 결과 데이터
   query?: string; // 검색 쿼리
   onNavigateToResults?: () => void; // 검색 결과 페이지로 이동
@@ -201,7 +199,7 @@ interface UMAPPoint {
   panelId?: string;
 }
 
-export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '', onNavigateToResults }: ClusterLabPageProps) {
+export function ClusterLabPage({ searchResults = [], query = '', onNavigateToResults }: ClusterLabPageProps) {
   const { isDark } = useDarkMode();
   const colors = useThemeColors();
   
@@ -217,18 +215,14 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
   const [showOutdatedBanner, setShowOutdatedBanner] = useState(false);
   const [selectedClusters] = useState<string[]>([]);
   const [q, setQ] = useState('');
+  const [lastSearchQuery, setLastSearchQuery] = useState<string>(''); // 마지막 검색 쿼리 추적
   const [selected, setSelected] = useState<{ mb_sn: string; feature: string } | null>(null);
-  
-  // Located panels for overlay
-  const [locatedPanels, setLocatedPanels] = useState<Array<{ id: string; color: string }>>([]);
   
   // 검색된 패널과 클러스터 매핑 상태
   const [searchedPanelClusters, setSearchedPanelClusters] = useState<Record<string, number>>({});
   const [searchedPanelClusterMapping, setSearchedPanelClusterMapping] = useState<Record<string, number>>({});
   const [highlightedPanelIds, setHighlightedPanelIds] = useState<Set<string>>(new Set());
   
-  // GPS 마크로 위치 표시된 패널 (무지갯빛 효과용)
-  const [locatedPanelIdSet, setLocatedPanelIdSet] = useState<Set<string>>(new Set());
   const [searchedPanelInfo, setSearchedPanelInfo] = useState<Record<string, {
     mb_sn: string;
     gender?: string;
@@ -513,6 +507,28 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
   const isRunningClusteringRef = useRef(false);
   
   // 검색 결과 주변 확장 클러스터링
+  // 재검색 핸들러 (검색창에서 쿼리 입력 후 재검색 버튼 클릭 시)
+  const handleReSearch = async () => {
+    const trimmedQuery = q.trim();
+    if (!trimmedQuery) {
+      toast.info('검색어를 입력해주세요.');
+      return;
+    }
+    
+    // 쿼리가 변경되지 않았으면 스킵
+    if (trimmedQuery === lastSearchQuery) {
+      toast.info('동일한 검색어입니다.');
+      return;
+    }
+    
+    // 캐시 초기화 (재검색 시 새로운 데이터 로드)
+    localStorage.removeItem('cached_clustering_data');
+    setLastSearchQuery(trimmedQuery);
+    
+    // 검색 API 호출 (실제 검색은 ResultsPage에서 처리되지만, 여기서는 클러스터링만 재실행)
+    await runClustering();
+  };
+
   const runClusteringAroundSearch = async () => {
     // 이미 실행 중이면 스킵
     if (isRunningClusteringRef.current) {
@@ -618,41 +634,17 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
       }
 
       // UMAP 데이터 업데이트
-      // 기존 Precomputed 데이터는 유지하고, 확장 클러스터링된 패널만 업데이트
-      const extendedPanelMap = new Map(
-        data.panels.map((p: any) => [p.panel_id, p])
-      );
-
-      setUmapData((prevData) => {
-        const updatedData = prevData.map((point) => {
-          const extendedPanel = extendedPanelMap.get(point.panelId || '');
-          if (extendedPanel) {
-            // 확장 클러스터링된 패널은 새 클러스터 정보 사용
-            return {
-              ...point,
-              x: extendedPanel.umap_x,
-              y: extendedPanel.umap_y,
-              cluster: extendedPanel.cluster,
-            };
-          }
-          // 확장 클러스터링되지 않은 패널은 기존 유지
-          return point;
-        });
-
-        // 확장 클러스터링에만 포함된 새로운 패널 추가
-        const existingPanelIds = new Set(prevData.map((p) => p.panelId));
-        data.panels.forEach((p: any) => {
-          if (!existingPanelIds.has(p.panel_id)) {
-            updatedData.push({
-              x: p.umap_x,
-              y: p.umap_y,
-              cluster: p.cluster,
-              panelId: p.panel_id,
-            });
-          }
-        });
-
-        return updatedData;
+      // 정상적으로 매칭된 검색 패널만 UMAP에 표시
+      setUmapData(() => {
+        // 기존 데이터를 모두 제거하고 정상적으로 매칭된 검색 패널만 표시
+        const newData: UMAPPoint[] = data.panels.map((p: any) => ({
+          x: p.umap_x,
+          y: p.umap_y,
+          cluster: p.cluster,
+          panelId: p.panel_id,
+        }));
+        
+        return newData;
       });
 
       // 클러스터 메타데이터 업데이트
@@ -1041,8 +1033,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
         newClusterSizes[c.id] = c.size;
       });
       
-      // 고유 클러스터 ID 추출 (labels에서)
-      const uniqueLabels = [...new Set(newLabels)].filter((l: number) => l !== -1).sort((a, b) => a - b);
+      // 고유 클러스터 ID 추출 (labels에서) - 노이즈(-1)와 군집 0 제외
+      const uniqueLabels = [...new Set(newLabels)].filter((l: number) => l !== -1 && l !== 0).sort((a, b) => a - b);
       
       // 실제 클러스터 수 계산 (labels 기반이 우선)
       let actualClusterCount = uniqueLabels.length;
@@ -1080,8 +1072,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           .map((label: number, index: number) => label === clusterId ? index : -1)
           .filter((i: number) => i !== -1);
         
-        // 크기가 0인 클러스터는 제외
-        if (size > 0) {
+        // 크기가 0인 클러스터와 군집 0은 제외
+        if (size > 0 && clusterId !== 0) {
           newClusters.push({
             id: clusterId,
             size: size,
@@ -1134,7 +1126,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
             if (profileResponse.ok) {
               const profileData = await profileResponse.json();
               if (profileData.success && profileData.data) {
-                setClusterProfiles(profileData.data);
+                // 군집 0 제외 (노이즈 군집 프로필이 이미 그 역할을 함)
+                const filteredProfiles = profileData.data.filter((p: any) => p.cluster !== 0);
+                setClusterProfiles(filteredProfiles);
                 
                 // 클러스터 이름을 localStorage에 저장 (비교 분석에서 사용)
                 const clusterNamesMap: Record<number, string> = {};
@@ -1170,6 +1164,28 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           }
           
           const sampleCount = clusterData.n_samples || newLabels.length || 0;
+          
+          // 클러스터링 데이터를 localStorage에 캐싱 (탭 이동 시 재로드 방지)
+          try {
+            const cacheData = {
+              umapData: umapPoints,
+              clusters: newClusters,
+              clusterProfiles: clusterProfiles.length > 0 ? clusterProfiles : [],
+              clusteringMeta: {
+                n_samples: sampleCount,
+                n_clusters: actualClusterCount,
+                session_id: clusterData.session_id || 'precomputed_default',
+                last_updated: new Date().toISOString(),
+              },
+              clusterSizes: newClusterSizes,
+              labels: newLabels,
+            };
+            localStorage.setItem('cached_clustering_data', JSON.stringify(cacheData));
+            console.log('[ClusterLab] 클러스터링 데이터 캐싱 완료');
+          } catch (cacheError) {
+            console.warn('[ClusterLab] 캐싱 실패:', cacheError);
+          }
+          
           toast.success(`클러스터링 완료: ${actualClusterCount}개 군집, ${sampleCount}개 패널`);
         } catch (umapError) {
           const sampleCount = clusterData.n_samples || newLabels.length || 0;
@@ -1264,12 +1280,34 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
     }
   }, [clusters, clusterProfiles]);
 
-  // 페이지 마운트 시 자동으로 HDBSCAN 클러스터링 데이터 로드
+  // 페이지 마운트 시 자동으로 HDBSCAN 클러스터링 데이터 로드 (캐싱 적용)
   useEffect(() => {
     const loadInitialClustering = async () => {
-      // 이미 데이터가 있으면 스킵
+      // 이미 데이터가 있으면 스킵 (탭 이동 시 재로드 방지)
       if (umapData.length > 0 && clusters.length > 0) {
         return;
+      }
+      
+      // localStorage에서 캐싱된 클러스터링 데이터 확인
+      const cachedClusteringData = localStorage.getItem('cached_clustering_data');
+      if (cachedClusteringData) {
+        try {
+          const parsed = JSON.parse(cachedClusteringData);
+          // 캐시된 데이터가 있고, 세션이 유효하면 복원
+          if (parsed.umapData && parsed.umapData.length > 0 && 
+              parsed.clusters && parsed.clusters.length > 0) {
+            setUmapData(parsed.umapData);
+            setClusters(parsed.clusters);
+            setClusterProfiles(parsed.clusterProfiles || []);
+            setClusteringMeta(parsed.clusteringMeta || null);
+            setClusterSizes(parsed.clusterSizes || {});
+            setLabels(parsed.labels || []);
+            console.log('[ClusterLab] 캐시된 클러스터링 데이터 복원');
+            return;
+          }
+        } catch (e) {
+          console.warn('[ClusterLab] 캐시 데이터 파싱 실패:', e);
+        }
       }
       
       // 검색 결과가 있으면 확장 클러스터링 사용 (자동 실행 안 함)
@@ -1318,8 +1356,10 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           const profileData = await profileResponse.json();
           const profiles = profileData.success ? profileData.data : (profileData.data || []);
           if (profiles && profiles.length > 0) {
+            // 군집 0 제외 (노이즈 군집 프로필이 이미 그 역할을 함)
+            const filteredProfiles = profiles.filter((p: any) => p.cluster !== 0);
             // 디버깅: 로드된 프로필 데이터 확인
-            console.log('[ClusterLab] 로드된 프로필 데이터:', profiles.map((p: any) => ({
+            console.log('[ClusterLab] 로드된 프로필 데이터:', filteredProfiles.map((p: any) => ({
               cluster: p.cluster,
               name: p.name,
               insights_count: p.insights?.length || 0,
@@ -1327,10 +1367,10 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
               segments: p.segments,
               tags_count: p.tags?.length || 0,
             })));
-            setClusterProfiles(profiles);
+            setClusterProfiles(filteredProfiles);
             
-            // 2. 클러스터 정보 구성
-            const restoredClusters: ClusterData[] = profiles.map((profile: any) => ({
+            // 2. 클러스터 정보 구성 (군집 0 제외)
+            const restoredClusters: ClusterData[] = filteredProfiles.map((profile: any) => ({
               id: profile.cluster,
               size: profile.size,
               indices: [], // 인덱스는 필요시 UMAP에서 추출
@@ -1340,18 +1380,18 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
             }));
             setClusters(restoredClusters);
             
-            // 3. 클러스터 크기 구성
+            // 3. 클러스터 크기 구성 (군집 0 제외)
             const restoredClusterSizes: Record<string | number, number> = {};
-            profileData.data.forEach((profile: any) => {
+            filteredProfiles.forEach((profile: any) => {
               restoredClusterSizes[profile.cluster] = profile.size;
             });
             setClusterSizes(restoredClusterSizes);
             
-            // 4. 메타데이터 복원
-            const totalSize = profileData.data.reduce((sum: number, p: any) => sum + p.size, 0);
+            // 4. 메타데이터 복원 (군집 0 제외)
+            const totalSize = filteredProfiles.reduce((sum: number, p: any) => sum + p.size, 0);
             setClusteringMeta({
               n_samples: totalSize,
-              n_clusters: profileData.data.length,
+              n_clusters: filteredProfiles.length,
               session_id: lastSessionId,
               last_updated: new Date().toISOString(),
             });
@@ -1695,33 +1735,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
     
     updateSearchedPanelMapping();
   }, [searchResults, clusteringMeta?.session_id, umapData, extendedClusteringData]);
+  
 
 
-  useEffect(() => {
-    if (locatedPanelId) {
-      // GPS 마크로 위치 표시된 패널 ID 추가 (무지갯빛 효과용)
-      const normalizedId = normalizePanelId(locatedPanelId);
-      setLocatedPanelIdSet(prev => new Set([...prev, normalizedId]));
-      
-      // Mock: assign random cluster color
-      const colors = ['#2563EB', '#16A34A', '#F59E0B', '#EF4444', '#8B5CF6'];
-      const color = colors[Math.floor(Math.random() * colors.length)];
-      
-      setLocatedPanels(prev => {
-        const filtered = prev.filter(p => p.id !== locatedPanelId);
-        return [{ id: locatedPanelId, color }, ...filtered].slice(0, 3);
-      });
-      
-      // 5초 후 하이라이트 제거
-      setTimeout(() => {
-        setLocatedPanelIdSet(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(normalizedId);
-          return newSet;
-        });
-      }, 5000);
-    }
-  }, [locatedPanelId]);
 
   return (
     <div 
@@ -1792,7 +1808,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                   군집을 불러오는 중..
                 </>
               ) : (
-                clusters.length > 0 ? '클러스터링 다시 실행' : '전체 패널 클러스터링 실행'
+                clusters.length > 0 ? '클러스터링 다시 불러오기' : '전체 패널 클러스터링 불러오기'
               )}
             </PIButton>
           <PIModelBadge status={modelStatus} version="v2025-10-13 14:30" />
@@ -1808,19 +1824,35 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           borderColor: colors.border.primary,
         }}
       >
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="예) 충남, 여성, 아반떼, 아이폰"
-          style={{ 
-            width: '100%', 
-            padding: '10px 12px', 
-            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #E2E8F0', 
-            borderRadius: 8,
-            background: isDark ? 'rgba(30, 41, 59, 0.5)' : 'white',
-            color: colors.text.primary,
-          }}
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleReSearch();
+              }
+            }}
+            placeholder="예) 충남, 여성, 아반떼, 아이폰"
+            style={{ 
+              flex: 1,
+              padding: '10px 12px', 
+              border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #E2E8F0', 
+              borderRadius: 8,
+              background: isDark ? 'rgba(30, 41, 59, 0.5)' : 'white',
+              color: colors.text.primary,
+            }}
+          />
+          <PIButton
+            onClick={handleReSearch}
+            disabled={loading || q.trim() === ''}
+            variant="default"
+            style={{ minWidth: '100px' }}
+          >
+            <Search className="w-4 h-4 mr-2" />
+            재검색
+          </PIButton>
+        </div>
         <style>{`
           input::placeholder {
             color: ${isDark ? 'rgba(255, 255, 255, 0.6)' : colors.text.tertiary};
@@ -1828,16 +1860,6 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           }
         `}</style>
       </div>
-
-      {/* Locator Strip (Sticky) */}
-      <PILocatorStrip
-        locatedPanels={locatedPanels}
-        onClear={(panelId) => {
-          setLocatedPanels(prev => prev.filter(p => p.id !== panelId));
-        }}
-        onHighlightAll={() => toast.success('선택한 패널을 강조합니다')}
-        onSendToCompare={() => toast.success('비교 보드로 이동합니다')}
-      />
 
       {/* Outdated Banner */}
       {showOutdatedBanner && (
@@ -1903,8 +1925,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
           </div>
         )}
 
-        {/* Empty State - 검색 결과 없음 (클러스터도 없을 때만 표시) */}
-        {!loading && !error && (!searchResults || searchResults.length === 0) && clusters.length === 0 && umapData.length === 0 && !showProfile && (
+        {/* Empty State - 클러스터 데이터 없음 */}
+        {!loading && !error && clusters.length === 0 && umapData.length === 0 && !showProfile && (
           <div className="flex items-center justify-center py-16" style={{ minHeight: '400px' }}>
             <div className="text-center max-w-md">
               <div className="mb-6">
@@ -1914,46 +1936,36 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                   <BarChart3 size={32} style={{ color: colors.text.tertiary }} />
                 </div>
                 <h3 className="text-xl font-semibold mb-2" style={{ color: colors.text.primary }}>
-                  군집 데이터를 불러오는 중...
+                  클러스터링 데이터를 불러오세요
                 </h3>
                 <p className="text-sm mb-6" style={{ color: colors.text.secondary }}>
-                  전체 패널에 대한 군집 분석을 준비하고 있습니다.
+                  전체 패널에 대한 군집 분석 데이터를 불러와 시각화할 수 있습니다.
+                  <br />
+                  상단의 "전체 패널 클러스터링 불러오기" 버튼을 클릭하세요.
                 </p>
+                <PIButton onClick={runClustering} disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      불러오는 중...
+                    </>
+                  ) : (
+                    '전체 패널 클러스터링 불러오기'
+                  )}
+                </PIButton>
               </div>
             </div>
           </div>
         )}
 
-        {/* Empty State - 클러스터 결과 없음 (검색 결과는 있지만 클러스터링 안 됨) */}
-        {!loading && !error && searchResults && searchResults.length > 0 && clusters.length === 0 && !showProfile && (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <p className="text-gray-600 mb-4">
-                전체 19000명 패널에 대해 클러스터링을 실행할 수 있습니다.
-                <span className="block mt-2 text-sm text-blue-600">
-                  검색된 패널이 UMAP상에 나타납니다.
-                </span>
-              </p>
-              <PIButton onClick={runClustering} disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    군집을 불러오는 중..
-                  </>
-                ) : (
-                  '전체 패널 클러스터링 실행'
-                )}
-              </PIButton>
-            </div>
-          </div>
-        )}
-
-        {/* Row 1: UMAP Map (Full Width) */}
+        {/* Row 1: UMAP Visualization */}
         {!loading && !error && (clusters.length > 0 || showProfile) && (
           <div className="w-full">
-            <div
-              ref={umapContainerRef}
-              className="relative rounded-2xl p-6 flex flex-col"
+            {/* UMAP 차트 */}
+            {(
+              <div
+                ref={umapContainerRef}
+                className="relative rounded-2xl p-6 flex flex-col"
                 style={{
                 height: '1600px', // 세로 크기 2배로 증가 (800px -> 1600px)
                 background: isDark
@@ -2044,10 +2056,10 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                               };
                             });
                           
-                          // 특징 피처 추출
+                          // 특징 피처 추출 (모든 features 표시)
                           const distinctiveFeatures: Array<{feature: string, value: number, avg: number, diff: number}> = [];
                           if (clusterProfile?.distinctive_features && Array.isArray(clusterProfile.distinctive_features)) {
-                            clusterProfile.distinctive_features.slice(0, 5).forEach((f: any) => {
+                            clusterProfile.distinctive_features.forEach((f: any) => {
                               distinctiveFeatures.push({
                                 feature: f.feature || '',
                                 value: f.value || 0,
@@ -2071,6 +2083,37 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             description: (clusterProfile as any)?.description || `${cluster.size}명의 패널이 포함된 군집 (${percentage.toFixed(2)}%)`,
                             searchedPanels: clusterSearchedPanels
                           });
+                          
+                          // 히스토리에 저장
+                          try {
+                            const clusterHistoryData = {
+                              count: cluster.size,
+                              percentage: percentage.toFixed(2),
+                              size: cluster.size,
+                              tags: clusterTags,
+                              snippets: clusterSnippets,
+                              insights: clusterProfile?.insights || [],
+                              features: distinctiveFeatures,
+                              silhouette: clusteringMeta?.silhouette_score,
+                              color: clusterColor,
+                              description: (clusterProfile as any)?.description || `${cluster.size}명의 패널이 포함된 군집 (${percentage.toFixed(2)}%)`,
+                            };
+                            
+                            // 해당 군집의 UMAP 데이터 추출
+                            const clusterUmapData = umapData.filter(p => p.cluster === cluster.id);
+                            
+                            const historyItem = historyManager.createClusterHistory(
+                              String(cluster.id),
+                              clusterDisplayName,
+                              clusterHistoryData,
+                              clusterUmapData.length > 0 ? clusterUmapData : undefined
+                            );
+                            historyManager.save(historyItem);
+                            console.log('[ClusterLab] 군집 히스토리 저장:', clusterDisplayName);
+                          } catch (historyError) {
+                            console.warn('[ClusterLab] 히스토리 저장 실패:', historyError);
+                          }
+                          
                           setIsClusterDetailOpen(true);
                         };
                         
@@ -2120,31 +2163,31 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                         );
                       })}
                       
-                      {/* 검색된 패널 범례 */}
+                      {/* 검색된 패널 범례 - 간소화 */}
                       {highlightedPanelIds.size > 0 && (
                         <div 
                           className="flex items-center gap-2 ml-auto pointer-events-auto"
                           style={{
                             borderLeft: isDark 
-                              ? '1px solid rgba(255, 255, 255, 0.1)' 
-                              : '1px solid rgba(17, 24, 39, 0.1)',
+                              ? '1px solid rgba(255, 255, 255, 0.08)' 
+                              : '1px solid rgba(17, 24, 39, 0.08)',
                             paddingLeft: '12px',
                           }}
                         >
                           <div 
-                            className="w-3 h-3 rounded-full border-2 border-white flex-shrink-0" 
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
                             style={{ 
                               background: '#F59E0B',
-                              boxShadow: '0 0 0 2px #F59E0B',
+                              border: '1.5px solid #FFFFFF',
                             }} 
                           />
                           <span style={{ 
-                            fontSize: '11px', 
+                            fontSize: '10px', 
                             fontWeight: 500, 
-                            color: colors.text.secondary,
+                            color: colors.text.tertiary,
                             whiteSpace: 'nowrap'
                           }}>
-                            검색된 패널 ({highlightedPanelIds.size}개)
+                            검색 ({highlightedPanelIds.size})
                           </span>
                         </div>
                       )}
@@ -2247,11 +2290,37 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                       }
                     });
                     
-                    // 클러스터 색상 가져오기 (utils.ts의 getClusterColor 사용)
+                    // 클러스터 색상 가져오기 (기존 색상 시스템 사용)
                     const getClusterColor = (clusterId: number) => {
                       const clusterIdx = clusters.findIndex(c => c.id === clusterId);
-                      return clusterIdx >= 0 ? getClusterColorUtil(clusterIdx) : '#6B7280';
+                      return clusterIdx >= 0 ? getClusterColorUtil(clusterIdx) : getClusterColorUtil(clusterId);
                     };
+                    
+                    // 군집 중심점 계산 함수 - 전체 데이터 사용 (필터링과 무관하게)
+                    const calculateClusterCentroid = (clusterId: number) => {
+                      // 필터링된 데이터가 아닌 전체 umapData 사용
+                      const clusterPoints = umapData.filter(p => p.cluster === clusterId);
+                      if (clusterPoints.length === 0) return null;
+                      
+                      // 중앙값(median) 사용으로 이상치에 덜 민감하게
+                      const xs = clusterPoints.map(p => p.x).sort((a, b) => a - b);
+                      const ys = clusterPoints.map(p => p.y).sort((a, b) => a - b);
+                      
+                      const medianX = xs.length % 2 === 0
+                        ? (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2
+                        : xs[Math.floor(xs.length / 2)];
+                      
+                      const medianY = ys.length % 2 === 0
+                        ? (ys[ys.length / 2 - 1] + ys[ys.length / 2]) / 2
+                        : ys[Math.floor(ys.length / 2)];
+                      
+                      return {
+                        x: medianX,
+                        y: medianY,
+                        count: clusterPoints.length, // 포인트 개수 저장
+                      };
+                    };
+                    
                     
                     return (
                       <div 
@@ -2264,82 +2333,52 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                           preserveAspectRatio="xMidYMid meet"
                           style={{ width: '100%', height: '100%', display: 'block' }}
                         >
-                          {/* 배경 그리드 */}
+                          {/* 배경 그리드 - 더 연하게 */}
                           <defs>
                             <pattern 
                               id="grid" 
-                              width="40" 
-                              height="40" 
+                              width="80" 
+                              height="80" 
                               patternUnits="userSpaceOnUse"
                             >
                               <path 
-                                d="M 40 0 L 0 0 0 40" 
+                                d="M 80 0 L 0 0 0 80" 
                                 fill="none" 
-                                stroke={isDark ? 'rgba(255, 255, 255, 0.05)' : '#E5E7EB'} 
-                                strokeWidth="1" 
-                                strokeDasharray="3,3" 
+                                stroke={isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)'} 
+                                strokeWidth="0.5" 
                               />
                             </pattern>
                             
-                            {/* 반짝반짝 빛나는 이펙트를 위한 필터 */}
-                            <filter id="glow-effect">
-                              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                            {/* 간소화된 필터 (필요시만 사용) */}
+                            <filter id="subtle-glow" x="-50%" y="-50%" width="200%" height="200%">
+                              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
                               <feMerge>
                                 <feMergeNode in="coloredBlur"/>
                                 <feMergeNode in="SourceGraphic"/>
                               </feMerge>
                             </filter>
-                            
-                            {/* 강한 반짝 효과 */}
-                            <filter id="strong-glow-effect">
-                              <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                              <feMerge>
-                                <feMergeNode in="coloredBlur"/>
-                                <feMergeNode in="SourceGraphic"/>
-                              </feMerge>
-                            </filter>
-                            
-                            {/* 각 군집별 그라데이션 정의 */}
-                            {clusters.map((cluster, idx) => {
-                              const clusterColor = getClusterColorUtil(idx);
-                              const gradientId = `glow-gradient-${cluster.id}`;
-                              const brightColor = clusterColor; // 원본 색상 사용
-                              
-                              return (
-                                <radialGradient key={gradientId} id={gradientId} cx="50%" cy="50%" r="50%">
-                                  <stop offset="0%" stopColor={brightColor} stopOpacity="0.9" />
-                                  <stop offset="50%" stopColor={brightColor} stopOpacity="0.6" />
-                                  <stop offset="100%" stopColor={brightColor} stopOpacity="0.1" />
-                                </radialGradient>
-                              );
-                            })}
-                            
-                            {/* 범용 그라데이션 (클러스터가 없는 경우용) */}
-                            <radialGradient id="glow-gradient-default" cx="50%" cy="50%" r="50%">
-                              <stop offset="0%" stopColor="#6B7280" stopOpacity="0.9" />
-                              <stop offset="50%" stopColor="#6B7280" stopOpacity="0.6" />
-                              <stop offset="100%" stopColor="#6B7280" stopOpacity="0.1" />
-                            </radialGradient>
                           </defs>
+                          {/* 배경 그리드 - 선택적으로 표시 (더 연하게) */}
                           <rect 
                             x={margin} 
                             y={margin} 
                             width={Math.max(0, width - 2 * margin)} 
                             height={Math.max(0, height - 2 * margin)} 
                             fill="url(#grid)" 
+                            opacity={0.3}
                           />
                           
-                          {/* X축 */}
+                          {/* X축 - 더 연하게 */}
                           <line 
                             x1={margin} 
                             y1={height - margin} 
                             x2={width - margin} 
                             y2={height - margin} 
-                            stroke={isDark ? 'rgba(255, 255, 255, 0.3)' : '#D1D5DB'} 
-                            strokeWidth="2" 
+                            stroke={isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)'} 
+                            strokeWidth="1" 
                           />
                           {(() => {
-                            const tickCount = 9;
+                            const tickCount = 5; // 9개에서 5개로 줄임
                             const tickStep = ((dataMaxX + paddingX) - (dataMinX - paddingX)) / (tickCount - 1);
                             const ticks = [];
                             for (let i = 0; i < tickCount; i++) {
@@ -2360,8 +2399,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   x={xScale(val)} 
                                   y={height - margin + 20} 
                                   textAnchor="middle" 
-                                  fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'} 
-                                  fontSize="12"
+                                  fill={isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)'} 
+                                  fontSize="10"
                                 >
                                   {val.toFixed(1)}
                                 </text>
@@ -2369,17 +2408,17 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             ));
                           })()}
                           
-                          {/* Y축 */}
+                          {/* Y축 - 더 연하게 */}
                           <line 
                             x1={margin} 
                             y1={margin} 
                             x2={margin} 
                             y2={height - margin} 
-                            stroke={isDark ? 'rgba(255, 255, 255, 0.3)' : '#D1D5DB'} 
-                            strokeWidth="2" 
+                            stroke={isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)'} 
+                            strokeWidth="1" 
                           />
                           {(() => {
-                            const tickCount = 9;
+                            const tickCount = 5; // 9개에서 5개로 줄임
                             const tickStep = ((dataMaxY + paddingY) - (dataMinY - paddingY)) / (tickCount - 1);
                             const ticks = [];
                             for (let i = 0; i < tickCount; i++) {
@@ -2400,8 +2439,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   x={margin - 12} 
                                   y={yScale(val) + 4} 
                                   textAnchor="end" 
-                                  fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'} 
-                                  fontSize="12"
+                                  fill={isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.4)'} 
+                                  fontSize="10"
                                 >
                                   {val.toFixed(1)}
                                 </text>
@@ -2409,7 +2448,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             ));
                           })()}
                           
-                          {/* 데이터 포인트: 기존 전체 데이터 (회색) - 검색된 패널 제외 */}
+                          {/* 데이터 포인트: 기존 전체 데이터 (회색) - 검색된 패널 제외 - 더 연하게 */}
                           {normalPanelsOnly
                             .filter(point => {
                               const normalizedId = normalizePanelId(point.panelId);
@@ -2425,9 +2464,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   <circle
                                     cx={cx}
                                     cy={cy}
-                                    r={4}
-                                    fill={isDark ? 'rgba(255, 255, 255, 0.4)' : '#94A3B8'}
-                                    opacity={isDark ? 0.4 : 0.3}
+                                    r={3}
+                                    fill={isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)'}
+                                    opacity={0.6}
                                     onMouseEnter={() => handlePointHover(point.panelId)}
                                     onMouseLeave={handlePointLeave}
                                     style={{ cursor: 'pointer' }}
@@ -2436,7 +2475,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                               );
                             })}
                           
-                          {/* 데이터 포인트: 확장 클러스터링된 패널 (컬러) - 검색된 패널 제외 */}
+                          {/* 데이터 포인트: 확장 클러스터링된 패널 (컬러) - 검색된 패널 제외 - 더 연하게 */}
                           {extendedPanelsOnly
                             .filter(point => {
                               const normalizedId = normalizePanelId(point.panelId);
@@ -2453,9 +2492,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   <circle
                                     cx={cx}
                                     cy={cy}
-                                    r={5}
+                                    r={3.5}
                                     fill={clusterColor}
-                                    opacity={0.7}
+                                    opacity={0.5}
                                     onMouseEnter={() => handlePointHover(point.panelId)}
                                     onMouseLeave={handlePointLeave}
                                     style={{ cursor: 'pointer' }}
@@ -2464,7 +2503,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                               );
                             })}
                           
-                          {/* 확장 클러스터링이 없을 때만 전체 데이터 렌더링 - 검색된 패널 제외 */}
+                          {/* 확장 클러스터링이 없을 때만 전체 데이터 렌더링 - 검색된 패널 제외 - 더 연하게 */}
                           {!extendedClusteringData && filteredData
                             .filter(point => {
                               const normalizedId = normalizePanelId(point.panelId);
@@ -2483,12 +2522,12 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                   key={`legacy-${index}`}
                                   cx={cx}
                                   cy={cy}
-                                  r={4}
+                                  r={3}
                                   fill={baseColor}
-                                  opacity={0.5}
+                                  opacity={0.4}
                                   style={{
                                     cursor: 'pointer',
-                                    filter: isHovered ? `drop-shadow(0 0 6px ${baseColor})` : 'none',
+                                    filter: isHovered ? `drop-shadow(0 0 4px ${baseColor})` : 'none',
                                   }}
                                   onMouseEnter={() => handlePointHover(point.panelId)}
                                   onMouseLeave={handlePointLeave}
@@ -2503,56 +2542,36 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                             const cy = yScale(point.y);
                             const clusterColor = getClusterColor(point.cluster);
                             
-                            // 그라데이션 ID 가져오기
-                            const clusterIdx = clusters.findIndex(c => c.id === point.cluster);
-                            const gradientId = clusterIdx >= 0 
-                              ? `glow-gradient-${point.cluster}` 
-                              : 'glow-gradient-default';
-                            
                             // 패널 ID 추출 (클릭 이벤트용)
                             const panelId = point.panelId || '';
                             
                             return (
                               <g key={`searched-${index}`} style={{ pointerEvents: 'auto' }}>
-                                {/* 반짝반짝 빛나는 외곽 원 (그라데이션 + 애니메이션) */}
+                                {/* 외곽 원 - 간소화 */}
                                 <circle
                                   cx={cx}
                                   cy={cy}
-                                  r={9}
-                                  fill={`url(#${gradientId})`}
-                                  filter="url(#strong-glow-effect)"
+                                  r={6}
+                                  fill={clusterColor}
+                                  opacity={0.25}
                                   onClick={() => {
                                     if (panelId) {
                                       setSelectedPanelId(panelId);
                                       setIsPanelDetailOpen(true);
                                     }
                                   }}
-                                >
-                                  <animate
-                                    attributeName="r"
-                                    values="7;11;7"
-                                    dur="1.5s"
-                                    repeatCount="indefinite"
-                                  />
-                                  <animate
-                                    attributeName="opacity"
-                                    values="0.6;0.2;0.6"
-                                    dur="1.5s"
-                                    repeatCount="indefinite"
-                                  />
-                                </circle>
-                                {/* 메인 점 (펄스 애니메이션 + 그라데이션) */}
+                                />
+                                {/* 메인 점 - 간소화 */}
                                 <circle
                                   cx={cx}
                                   cy={cy}
-                                  r={6}
-                                  fill={`url(#${gradientId})`}
-                                  filter="url(#glow-effect)"
+                                  r={4.5}
+                                  fill={clusterColor}
                                   stroke="#FFFFFF"
                                   strokeWidth="1.5"
-                                  strokeOpacity="0.8"
-                                    onMouseEnter={() => handlePointHover(point.panelId)}
-                                    onMouseLeave={handlePointLeave}
+                                  opacity={0.95}
+                                  onMouseEnter={() => handlePointHover(point.panelId)}
+                                  onMouseLeave={handlePointLeave}
                                   onClick={() => {
                                     if (panelId) {
                                       setSelectedPanelId(panelId);
@@ -2560,174 +2579,232 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                     }
                                   }}
                                   style={{ cursor: 'pointer' }}
-                                >
-                                  <animate
-                                    attributeName="r"
-                                    values="5;7;5"
-                                    dur="1.5s"
-                                    repeatCount="indefinite"
-                                  />
-                                </circle>
+                                />
                               </g>
                             );
                           })}
                           
-                          {/* GPS 마크로 위치 표시된 패널 (무지갯빛 효과) - 최상위 레이어 */}
-                          {filteredData
-                            .filter(point => {
-                              const normalizedId = normalizePanelId(point.panelId);
-                              return locatedPanelIdSet.has(normalizedId);
-                            })
-                            .map((point, index) => {
-                              const normalizedId = normalizePanelId(point.panelId);
-                              const cx = xScale(point.x);
-                              const cy = yScale(point.y);
-                              
-                              // 무지갯빛 그라데이션 정의 (RGB 색상 순환)
-                              const rainbowGradientId = `rainbow-gradient-${point.cluster}-${index}`;
-                              
-                              return (
-                                <g key={`located-${index}`} style={{ pointerEvents: 'auto' }}>
-                                  {/* 무지갯빛 그라데이션 정의 */}
-                                  <defs>
-                                    <linearGradient id={rainbowGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-                                      <stop offset="0%" stopColor="#FF0000" stopOpacity="1">
-                                        <animate attributeName="stop-color" values="#FF0000;#FF7F00;#FFFF00;#00FF00;#0000FF;#4B0082;#9400D3;#FF0000" dur="3s" repeatCount="indefinite" />
-                                      </stop>
-                                      <stop offset="25%" stopColor="#FF7F00" stopOpacity="0.9">
-                                        <animate attributeName="stop-color" values="#FF7F00;#FFFF00;#00FF00;#0000FF;#4B0082;#9400D3;#FF0000;#FF7F00" dur="3s" repeatCount="indefinite" />
-                                      </stop>
-                                      <stop offset="50%" stopColor="#FFFF00" stopOpacity="0.8">
-                                        <animate attributeName="stop-color" values="#FFFF00;#00FF00;#0000FF;#4B0082;#9400D3;#FF0000;#FF7F00;#FFFF00" dur="3s" repeatCount="indefinite" />
-                                      </stop>
-                                      <stop offset="75%" stopColor="#00FF00" stopOpacity="0.7">
-                                        <animate attributeName="stop-color" values="#00FF00;#0000FF;#4B0082;#9400D3;#FF0000;#FF7F00;#FFFF00;#00FF00" dur="3s" repeatCount="indefinite" />
-                                      </stop>
-                                      <stop offset="100%" stopColor="#0000FF" stopOpacity="0.6">
-                                        <animate attributeName="stop-color" values="#0000FF;#4B0082;#9400D3;#FF0000;#FF7F00;#FFFF00;#00FF00;#0000FF" dur="3s" repeatCount="indefinite" />
-                                      </stop>
-                                    </linearGradient>
-                                    
-                                    {/* 강한 무지갯빛 글로우 필터 */}
-                                    <filter id={`rainbow-glow-${index}`}>
-                                      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
-                                      <feMerge>
-                                        <feMergeNode in="coloredBlur"/>
-                                        <feMergeNode in="SourceGraphic"/>
-                                      </feMerge>
-                                    </filter>
-                                  </defs>
-                                  
-                                  {/* 외곽 무지갯빛 링 (회전 애니메이션) */}
+                          {/* 군집 중심 라벨 표시 - 개선된 버전 */}
+                          {(() => {
+                            // 모든 군집의 중심점 계산
+                            const centroids = clusters
+                              .filter(cluster => cluster.size > 50) // 50명 이상 군집만 표시
+                              .map(cluster => {
+                                const centroid = calculateClusterCentroid(cluster.id);
+                                if (!centroid) return null;
+                                
+                                const cx = xScale(centroid.x);
+                                const cy = yScale(centroid.y);
+                                const clusterProfile = clusterProfiles.find(p => p.cluster === cluster.id);
+                                const clusterName = (clusterProfile as any)?.name_main || 
+                                                  clusterProfile?.name || 
+                                                  `C${cluster.id + 1}`;
+                                const clusterColor = getClusterColor(cluster.id);
+                                
+                                // 화면 경계 체크
+                                const labelPadding = 20;
+                                const safeX = Math.max(labelPadding, Math.min(cx, width - labelPadding));
+                                const safeY = Math.max(labelPadding, Math.min(cy, height - labelPadding));
+                                
+                                // 텍스트 길이에 따른 최대 너비 계산
+                                const maxTextWidth = Math.min(120, (width - safeX - labelPadding) * 2);
+                                const estimatedCharWidth = 7; // 대략적인 문자 너비
+                                const maxChars = Math.floor(maxTextWidth / estimatedCharWidth);
+                                
+                                return {
+                                  clusterId: cluster.id,
+                                  cx: safeX,
+                                  cy: safeY,
+                                  originalCx: cx,
+                                  originalCy: cy,
+                                  clusterName: clusterName.length > maxChars 
+                                    ? clusterName.substring(0, maxChars - 3) + '...' 
+                                    : clusterName,
+                                  clusterColor,
+                                  size: cluster.size,
+                                  centroid,
+                                };
+                              })
+                              .filter((c): c is NonNullable<typeof c> => c !== null)
+                              .sort((a, b) => b.size - a.size); // 큰 군집부터 정렬
+                            
+                            // 라벨 간 최소 거리 확인 및 겹침 방지
+                            const minDistance = 40;
+                            const placedLabels: Array<{ x: number; y: number }> = [];
+                            
+                            return centroids
+                              .filter(centroid => {
+                                // 이미 배치된 라벨과의 거리 확인
+                                const tooClose = placedLabels.some(placed => {
+                                  const dx = centroid.cx - placed.x;
+                                  const dy = centroid.cy - placed.y;
+                                  const distance = Math.sqrt(dx * dx + dy * dy);
+                                  return distance < minDistance;
+                                });
+                                
+                                if (!tooClose) {
+                                  placedLabels.push({ x: centroid.cx, y: centroid.cy });
+                                  return true;
+                                }
+                                return false; // 너무 가까워서 제외
+                              })
+                              .map((centroid) => (
+                                <g key={`cluster-label-${centroid.clusterId}`} style={{ pointerEvents: 'none' }}>
+                                  {/* 배경 원 */}
                                   <circle
-                                    cx={cx}
-                                    cy={cy}
-                                    r={14}
-                                    fill="none"
-                                    stroke={`url(#${rainbowGradientId})`}
-                                    strokeWidth="3"
-                                    filter={`url(#rainbow-glow-${index})`}
-                                    opacity="0.8"
+                                    cx={centroid.cx}
+                                    cy={centroid.cy}
+                                    r={16}
+                                    fill={isDark ? 'rgba(17, 24, 39, 0.75)' : 'rgba(255, 255, 255, 0.85)'}
+                                    stroke={centroid.clusterColor}
+                                    strokeWidth="1.5"
+                                    opacity="0.9"
+                                  />
+                                  {/* 라벨 텍스트 */}
+                                  <text
+                                    x={centroid.cx}
+                                    y={centroid.cy + 4}
+                                    textAnchor="middle"
+                                    fill={centroid.clusterColor}
+                                    fontSize="10"
+                                    fontWeight="600"
+                                    style={{
+                                      fontFamily: 'system-ui, -apple-system, sans-serif',
+                                      pointerEvents: 'none',
+                                    }}
                                   >
-                                    <animateTransform
-                                      attributeName="transform"
-                                      type="rotate"
-                                      values={`0 ${cx} ${cy};360 ${cx} ${cy}`}
-                                      dur="2s"
-                                      repeatCount="indefinite"
-                                    />
-                                    <animate
-                                      attributeName="r"
-                                      values="12;16;12"
-                                      dur="1.5s"
-                                      repeatCount="indefinite"
-                                    />
-                                  </circle>
-                                  
-                                  {/* 중간 무지갯빛 링 */}
-                                  <circle
-                                    cx={cx}
-                                    cy={cy}
-                                    r={10}
-                                    fill="none"
-                                    stroke={`url(#${rainbowGradientId})`}
-                                    strokeWidth="2"
-                                    opacity="0.6"
-                                  >
-                                    <animateTransform
-                                      attributeName="transform"
-                                      type="rotate"
-                                      values={`360 ${cx} ${cy};0 ${cx} ${cy}`}
-                                      dur="1.5s"
-                                      repeatCount="indefinite"
-                                    />
-                                  </circle>
-                                  
-                                  {/* 메인 점 (무지갯빛 + 펄스) */}
-                                  <circle
-                                    cx={cx}
-                                    cy={cy}
-                                    r={8}
-                                    fill={`url(#${rainbowGradientId})`}
-                                    filter={`url(#rainbow-glow-${index})`}
-                                    stroke="#FFFFFF"
-                                    strokeWidth="2"
-                                    strokeOpacity="0.9"
-                                    onMouseEnter={() => handlePointHover(point.panelId)}
-                                    onMouseLeave={handlePointLeave}
-                                    style={{ cursor: 'pointer' }}
-                                  >
-                                    <animate
-                                      attributeName="r"
-                                      values="7;10;7"
-                                      dur="1s"
-                                      repeatCount="indefinite"
-                                    />
-                                  </circle>
+                                    {centroid.clusterName}
+                                  </text>
                                 </g>
-                              );
-                            })}
+                              ));
+                          })()}
                           
-                          {/* 툴팁 레이어 - 호버된 포인트만 렌더링 (성능 최적화) */}
+                          {/* 툴팁 레이어 - 호버된 포인트 렌더링 */}
                           {hoveredPointIndex !== null && (() => {
                             const point = filteredData[hoveredPointIndex];
                             if (!point) return null;
                             
                             const normalizedId = normalizePanelId(point.panelId);
                             const isHighlighted = highlightedPanelIds.has(normalizedId);
+                            // 호버된 경우 툴팁 표시
                             const isHovered = true; // 이 블록은 호버된 포인트만 렌더링하므로 항상 true
                             const cx = xScale(point.x);
                             const cy = yScale(point.y);
                             const clusterName = `C${point.cluster + 1}`;
                             const clusterProfile = clusterProfiles.find(p => p.cluster === point.cluster);
-                            const clusterDisplayName = clusterProfile?.name || clusterName;
+                            const clusterDisplayName = (clusterProfile as any)?.name_main || clusterProfile?.name || clusterName;
                             const panelInfo = searchedPanelInfo[normalizedId] || searchedPanelInfo[point.panelId || ''];
+                            
+                            // 군집 프로필에서 소득 및 가족 구성 정보 추출
+                            const clusterIncome = clusterProfile ? (
+                              (clusterProfile as any).features?.Q6_income || 
+                              (clusterProfile as any).features?.avg_income ||
+                              clusterProfile.distinctive_features?.find((f: any) => 
+                                f.feature === 'Q6_income' || f.feature === 'Q6_scaled'
+                              )?.value
+                            ) : null;
+                            
+                            const clusterHasChildren = clusterProfile ? (
+                              (clusterProfile as any).features?.has_children ||
+                              clusterProfile.distinctive_features?.find((f: any) => 
+                                f.feature === 'has_children'
+                              )?.value
+                            ) : null;
+                            
+                            const clusterSize = clusterProfile?.size || 0;
+                            const clusterPercentage = clusteringMeta?.n_samples 
+                              ? ((clusterSize / clusteringMeta.n_samples) * 100).toFixed(2)
+                              : '0.00';
                               
-                              // 호버 시 더 큰 툴팁
+                              // 호버 시 더 큰 툴팁 (소득/가족 정보 포함)
                               const hasExtendedInfo = panelInfo && (panelInfo.job || panelInfo.education || panelInfo.income);
-                              const tooltipWidth = isHovered ? (hasExtendedInfo ? 220 : 180) : 120;
-                              const tooltipHeight = isHovered ? (panelInfo ? (hasExtendedInfo ? 140 : 100) : 60) : 30;
-                              const tooltipX = cx + 12;
-                              const tooltipY = cy - (isHovered ? (panelInfo ? 80 : 50) : 35);
+                              const hasClusterInfo = clusterIncome !== null || clusterHasChildren !== null;
                               
-                              // SVG 경계 내로 제한 (음수 방지)
-                              const maxX = Math.max(0, width - tooltipWidth);
-                              const maxY = Math.max(0, height - tooltipHeight);
-                              const safeX = Math.max(0, Math.min(tooltipX, maxX));
-                              const safeY = Math.max(0, Math.min(tooltipY, maxY));
-                              const safeWidth = Math.max(0, Math.min(tooltipWidth, width - safeX));
-                              const safeHeight = Math.max(0, Math.min(tooltipHeight, height - safeY));
+                              // 툴팁 크기 계산
+                              const tooltipPadding = 12;
+                              const tooltipMinWidth = 180;
+                              const tooltipMaxWidth = 280;
+                              const tooltipWidth = isHovered 
+                                ? Math.min(tooltipMaxWidth, Math.max(tooltipMinWidth, hasExtendedInfo || hasClusterInfo ? 260 : 200))
+                                : 140;
+                              
+                              // 툴팁 높이 계산 (동적)
+                              let tooltipHeight = 40; // 기본 높이 (패널 ID + 군집명)
+                              if (isHovered) {
+                                if (panelInfo) {
+                                  tooltipHeight += 20; // 나이/성별
+                                  if (panelInfo.region) tooltipHeight += 18;
+                                  if (panelInfo.job) tooltipHeight += 18;
+                                  if (panelInfo.education) tooltipHeight += 18;
+                                  if (panelInfo.income) tooltipHeight += 18;
+                                }
+                                if (hasClusterInfo) {
+                                  tooltipHeight += 20; // 크기
+                                  if (clusterIncome !== null) tooltipHeight += 18;
+                                  if (clusterHasChildren !== null) tooltipHeight += 18;
+                                }
+                              }
+                              tooltipHeight += tooltipPadding * 2; // 상하 패딩
+                              
+                              // 스마트 위치 계산: 포인트 위치에 따라 툴팁 위치 자동 조정
+                              const offset = 16; // 포인트와 툴팁 사이 간격
+                              const margin = 8; // 화면 가장자리 여백
+                              
+                              // 기본 위치 (포인트 오른쪽 위)
+                              let tooltipX = cx + offset;
+                              let tooltipY = cy - tooltipHeight - offset;
+                              
+                              // 오른쪽 경계 체크
+                              if (tooltipX + tooltipWidth + margin > width) {
+                                // 왼쪽으로 이동
+                                tooltipX = cx - tooltipWidth - offset;
+                              }
+                              
+                              // 왼쪽 경계 체크
+                              if (tooltipX < margin) {
+                                // 중앙 정렬
+                                tooltipX = Math.max(margin, Math.min(cx - tooltipWidth / 2, width - tooltipWidth - margin));
+                              }
+                              
+                              // 위쪽 경계 체크
+                              if (tooltipY < margin) {
+                                // 아래쪽으로 이동
+                                tooltipY = cy + offset;
+                              }
+                              
+                              // 아래쪽 경계 체크
+                              if (tooltipY + tooltipHeight + margin > height) {
+                                // 위쪽으로 이동 (높이 조정)
+                                tooltipY = Math.max(margin, height - tooltipHeight - margin);
+                              }
+                              
+                              // 최종 경계 체크 및 조정
+                              const safeX = Math.max(margin, Math.min(tooltipX, width - tooltipWidth - margin));
+                              const safeY = Math.max(margin, Math.min(tooltipY, height - tooltipHeight - margin));
+                              const safeWidth = Math.min(tooltipWidth, width - safeX - margin);
+                              const safeHeight = Math.min(tooltipHeight, height - safeY - margin);
                               
                               // 툴팁이 유효한 크기일 때만 렌더링
-                              if (safeWidth <= 0 || safeHeight <= 0 || safeX < 0 || safeY < 0) {
+                              if (safeWidth < tooltipMinWidth * 0.8 || safeHeight < 40 || safeX < 0 || safeY < 0) {
                                 return null;
                               }
                               
                               // 검색된 패널의 기본 툴팁은 반투명하게, 호버 시 더 진하게
                               const opacity = isHovered ? 0.95 : (isHighlighted ? 0.7 : 0.95);
                               
+                            // 텍스트 말줄임표 처리 함수
+                            const truncateText = (text: string, maxLength: number) => {
+                              if (!text) return '';
+                              return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text;
+                            };
+                            
+                            // 텍스트 최대 너비 계산 (툴팁 너비 - 패딩)
+                            const maxTextWidth = safeWidth - tooltipPadding * 2;
+                            const maxTextLength = Math.floor(maxTextWidth / 7); // 대략적인 문자 수 (폰트 크기 기준)
+                            
                             return (
                               <g key={`tooltip-${hoveredPointIndex}`} style={{ pointerEvents: 'none' }}>
+                                  {/* 배경 */}
                                   <rect
                                     x={safeX}
                                     y={safeY}
@@ -2735,107 +2812,199 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                                     height={safeHeight}
                                     fill={isDark ? `rgba(17, 24, 39, ${opacity})` : `rgba(255, 255, 255, ${opacity})`}
                                     stroke={isHighlighted ? '#F59E0B' : (isDark ? 'rgba(255, 255, 255, 0.3)' : '#E5E7EB')}
-                                    strokeWidth={isHovered ? "1" : "0.5"}
-                                    rx="6"
-                                    filter={isHovered ? "drop-shadow(0 4px 12px rgba(0,0,0,0.15))" : "drop-shadow(0 2px 4px rgba(0,0,0,0.1))"}
+                                    strokeWidth={isHovered ? "1.5" : "0.5"}
+                                    rx="8"
+                                    filter={isHovered ? "drop-shadow(0 4px 16px rgba(0,0,0,0.2))" : "drop-shadow(0 2px 8px rgba(0,0,0,0.1))"}
                                   />
                                   
+                                  {/* 강조 배경 (검색된 패널) */}
                                   {isHighlighted && (
                                     <rect
                                       x={safeX}
                                       y={safeY}
                                       width={safeWidth}
-                                      height={Math.min(20, safeHeight)}
-                                      fill={isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7'}
-                                      rx="6"
+                                      height={24}
+                                      fill={isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7'}
+                                      rx="8"
                                     />
                                   )}
                                   
+                                  {/* 패널 ID */}
                                   <text
-                                    x={safeX + 6}
-                                    y={safeY + (isHovered ? (panelInfo ? 40 : 20) : 20)}
-                                    fill={isDark ? `rgba(255, 255, 255, ${isHovered ? 0.9 : 0.7})` : `rgba(17, 24, 39, ${isHovered ? 1 : 0.8})`}
+                                    x={safeX + tooltipPadding}
+                                    y={safeY + tooltipPadding + 14}
+                                    fill={isDark ? `rgba(255, 255, 255, ${isHovered ? 1 : 0.9})` : `rgba(17, 24, 39, ${isHovered ? 1 : 0.9})`}
                                     fontSize={isHovered ? "13" : "11"}
-                                    fontWeight={isHovered ? "600" : "500"}
+                                    fontWeight="600"
                                   >
-                                    {point.panelId || 'Unknown'}{isHighlighted && ' ✨'}
+                                    <tspan>{truncateText(point.panelId || 'Unknown', maxTextLength)}{isHighlighted && ' ✨'}</tspan>
                                   </text>
                                   
-                                  {isHovered && (
-                                    <>
-                                      <text
-                                        x={safeX + 6}
-                                        y={safeY + (panelInfo ? 55 : 35)}
-                                        fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'}
-                                        fontSize="12"
-                                      >
-                                        군집: {clusterDisplayName}
-                                      </text>
+                                  {isHovered && (() => {
+                                    let currentY = safeY + tooltipPadding + 14 + 20; // 패널 ID 아래
+                                    const lineHeight = 18;
+                                    const textX = safeX + tooltipPadding;
+                                    
+                                    return (
+                                      <>
+                                        {/* 군집명 */}
+                                        <text
+                                          x={textX}
+                                          y={currentY}
+                                          fill={isDark ? 'rgba(255, 255, 255, 0.95)' : '#4B5563'}
+                                          fontSize="12"
+                                          fontWeight="600"
+                                        >
+                                          <tspan>군집: {truncateText(clusterDisplayName, maxTextLength - 3)}</tspan>
+                                        </text>
+                                        {(() => { currentY += lineHeight; return null; })()}
+                                        
+                                        {/* 군집 통계 정보 */}
+                                        {hasClusterInfo && (
+                                          <>
+                                            <text
+                                              x={textX}
+                                              y={currentY}
+                                              fill={isDark ? 'rgba(255, 255, 255, 0.85)' : '#6B7280'}
+                                              fontSize="11"
+                                            >
+                                              <tspan>크기: {clusterSize.toLocaleString()}명 ({clusterPercentage}%)</tspan>
+                                            </text>
+                                            {(() => { currentY += lineHeight; return null; })()}
+                                            
+                                            {clusterIncome !== null && (
+                                              <>
+                                                <text
+                                                  x={textX}
+                                                  y={currentY}
+                                                  fill={isDark ? 'rgba(255, 255, 255, 0.85)' : '#6B7280'}
+                                                  fontSize="11"
+                                                >
+                                                  <tspan>평균 소득: {Math.round(clusterIncome).toLocaleString()}만원</tspan>
+                                                </text>
+                                                {(() => { currentY += lineHeight; return null; })()}
+                                              </>
+                                            )}
+                                            
+                                            {clusterHasChildren !== null && (
+                                              <>
+                                                <text
+                                                  x={textX}
+                                                  y={currentY}
+                                                  fill={isDark ? 'rgba(255, 255, 255, 0.85)' : '#6B7280'}
+                                                  fontSize="11"
+                                                >
+                                                  <tspan>자녀 보유: {Math.round(clusterHasChildren * 100)}%</tspan>
+                                                </text>
+                                                {(() => { currentY += lineHeight; return null; })()}
+                                              </>
+                                            )}
+                                          </>
+                                        )}
                                       
-                                      {panelInfo && (
-                                        <>
-                                          <text
-                                            x={safeX + 6}
-                                            y={safeY + 70}
-                                            fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#9CA3AF'}
-                                            fontSize="11"
-                                          >
-                                            {panelInfo.age && `나이: ${panelInfo.age}세`}
-                                            {panelInfo.gender && ` | ${panelInfo.gender === 'M' || panelInfo.gender === 'male' ? '남성' : panelInfo.gender === 'F' || panelInfo.gender === 'female' ? '여성' : panelInfo.gender}`}
-                                          </text>
-                                          {panelInfo.region && (
-                                            <text
-                                              x={safeX + 6}
-                                              y={safeY + 85}
-                                              fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#9CA3AF'}
-                                              fontSize="11"
-                                            >
-                                              지역: {panelInfo.region}
-                                            </text>
-                                          )}
-                                          {panelInfo.job && (
-                                            <text
-                                              x={safeX + 6}
-                                              y={safeY + 100}
-                                              fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#9CA3AF'}
-                                              fontSize="11"
-                                            >
-                                              직업: {panelInfo.job}
-                                            </text>
-                                          )}
-                                          {panelInfo.education && (
-                                            <text
-                                              x={safeX + 6}
-                                              y={safeY + 115}
-                                              fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#9CA3AF'}
-                                              fontSize="11"
-                                            >
-                                              학력: {panelInfo.education}
-                                            </text>
-                                          )}
-                                          {panelInfo.income && (
-                                            <text
-                                              x={safeX + 6}
-                                              y={safeY + 130}
-                                              fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#9CA3AF'}
-                                              fontSize="11"
-                                            >
-                                              소득: {panelInfo.income}
-                                            </text>
-                                          )}
-                                        </>
-                                      )}
-                                      
-                                      <text
-                                        x={safeX + 6}
-                                        y={safeY + (panelInfo ? (hasExtendedInfo ? 145 : 95) : 55)}
-                                        fill={isDark ? 'rgba(255, 255, 255, 0.7)' : '#9CA3AF'}
-                                        fontSize="9"
-                                      >
-                                        ({point.x.toFixed(2)}, {point.y.toFixed(2)})
-                                      </text>
-                                    </>
-                                  )}
+                                        
+                                        {/* 패널 정보 */}
+                                        {panelInfo && (() => {
+                                          const panelTextX = safeX + tooltipPadding;
+                                          let panelY = safeY + tooltipPadding + 14 + 20; // 패널 ID 아래
+                                          const panelLineHeight = 18;
+                                          
+                                          // 군집명이 있으면 그 아래부터
+                                          panelY += panelLineHeight;
+                                          
+                                          // 군집 통계가 있으면 추가
+                                          if (hasClusterInfo) {
+                                            panelY += panelLineHeight; // 크기
+                                            if (clusterIncome !== null) panelY += panelLineHeight;
+                                            if (clusterHasChildren !== null) panelY += panelLineHeight;
+                                          }
+                                          
+                                          return (
+                                            <>
+                                              {/* 나이/성별 */}
+                                              {(panelInfo.age || panelInfo.gender) && (
+                                                <>
+                                                  <text
+                                                    x={panelTextX}
+                                                    y={panelY}
+                                                    fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'}
+                                                    fontSize="11"
+                                                  >
+                                                    <tspan>
+                                                      {panelInfo.age && `나이: ${panelInfo.age}세`}
+                                                      {panelInfo.age && panelInfo.gender && ' • '}
+                                                      {panelInfo.gender && (panelInfo.gender === 'M' || panelInfo.gender === 'male' ? '남성' : panelInfo.gender === 'F' || panelInfo.gender === 'female' ? '여성' : panelInfo.gender)}
+                                                    </tspan>
+                                                  </text>
+                                                  {(() => { panelY += panelLineHeight; return null; })()}
+                                                </>
+                                              )}
+                                              
+                                              {/* 지역 */}
+                                              {panelInfo.region && (
+                                                <>
+                                                  <text
+                                                    x={panelTextX}
+                                                    y={panelY}
+                                                    fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'}
+                                                    fontSize="11"
+                                                  >
+                                                    <tspan>지역: {truncateText(panelInfo.region, maxTextLength - 3)}</tspan>
+                                                  </text>
+                                                  {(() => { panelY += panelLineHeight; return null; })()}
+                                                </>
+                                              )}
+                                              
+                                              {/* 직업 */}
+                                              {panelInfo.job && (
+                                                <>
+                                                  <text
+                                                    x={panelTextX}
+                                                    y={panelY}
+                                                    fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'}
+                                                    fontSize="11"
+                                                  >
+                                                    <tspan>직업: {truncateText(panelInfo.job, maxTextLength - 3)}</tspan>
+                                                  </text>
+                                                  {(() => { panelY += panelLineHeight; return null; })()}
+                                                </>
+                                              )}
+                                              
+                                              {/* 학력 */}
+                                              {panelInfo.education && (
+                                                <>
+                                                  <text
+                                                    x={panelTextX}
+                                                    y={panelY}
+                                                    fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'}
+                                                    fontSize="11"
+                                                  >
+                                                    <tspan>학력: {truncateText(panelInfo.education, maxTextLength - 3)}</tspan>
+                                                  </text>
+                                                  {(() => { panelY += panelLineHeight; return null; })()}
+                                                </>
+                                              )}
+                                              
+                                              {/* 소득 */}
+                                              {panelInfo.income && (
+                                                <>
+                                                  <text
+                                                    x={panelTextX}
+                                                    y={panelY}
+                                                    fill={isDark ? 'rgba(255, 255, 255, 0.9)' : '#6B7280'}
+                                                    fontSize="11"
+                                                  >
+                                                    <tspan>소득: {truncateText(String(panelInfo.income), maxTextLength - 3)}</tspan>
+                                                  </text>
+                                                  {(() => { panelY += panelLineHeight; return null; })()}
+                                                </>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
+                                      </>
+                                    );
+                                  })()}
                                 </g>
                               );
                           })()}
@@ -2848,7 +3017,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                 )}
                 
                 {/* Legend는 이제 UMAP 차트 위에 오버레이로 표시됨 (제거) */}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2906,7 +3076,7 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                 } else {
                   sizeCategory = 'small';
                   sizeLabel = '소형';
-                  clusterTags.push('소형 군집');
+                  // clusterTags.push('소형 군집'); // 제거: 소형 집중군집 프로필 표시 안 함
                 }
                 
                 // 크기 순위 계산 (큰 순서대로)
@@ -2931,17 +3101,24 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                   } else if (sizeCategory === 'medium') {
                     return `${sizeLabel} 특화군집`;
                   } else {
-                    return `${sizeLabel} 집중군집`;
+                    // 소형 집중군집 프로필 제거: 기본 이름만 반환
+                    return `군집 ${cluster.id + 1}`;
                   }
                 };
                 
                 let clusterName: string;
+                let clusterNameMain: string | undefined;
+                let clusterNameSub: string | undefined;
                 let distinctiveFeatures: Array<{feature: string, value: number, avg: number, diff: number}> = [];
                 
                 // 백엔드에서 제공하는 데이터를 최우선으로 사용 (HDBSCAN 분석 기반)
                 if (clusterProfile) {
-                  // 1. 백엔드에서 제공하는 name이 있으면 최우선 사용
-                  if (clusterProfile.name) {
+                  // 1. 백엔드에서 제공하는 name_main이 있으면 최우선 사용
+                  if ((clusterProfile as any).name_main) {
+                    clusterNameMain = (clusterProfile as any).name_main;
+                    clusterNameSub = (clusterProfile as any).name_sub;
+                    clusterName = clusterNameMain;
+                  } else if (clusterProfile.name) {
                     clusterName = clusterProfile.name;
                   } else if (clusterProfile.distinctive_features && clusterProfile.distinctive_features.length > 0) {
                     // 백엔드에서 제공하는 distinctive_features로 군집 이름 생성 (한글 매핑 적용)
@@ -3297,6 +3474,37 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                         description: (clusterProfile as any)?.description || `${cluster.size}명의 패널이 포함된 군집 (${percentage.toFixed(2)}%)`,
                         searchedPanels: clusterSearchedPanels
                       });
+                      
+                      // 히스토리에 저장
+                      try {
+                        const clusterHistoryData = {
+                          count: cluster.size,
+                          percentage: percentage.toFixed(2),
+                          size: cluster.size,
+                          tags: clusterTags,
+                          snippets: clusterSnippets,
+                          insights: clusterProfile?.insights || [],
+                          features: distinctiveFeatures,
+                          silhouette: clusteringMeta?.silhouette_score,
+                          color: clusterColor,
+                          description: (clusterProfile as any)?.description || `${cluster.size}명의 패널이 포함된 군집 (${percentage.toFixed(2)}%)`,
+                        };
+                        
+                        // 해당 군집의 UMAP 데이터 추출
+                        const clusterUmapData = umapData.filter(p => p.cluster === cluster.id);
+                        
+                        const historyItem = historyManager.createClusterHistory(
+                          String(cluster.id),
+                          clusterName,
+                          clusterHistoryData,
+                          clusterUmapData.length > 0 ? clusterUmapData : undefined
+                        );
+                        historyManager.save(historyItem);
+                        console.log('[ClusterLab] 군집 히스토리 저장:', clusterName);
+                      } catch (historyError) {
+                        console.warn('[ClusterLab] 히스토리 저장 실패:', historyError);
+                      }
+                      
                       setIsClusterDetailOpen(true);
                     }
                   }}
@@ -3311,6 +3519,9 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
                     size={cluster.size}
                     silhouette={clusteringMeta?.silhouette_score}
                     snippets={clusterSnippets.length > 0 ? clusterSnippets : ['분석 중...']}
+                    name_main={clusterNameMain}
+                    name_sub={clusterNameSub}
+                    tags_hierarchical={(clusterProfile as any)?.tags_hierarchical}
                   />
                 </div>
                 );
@@ -3790,30 +4001,8 @@ export function ClusterLabPage({ locatedPanelId, searchResults = [], query = '',
       
       {/* 반짝반짝 애니메이션 스타일 */}
       <style>{`
-        @keyframes twinkle {
-          0%, 100% {
-            opacity: 1;
-            transform: scale(1);
-            filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.8));
-          }
-          50% {
-            opacity: 0.85;
-            transform: scale(1.15);
-            filter: drop-shadow(0 0 12px rgba(245, 158, 11, 1));
-          }
-        }
-        
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.7;
-          }
-        }
         
         .searched-panel-marker {
-          animation: twinkle 2s ease-in-out infinite;
           filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.8));
         }
       `}      </style>

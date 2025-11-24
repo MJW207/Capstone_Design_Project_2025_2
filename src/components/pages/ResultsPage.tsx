@@ -30,11 +30,10 @@ interface ResultsPageProps {
   onFilterOpen: () => void;
   onExportOpen: () => void;
   onPanelDetailOpen: (panelId: string) => void;
-  onLocatePanel?: (panelId: string) => void;
   filters?: any;
   onQueryChange?: (query: string) => void;
   onSearch?: (query: string) => void;
-  onDataChange?: (data: Panel[]) => void;
+  onDataChange?: (data: Panel[], allResults?: Panel[]) => void;
   onFiltersChange?: (filters: any) => void;
   onTotalResultsChange?: (total: number) => void;
   onPresetEdit?: (preset: any) => void;
@@ -71,7 +70,6 @@ export function ResultsPage({
   onFilterOpen,
   onExportOpen,
   onPanelDetailOpen,
-  onLocatePanel,
   filters: propFilters = {},
   onQueryChange,
   onSearch,
@@ -281,6 +279,14 @@ export function ResultsPage({
       setQwCount(paginatedResults.filter((p: Panel) => p.coverage === 'qw').length);
       setWOnlyCount(paginatedResults.filter((p: Panel) => p.coverage === 'w').length);
       
+      // 전체 검색 결과를 상위 컴포넌트에 전달 (UMAP용)
+      if (onDataChange) {
+        onDataChange(paginatedResults, searchCache.allResults);
+      }
+      if (onTotalResultsChange) {
+        onTotalResultsChange(searchCache.total);
+      }
+      
       return;
     }
     
@@ -319,6 +325,14 @@ export function ResultsPage({
       // Q+W, W only 카운트 (전체 결과 기준)
       setQwCount(allResults.filter((p: Panel) => p.coverage === 'qw').length);
       setWOnlyCount(allResults.filter((p: Panel) => p.coverage === 'w').length);
+      
+      // 전체 검색 결과를 상위 컴포넌트에 전달 (UMAP용)
+      if (onDataChange) {
+        onDataChange(paginatedResults, allResults);
+      }
+      if (onTotalResultsChange) {
+        onTotalResultsChange(total);
+      }
       
       // 히스토리 저장 (전체 개수 사용)
       const historyItem = historyManager.createQueryHistory(query.trim(), filtersToSend, total);
@@ -400,9 +414,9 @@ export function ResultsPage({
   // 검색 결과가 변경될 때 상위 컴포넌트에 전달
   useEffect(() => {
     if (panels.length > 0) {
-      onDataChange?.(panels);
+      onDataChange?.(panels, searchCache?.allResults);
     }
-  }, [panels, onDataChange]);
+  }, [panels, onDataChange, searchCache]);
 
   // 페이지 변경 핸들러 (캐시에서 가져오기)
   const handlePageChange = (page: number) => {
@@ -1569,25 +1583,6 @@ export function ResultsPage({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {onLocatePanel && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onLocatePanel(panel.id);
-                          }}
-                          className="p-2 rounded-lg transition-colors btn--ghost"
-                          style={{ color: 'var(--brand-blue-300)' }}
-                          title="UMAP에서 위치 표시"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(37, 99, 235, 0.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <MapPin className="w-5 h-5" />
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}

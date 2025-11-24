@@ -896,12 +896,26 @@ async def get_panel_cluster_mapping(req: PanelClusterMappingRequest):
                 logger.info(f"[패널-클러스터 매핑] Precomputed 세션 ID 찾음: {db_session_id}")
                 mappings_df = await load_panel_cluster_mappings_from_db(db_session_id)
         else:
-            # 일반 세션: 먼저 NeonDB에서 직접 조회 시도
-            logger.info(f"[패널-클러스터 매핑] 일반 세션 데이터 사용: {req.session_id}")
-            mappings_df = await load_panel_cluster_mappings_from_db(req.session_id)
-            if mappings_df is not None and not mappings_df.empty:
-                db_session_id = req.session_id
-                logger.info(f"[패널-클러스터 매핑] NeonDB에서 세션 데이터 찾음: {db_session_id}")
+            # 일반 세션: UUID 형식 검증
+            import re
+            uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+            
+            # UUID가 아니거나 search_extended_로 시작하는 경우 precomputed로 fallback
+            if not uuid_pattern.match(req.session_id) or req.session_id.startswith('search_extended_'):
+                logger.info(f"[패널-클러스터 매핑] UUID 형식이 아니거나 search_extended_ 세션: {req.session_id}, precomputed로 fallback")
+                from app.utils.clustering_loader import get_precomputed_session_id
+                precomputed_name = "hdbscan_default"
+                db_session_id = await get_precomputed_session_id(precomputed_name)
+                if db_session_id:
+                    logger.info(f"[패널-클러스터 매핑] Precomputed 세션 ID 찾음: {db_session_id}")
+                    mappings_df = await load_panel_cluster_mappings_from_db(db_session_id)
+            else:
+                # 일반 세션: 먼저 NeonDB에서 직접 조회 시도
+                logger.info(f"[패널-클러스터 매핑] 일반 세션 데이터 사용: {req.session_id}")
+                mappings_df = await load_panel_cluster_mappings_from_db(req.session_id)
+                if mappings_df is not None and not mappings_df.empty:
+                    db_session_id = req.session_id
+                    logger.info(f"[패널-클러스터 매핑] NeonDB에서 세션 데이터 찾음: {db_session_id}")
         
         # NeonDB에서 매핑을 찾은 경우
         if mappings_df is not None and not mappings_df.empty:
@@ -1506,44 +1520,51 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
         logger.info(f"  - 클러스터 수: {len(searched_cluster_ids)}개")
         logger.info(f"  - 확장 패널: {len(extended_panel_ids)}개")
         
-        # 5. 결과 구성 (HDBSCAN 결과 그대로 사용)
+        # 5. 결과 구성 (정상적으로 매칭된 검색 패널만 포함)
         result_panels = []
         
-        for _, row in df_precomputed.iterrows():
-            panel_id = str(row['mb_sn']).strip()
-            panel_id_normalized = str(row['mb_sn_normalized']).lower()
-            cluster_id = int(row['cluster']) if has_cluster_col else -1
+        # 검색된 패널 중 정상적으로 매칭된 패널만 UMAP에 표시
+        for panel_id in found_panels:
+            panel_id_normalized = str(panel_id).strip().lower()
             
-            # 검색된 패널이 속한 클러스터의 패널만 포함 (또는 cluster 컬럼이 없으면 검색된 패널만)
-            if has_cluster_col:
-                include_panel = cluster_id in searched_cluster_ids
-            else:
-                include_panel = panel_id_normalized in search_panel_mb_sns
+            # df_precomputed에서 해당 패널 찾기
+            matching_rows = df_precomputed[df_precomputed['mb_sn_normalized'] == panel_id_normalized]
             
-            if include_panel:
-                is_search = panel_id_normalized in search_panel_mb_sns
+            if not matching_rows.empty:
+                row = matching_rows.iloc[0]
+                cluster_id = int(row['cluster']) if has_cluster_col else -1
                 
                 result_panels.append({
-                    'panel_id': panel_id,
+                    'panel_id': str(panel_id).strip(),
                     'umap_x': float(row['umap_x']),
                     'umap_y': float(row['umap_y']),
-                    'cluster': cluster_id,  # HDBSCAN 클러스터 ID 그대로 사용
-                    'is_search_result': bool(is_search),
+                    'cluster': cluster_id,
+                    'is_search_result': True,  # 검색된 패널이므로 항상 True
                     'original_cluster': cluster_id
                 })
         
-        # 7. 클러스터별 통계 (HDBSCAN 결과 기반)
+        logger.info(f"[5단계] 정상적으로 매칭된 검색 패널: {len(result_panels)}개")
+        
+        # 7. 클러스터별 통계 (정상적으로 매칭된 검색 패널 기준)
         cluster_stats = {}
-        for cluster_id in searched_cluster_ids:
-            cluster_panels = [p for p in result_panels if p['cluster'] == cluster_id]
-            search_count = sum(1 for p in cluster_panels if p['is_search_result'])
+        if result_panels:
+            # result_panels의 클러스터별로 통계 계산
+            cluster_panel_map = {}
+            for panel in result_panels:
+                cluster_id = panel['cluster']
+                if cluster_id not in cluster_panel_map:
+                    cluster_panel_map[cluster_id] = []
+                cluster_panel_map[cluster_id].append(panel)
             
-            cluster_stats[int(cluster_id)] = {
-                'size': len(cluster_panels),
-                'percentage': float(len(cluster_panels) / len(result_panels) * 100) if result_panels else 0.0,
-                'search_count': search_count,
-                'search_percentage': float(search_count / max(1, len(cluster_panels)) * 100)
-            }
+            for cluster_id, cluster_panels in cluster_panel_map.items():
+                search_count = sum(1 for p in cluster_panels if p['is_search_result'])
+                
+                cluster_stats[int(cluster_id)] = {
+                    'size': len(cluster_panels),
+                    'percentage': float(len(cluster_panels) / len(result_panels) * 100) if result_panels else 0.0,
+                    'search_count': search_count,
+                    'search_percentage': float(search_count / max(1, len(cluster_panels)) * 100)
+                }
         
         best_k = len(searched_cluster_ids)
         

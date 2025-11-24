@@ -237,8 +237,8 @@ async def _search_with_pinecone(
         try:
             search_result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, 
-                    lambda: pipeline.search(query_text, top_k=top_k, external_filters=external_filters)
+            None, 
+            lambda: pipeline.search(query_text, top_k=top_k, external_filters=external_filters)
                 ),
                 timeout=240.0  # 240초 타임아웃
             )

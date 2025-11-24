@@ -23,6 +23,20 @@ interface ClusterDetailDrawerProps {
     features?: Array<{feature: string, value: number, avg: number, diff: number}>;
     silhouette?: number;
     description?: string;
+    // 새로운 필드들
+    name_main?: string;
+    name_sub?: string;
+    tags_hierarchical?: {
+      primary?: Array<{label: string; icon?: string; color?: string; category?: string}>;
+      secondary?: Array<{label: string; icon?: string; category?: string}>;
+      lifestyle?: Array<{label: string; icon?: string; category?: string}>;
+    };
+    insights_storytelling?: {
+      who?: Array<{message: string}>;
+      why?: Array<{message: string}>;
+      what?: Array<{message: string}>;
+      how_different?: Array<{message: string}>;
+    };
   } | null;
   searchedPanels?: Array<{
     panelId: string;
@@ -288,8 +302,16 @@ export function ClusterDetailDrawer({ isOpen, onClose, clusterData, searchedPane
                     className="text-lg font-semibold"
                     style={{ color: colors.text.primary }}
                   >
-                    {clusterData.name}
+                    {clusterData.name_main || clusterData.name}
                   </h2>
+                  {clusterData.name_sub && (
+                    <p 
+                      className="text-xs mt-0.5"
+                      style={{ color: colors.text.secondary }}
+                    >
+                      {clusterData.name_sub}
+                    </p>
+                  )}
                   <p 
                     className="text-xs mt-0.5"
                     style={{ color: colors.text.tertiary }}
@@ -615,7 +637,115 @@ export function ClusterDetailDrawer({ isOpen, onClose, clusterData, searchedPane
             className="flex-1 overflow-y-auto px-6 py-6 space-y-4"
             style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
           >
-            {clusterData.insights && clusterData.insights.length > 0 ? (
+            {/* 스토리텔링 인사이트가 있으면 우선 표시 */}
+            {clusterData.insights_storytelling && 
+             Object.keys(clusterData.insights_storytelling).length > 0 ? (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Sparkles className="w-5 h-5" style={{ color: clusterData.color }} />
+                    <h3 className="font-semibold" style={{ color: colors.text.primary }}>
+                      스토리텔링 인사이트
+                    </h3>
+                  </div>
+                  
+                  {/* Who */}
+                  {clusterData.insights_storytelling.who && clusterData.insights_storytelling.who.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold flex items-center gap-2" style={{ color: colors.text.primary }}>
+                        <User className="w-4 h-4" style={{ color: clusterData.color }} />
+                        Who (누구인가)
+                      </h4>
+                      {clusterData.insights_storytelling.who.map((item, idx) => (
+                        <div 
+                          key={idx}
+                          className="p-4 rounded-lg text-sm"
+                          style={{
+                            background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                            color: colors.text.secondary,
+                          }}
+                        >
+                          {item.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Why */}
+                  {clusterData.insights_storytelling.why && clusterData.insights_storytelling.why.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold flex items-center gap-2" style={{ color: colors.text.primary }}>
+                        <Target className="w-4 h-4" style={{ color: clusterData.color }} />
+                        Why (왜 그런가)
+                      </h4>
+                      {clusterData.insights_storytelling.why.map((item, idx) => (
+                        <div 
+                          key={idx}
+                          className="p-4 rounded-lg text-sm"
+                          style={{
+                            background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                            color: colors.text.secondary,
+                          }}
+                        >
+                          {item.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* What */}
+                  {clusterData.insights_storytelling.what && clusterData.insights_storytelling.what.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold flex items-center gap-2" style={{ color: colors.text.primary }}>
+                        <BarChart3 className="w-4 h-4" style={{ color: clusterData.color }} />
+                        What (무엇이 다른가)
+                      </h4>
+                      {clusterData.insights_storytelling.what.map((item, idx) => (
+                        <div 
+                          key={idx}
+                          className="p-4 rounded-lg text-sm"
+                          style={{
+                            background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                            color: colors.text.secondary,
+                          }}
+                        >
+                          {item.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* How Different */}
+                  {clusterData.insights_storytelling.how_different && clusterData.insights_storytelling.how_different.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold flex items-center gap-2" style={{ color: colors.text.primary }}>
+                        <Zap className="w-4 h-4" style={{ color: clusterData.color }} />
+                        How Different (어떻게 다른가)
+                      </h4>
+                      {clusterData.insights_storytelling.how_different.map((item, idx) => (
+                        <div 
+                          key={idx}
+                          className="p-4 rounded-lg text-sm"
+                          style={{
+                            background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                            color: colors.text.secondary,
+                          }}
+                        >
+                          {item.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null
+            }
+            
+            {/* 기존 insights가 있으면 표시 (스토리텔링이 없을 때만) */}
+            {(!clusterData.insights_storytelling || Object.keys(clusterData.insights_storytelling).length === 0) && 
+             clusterData.insights && clusterData.insights.length > 0 ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 mb-4">
                   <Sparkles className="w-5 h-5" style={{ color: clusterData.color }} />
@@ -650,10 +780,13 @@ export function ClusterDetailDrawer({ isOpen, onClose, clusterData, searchedPane
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12" style={{ color: colors.text.tertiary }}>
-                <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>인사이트 데이터가 없습니다.</p>
-              </div>
+              (!clusterData.insights_storytelling || Object.keys(clusterData.insights_storytelling).length === 0) && 
+              (!clusterData.insights || clusterData.insights.length === 0) && (
+                <div className="text-center py-12" style={{ color: colors.text.tertiary }}>
+                  <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>인사이트가 없습니다.</p>
+                </div>
+              )
             )}
           </TabsContent>
         </Tabs>

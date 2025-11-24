@@ -535,6 +535,11 @@ async def get_precomputed_profiles():
                         'insights_by_category': profile.get('insights_by_category', {}),
                         'segments': profile.get('segments', {}),
                         'features': profile.get('features', {}),
+                        # 새로운 필드들 (segments에서 추출됨)
+                        'name_main': profile.get('name_main', profile.get('name', '')),
+                        'name_sub': profile.get('name_sub', ''),
+                        'tags_hierarchical': profile.get('tags_hierarchical', {}),
+                        'insights_storytelling': profile.get('insights_storytelling', {}),
                     }
                     formatted_profiles.append(formatted_profile)
                     # 디버깅: 각 프로필의 insights 확인

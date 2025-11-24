@@ -19,6 +19,13 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
+def _is_valid_uuid(session_id: str) -> bool:
+    """UUID 형식 검증 헬퍼 함수"""
+    import re
+    uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+    return bool(uuid_pattern.match(session_id))
+
+
 def _get_db_session():
     """NeonDB 세션 생성 (check_clustering_db.py와 동일한 방식)"""
     load_dotenv(override=True)
@@ -46,6 +53,11 @@ async def load_clustering_session_from_db(session_id: str) -> Optional[Dict[str,
         세션 정보 딕셔너리 또는 None
     """
     logger.info(f"[Clustering Loader] 세션 로드 시작: session_id={session_id}")
+    
+    # UUID 형식 검증
+    if not _is_valid_uuid(session_id):
+        logger.warning(f"[Clustering Loader] UUID 형식이 아닌 session_id: {session_id}, None 반환")
+        return None
     
     engine, SessionLocal = _get_db_session()
     if not engine or not SessionLocal:
@@ -117,6 +129,13 @@ async def load_panel_cluster_mappings_from_db(session_id: str) -> Optional[pd.Da
     """
     logger.info(f"[Clustering Loader] 매핑 로드 시작: session_id={session_id}")
     
+    # UUID 형식 검증
+    import re
+    uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+    if not uuid_pattern.match(session_id):
+        logger.warning(f"[Clustering Loader] UUID 형식이 아닌 session_id: {session_id}, None 반환")
+        return None
+    
     engine, SessionLocal = _get_db_session()
     if not engine or not SessionLocal:
         logger.error("[Clustering Loader] DB 세션 생성 실패")
@@ -163,6 +182,11 @@ async def load_umap_coordinates_from_db(session_id: str) -> Optional[pd.DataFram
         DataFrame (mb_sn, umap_x, umap_y) 또는 None
     """
     logger.info(f"[Clustering Loader] UMAP 좌표 로드 시작: session_id={session_id}")
+    
+    # UUID 형식 검증
+    if not _is_valid_uuid(session_id):
+        logger.warning(f"[Clustering Loader] UUID 형식이 아닌 session_id: {session_id}, None 반환")
+        return None
     
     engine, SessionLocal = _get_db_session()
     if not engine or not SessionLocal:
@@ -218,6 +242,11 @@ async def load_cluster_profiles_from_db(session_id: str) -> Optional[List[Dict[s
     """
     logger.info(f"[Clustering Loader] 클러스터 프로필 로드 시작: session_id={session_id}")
     
+    # UUID 형식 검증
+    if not _is_valid_uuid(session_id):
+        logger.warning(f"[Clustering Loader] UUID 형식이 아닌 session_id: {session_id}, None 반환")
+        return None
+    
     engine, SessionLocal = _get_db_session()
     if not engine or not SessionLocal:
         logger.error("[Clustering Loader] DB 세션 생성 실패")
@@ -249,6 +278,8 @@ async def load_cluster_profiles_from_db(session_id: str) -> Optional[List[Dict[s
             # 딕셔너리 리스트로 변환
             profiles = []
             for row in rows:
+                segments = row.segments if isinstance(row.segments, dict) else json.loads(row.segments) if row.segments else {}
+                
                 profile = {
                     'cluster': int(row.cluster_id),
                     'size': int(row.size),
@@ -258,9 +289,22 @@ async def load_cluster_profiles_from_db(session_id: str) -> Optional[List[Dict[s
                     'distinctive_features': row.distinctive_features if isinstance(row.distinctive_features, list) else (json.loads(row.distinctive_features) if isinstance(row.distinctive_features, str) else (list(row.distinctive_features) if row.distinctive_features else [])),
                     'insights': row.insights if isinstance(row.insights, list) else list(row.insights) if row.insights else [],
                     'insights_by_category': row.insights_by_category if isinstance(row.insights_by_category, dict) else json.loads(row.insights_by_category) if row.insights_by_category else {},
-                    'segments': row.segments if isinstance(row.segments, dict) else json.loads(row.segments) if row.segments else {},
+                    'segments': segments,
                     'features': row.features if isinstance(row.features, dict) else json.loads(row.features) if row.features else {},
                 }
+                
+                # segments에서 새로운 필드들을 최상위 레벨로 추출
+                if isinstance(segments, dict):
+                    profile['name_main'] = segments.get('name_main', row.name or '')
+                    profile['name_sub'] = segments.get('name_sub', '')
+                    profile['tags_hierarchical'] = segments.get('tags_hierarchical', {})
+                    profile['insights_storytelling'] = segments.get('insights_storytelling', {})
+                else:
+                    profile['name_main'] = row.name or ''
+                    profile['name_sub'] = ''
+                    profile['tags_hierarchical'] = {}
+                    profile['insights_storytelling'] = {}
+                
                 profiles.append(profile)
             
             return profiles

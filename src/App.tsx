@@ -36,6 +36,7 @@ export default function App() {
   const [searchCache, setSearchCache] = useState<{
     key: string;
     results: any[];
+    allResults: any[]; // 전체 검색 결과 (UMAP용)
     total: number;
   } | null>(null);
   const [clusteringCache, setClusteringCache] = useState<{
@@ -81,9 +82,6 @@ export default function App() {
     }
   };
   
-  // Located panel for UMAP highlight
-  const [locatedPanelId, setLocatedPanelId] = useState<string | null>(null);
-
   const handleSearch = (searchQuery: string, forceRefresh: boolean = false) => {
     const newQuery = searchQuery;
     const newFilters = forceRefresh ? {} : filters;
@@ -126,33 +124,16 @@ export default function App() {
   };
   
   
-  const handleLocatePanel = (panelId: string) => {
-    setLocatedPanelId(panelId);
-    setActiveTab('cluster');
-    
-    // Scroll to UMAP chart after tab switch
-    setTimeout(() => {
-      const umapElement = document.querySelector('[data-umap-chart]');
-      if (umapElement) {
-        umapElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      toast.success(`지도에서 ${panelId} 위치를 표시했어요`);
-    }, 200);
-    
-    // Clear highlight after 3 seconds
-    setTimeout(() => {
-      setLocatedPanelId(null);
-    }, 3000);
-  };
 
   // 검색 결과 변경 핸들러 (메모이제이션)
-  const handleDataChange = useCallback((data: any[]) => {
+  const handleDataChange = useCallback((data: any[], allResults?: any[]) => {
     setSearchResults(data);
     // 검색 결과 캐시 업데이트
     const searchKey = getSearchKey(query, filters);
     setSearchCache({
       key: searchKey,
       results: data,
+      allResults: allResults || data, // 전체 검색 결과 저장 (UMAP용)
       total: totalResults,
     });
   }, [query, filters, totalResults]);
@@ -302,7 +283,6 @@ export default function App() {
                 onFilterOpen={() => setIsFilterOpen(true)}
                 onExportOpen={() => setIsExportOpen(true)}
                 onPanelDetailOpen={handlePanelDetailOpen}
-                onLocatePanel={handleLocatePanel}
                 filters={filters}
                 onQueryChange={setQuery}
                 onSearch={handleSearch}
@@ -336,8 +316,7 @@ export default function App() {
             
             {activeTab === 'cluster' && (
               <ClusterLabPage 
-                locatedPanelId={locatedPanelId} 
-                searchResults={searchResults} 
+                searchResults={searchCache?.allResults || searchResults} 
                 query={query}
                 onNavigateToResults={() => setActiveTab('results')}
               />

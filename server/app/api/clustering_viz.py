@@ -83,6 +83,65 @@ def summarize_feature(df: pd.DataFrame, col: str) -> Optional[dict]:
     }
 
 
+def get_visual_strength(effect_size: float) -> str:
+    """시각적 강도 표현 (⚡⚡⚡⚡⚡ ~ ⚡)"""
+    abs_es = abs(effect_size)
+    if abs_es > 1.0:
+        return "⚡⚡⚡⚡⚡"
+    elif abs_es >= 0.8:
+        return "⚡⚡⚡⚡"
+    elif abs_es >= 0.5:
+        return "⚡⚡⚡"
+    elif abs_es >= 0.3:
+        return "⚡⚡"
+    elif abs_es >= 0.2:
+        return "⚡"
+    else:
+        return ""
+
+def get_visual_bar(effect_size: float) -> str:
+    """프로그레스바 표현 (10단계)"""
+    abs_es = min(abs(effect_size), 1.5)  # 최대 1.5로 제한
+    filled = int(abs_es / 1.5 * 10)
+    return "█" * filled + "░" * (10 - filled)
+
+def get_user_friendly_message(
+    feature: str,
+    cluster_mean: float,
+    overall_mean: float,
+    diff: float,
+    effect_size: float,
+    feature_labels: Optional[Dict[str, str]] = None
+) -> str:
+    """사용자 친화적 메시지 생성"""
+    if feature_labels is None:
+        feature_labels = {}
+    
+    feature_label = feature_labels.get(feature, feature)
+    
+    if feature == "age":
+        if diff < 0:
+            return f"이 그룹은 평균보다 {abs(diff):.1f}년 이상 젊어요"
+        else:
+            return f"이 그룹은 평균보다 {diff:.1f}년 이상 나이가 많아요"
+    elif "income" in feature.lower():
+        if diff > 0:
+            return f"이 그룹의 평균 소득이 {diff:.0f}만원 더 높아요"
+        else:
+            return f"이 그룹의 평균 소득이 {abs(diff):.0f}만원 더 낮아요"
+    else:
+        if abs(effect_size) >= 0.5:
+            strength = "크게"
+        elif abs(effect_size) >= 0.3:
+            strength = "상당히"
+        else:
+            strength = "약간"
+        
+        if diff > 0:
+            return f"이 그룹의 {feature_label}이(가) {strength} 높아요"
+        else:
+            return f"이 그룹의 {feature_label}이(가) {strength} 낮아요"
+
 def numeric_effect(cluster_stat: dict, overall_stat: dict) -> Optional[dict]:
     """클러스터 vs 전체 간 차이를 effect size 형태로 계산"""
     if not cluster_stat or not overall_stat:
@@ -99,12 +158,38 @@ def numeric_effect(cluster_stat: dict, overall_stat: dict) -> Optional[dict]:
     diff = cm - om
     d = diff / std  # effect size (Cohen's d 느낌)
     
+    # 시각적 표현 추가
+    visual_strength = get_visual_strength(d)
+    visual_bar = get_visual_bar(d)
+    
+    # 해석 생성
+    abs_d = abs(d)
+    if abs_d > 1.0:
+        interpretation = "극히 높음" if d > 0 else "극히 낮음"
+    elif abs_d >= 0.8:
+        interpretation = "매우 높음" if d > 0 else "매우 낮음"
+    elif abs_d >= 0.5:
+        interpretation = "높음" if d > 0 else "낮음"
+    elif abs_d >= 0.3:
+        interpretation = "보통 높음" if d > 0 else "보통 낮음"
+    elif abs_d >= 0.2:
+        interpretation = "약간 높음" if d > 0 else "약간 낮음"
+    else:
+        interpretation = "비슷함"
+    
+    # 사용자 친화적 메시지
+    user_friendly = get_user_friendly_message("", cm, om, diff, d)
+    
     return {
         "type": "numeric",
         "cluster_mean": float(cm),
         "overall_mean": float(om),
         "diff": float(diff),
         "effect_size": float(d),
+        "visual_strength": visual_strength,
+        "visual_bar": visual_bar,
+        "interpretation": interpretation,
+        "user_friendly": user_friendly,
     }
 
 
@@ -124,24 +209,60 @@ def binary_effect(cluster_stat: dict, overall_stat: dict, min_p: float = 0.05) -
     index = p_c / p_o if p_o > 0 else 0.0
     lift = index - 1.0
     
+    # 시각적 표현 추가
+    visual_strength = get_visual_strength(abs(lift))
+    visual_bar = get_visual_bar(abs(lift))
+    
+    # 해석 생성
+    abs_lift = abs(lift)
+    if abs_lift >= 0.5:
+        interpretation = "매우 높음" if lift > 0 else "매우 낮음"
+    elif abs_lift >= 0.3:
+        interpretation = "높음" if lift > 0 else "낮음"
+    elif abs_lift >= 0.2:
+        interpretation = "보통 높음" if lift > 0 else "보통 낮음"
+    else:
+        interpretation = "비슷함"
+    
+    # 사용자 친화적 메시지
+    diff_pct = (p_c - p_o) * 100
+    if lift > 0:
+        user_friendly = f"이 그룹의 {p_c*100:.0f}%가 해당 특성을 가지고 있어요 (전체 평균의 {index:.1f}배)"
+    else:
+        user_friendly = f"이 그룹의 {p_c*100:.0f}%가 해당 특성을 가지고 있어요 (전체 평균보다 {abs(diff_pct):.0f}%p 낮음)"
+    
     return {
         "type": "binary",
         "cluster_p": p_c,
         "overall_p": p_o,
         "index": float(index),
         "lift": float(lift),
+        "visual_strength": visual_strength,
+        "visual_bar": visual_bar,
+        "interpretation": interpretation,
+        "user_friendly": user_friendly,
     }
 
 
-def collect_distinctive_features(
+def collect_balanced_distinctive_features(
     df: pd.DataFrame,
     cluster_id: int,
     profile_features: dict,
     overall_stats: dict,
+    max_features: int = 10
 ) -> Tuple[List[dict], Dict[str, dict]]:
-    """도메인별로 특징적인 피쳐를 골라내서, 전체 상위 5개 정도만 남김"""
+    """균형 잡힌 특징 피처 수집 (카테고리별 할당량 보장)"""
     cluster_df = df[df["cluster"] == cluster_id]
     cluster_stats: Dict[str, dict] = {}
+    
+    # 카테고리별 할당량
+    allocation = {
+        "demographic": 3,
+        "economic": 2,
+        "device_premium": 2,
+        "lifestyle": 2,
+        "family": 1  # family는 demographic에 포함될 수 있음
+    }
     
     # 각 프로파일 feature에 대한 클러스터 요약 통계 계산
     for group_cols in profile_features.values():
@@ -180,7 +301,6 @@ def collect_distinctive_features(
                 score = abs(eff["lift"])
                 eff_type = "binary"
             else:
-                # 범주형 등은 현재 버전에서는 distinctive 후보에서 제외
                 continue
             
             results_by_group[group].append({
@@ -191,17 +311,46 @@ def collect_distinctive_features(
                 "score": float(score),
             })
     
-    # 그룹별 상위 2개씩
+    # 1단계: 각 카테고리에서 최소 할당량만큼 선택
     distinctive: List[dict] = []
+    selected_features = set()
+    
     for group, items in results_by_group.items():
         items.sort(key=lambda x: x["score"], reverse=True)
-        distinctive.extend(items[:2])
+        min_count = allocation.get(group, 0)
+        for item in items[:min_count]:
+            if item["feature"] not in selected_features:
+                distinctive.append(item)
+                selected_features.add(item["feature"])
     
-    # 전체 상위 5개
+    # 2단계: 남은 자리는 전체에서 effect size 순으로 채우기
+    remaining_slots = max_features - len(distinctive)
+    if remaining_slots > 0:
+        all_remaining = []
+        for group, items in results_by_group.items():
+            for item in items:
+                if item["feature"] not in selected_features:
+                    all_remaining.append(item)
+        
+        all_remaining.sort(key=lambda x: x["score"], reverse=True)
+        for item in all_remaining[:remaining_slots]:
+            distinctive.append(item)
+            selected_features.add(item["feature"])
+    
+    # 최종 정렬
     distinctive.sort(key=lambda x: x["score"], reverse=True)
-    distinctive = distinctive[:5]
     
     return distinctive, cluster_stats
+
+# 기존 함수는 호환성을 위해 유지
+def collect_distinctive_features(
+    df: pd.DataFrame,
+    cluster_id: int,
+    profile_features: dict,
+    overall_stats: dict,
+) -> Tuple[List[dict], Dict[str, dict]]:
+    """도메인별로 특징적인 피쳐를 골라내서, 전체 상위 5개 정도만 남김 (기존 호환)"""
+    return collect_balanced_distinctive_features(df, cluster_id, profile_features, overall_stats, max_features=5)
 
 
 def life_stage(cluster_stats: Dict[str, dict], overall_stats: Dict[str, dict]) -> str:
@@ -278,51 +427,622 @@ def flavor_tag(distinctive: List[dict]) -> str:
     return ""
 
 
+def build_two_tier_cluster_name(
+    cluster_id: int,
+    distinctive: List[dict],
+    cluster_stats: Dict[str, dict],
+    overall_stats: Dict[str, dict],
+) -> Dict[str, str]:
+    """
+    2단계 군집명 생성 (하드코딩 버전 - 특징 기반)
+    - 메인 이름: 짧고 임팩트 있게
+    - 서브 설명: 상세 특징 (실제 데이터 기반)
+    """
+    # 하드코딩된 군집명 매핑 (각 군집의 핵심 특성을 반영한 명확한 이름)
+    HARDCODED_MAIN_NAMES = {
+        0: "20대 고소득 프리미엄",  # 고소득(606만원), 24세, 프리미엄차(11%), 애플유저(55%), 자녀 없음
+        1: "20대 애플 선호군",  # 소득 평균, 26세, 애플유저(60%), 자녀 없음, 프리미엄
+        2: "50대 프리미엄 싱글",  # 소득 평균, 51세, 프리미엄, 자녀 없음(19%)
+        3: "30대 고소득 무자녀",  # 고소득(564만원), 37세, 프리미엄차(10%), 애플유저, 자녀 없음
+        4: "50대 고소득 무자녀",  # 고소득(573만원), 51세, 프리미엄차(8%), 자녀 없음
+        5: "40대 프리미엄차 가족",  # 소득 중상, 48세, 프리미엄차(53%), 자녀 있음(69%)
+        6: "60대 프리미엄 시니어",  # 소득 평균, 65세, 자녀 있음(92%), 프리미엄
+        7: "30대 프리미엄 가족",  # 소득 평균, 38세, 자녀 있음(69%), 프리미엄
+        8: "40대 고소득 가족",  # 고소득(578만원), 40세, 프리미엄차, 애플유저, 자녀 있음
+        9: "30대 프리미엄 싱글",  # 소득 평균, 36세, 자녀 없음, 프리미엄
+        10: "60대 고소득 시니어",  # 고소득(592만원), 65세, 자녀 있음(95%), 애플유저
+        11: "50대 프리미엄 가족",  # 소득 평균, 52세, 자녀 있음, 프리미엄
+        12: "50대 실속형 싱글",  # 중하소득, 51세, 자녀 없음, 실용
+        13: "60대 실속형 시니어",  # 중하소득(187만원), 66세, 자녀 있음(87%)
+        14: "30대 실속형 가족",  # 중하소득(185만원), 38세, 자녀 있음(71%)
+        15: "50대 실속형 가족",  # 중하소득(198만원), 52세, 자녀 있음, 프리미엄 태그
+        16: "50대 고소득 가족",  # 고소득(609만원), 53세, 자녀 있음(93%), 프리미엄
+        17: "30대 실속형 싱글",  # 중하소득(203만원), 36세, 자녀 없음
+        18: "20대 학생 및 애플 선호군",  # 저소득(150만원), 23세, 애플유저(55%), 자녀 없음, 학생(49%)
+    }
+    
+    # 하드코딩된 메인 이름이 있으면 사용
+    if cluster_id in HARDCODED_MAIN_NAMES:
+        main_name = HARDCODED_MAIN_NAMES[cluster_id]
+        
+        # 서브 설명은 실제 데이터로 동적 생성
+        sub_parts = []
+        
+        # 1. 소득 레벨
+        income_eff = next(
+            (d for d in distinctive 
+             if d["feature"] in ("Q6_income", "Q6_scaled") 
+             and d["effect"].get("type") == "numeric"),
+            None
+        )
+        income_effect_size = 0.0
+        if income_eff:
+            income_effect_size = income_eff["effect"]["effect_size"]
+            if income_effect_size >= 0.7:
+                sub_parts.append("고소득")
+            elif income_effect_size >= 0.3:
+                sub_parts.append("중상소득")
+            elif income_effect_size <= -0.7:
+                sub_parts.append("저소득")
+            elif income_effect_size <= -0.3:
+                sub_parts.append("중하소득")
+        else:
+            # distinctive에 없으면 cluster_stats에서 직접 확인
+            income_cs = cluster_stats.get("Q6_income") or cluster_stats.get("Q6_scaled")
+            income_os = overall_stats.get("Q6_income") or overall_stats.get("Q6_scaled")
+            if income_cs and income_os and income_cs.get("type") == "numeric" and income_os.get("type") == "numeric":
+                cm = income_cs["mean"]
+                om = income_os["mean"]
+                std_o = income_os.get("std", 1.0) or 1.0
+                income_effect_size = (cm - om) / std_o if std_o > 0 else 0.0
+                if income_effect_size >= 0.7:
+                    sub_parts.append("고소득")
+                elif income_effect_size >= 0.3:
+                    sub_parts.append("중상소득")
+                elif income_effect_size <= -0.7:
+                    sub_parts.append("저소득")
+                elif income_effect_size <= -0.3:
+                    sub_parts.append("중하소득")
+        
+        # 2. 가족 구성
+        children_eff = next(
+            (d for d in distinctive 
+             if d["feature"] == "has_children"
+             and d["effect"].get("type") == "binary"),
+            None
+        )
+        if children_eff:
+            lift = children_eff["effect"].get("lift", 0)
+            if lift > 0.2:
+                sub_parts.append("자녀 있는")
+            elif lift < -0.2:
+                sub_parts.append("자녀 없는")
+        else:
+            # distinctive에 없으면 cluster_stats에서 직접 확인
+            children_cs = cluster_stats.get("has_children")
+            if children_cs and children_cs.get("type") == "binary":
+                p = children_cs.get("p", 0)
+                if p > 0.6:
+                    sub_parts.append("자녀 있는")
+                elif p < 0.4:
+                    sub_parts.append("자녀 없는")
+        
+        # 3. 애플 유저 (특정 군집에만 표시, 중복 방지)
+        apple_eff = next(
+            (d for d in distinctive 
+             if d["feature"] == "is_apple_user"
+             and d["effect"].get("type") == "binary"
+             and d["effect"].get("lift", 0) > 0.3),
+            None
+        )
+        if apple_eff:
+            # 중복 체크: 이미 "애플유저"가 sub_parts에 없을 때만 추가
+            if "애플유저" not in "·".join(sub_parts):
+                sub_parts.append("애플유저")
+        
+        # 4. 평균 연령 (실제 데이터로)
+        age_cs = cluster_stats.get("age")
+        if age_cs and age_cs.get("type") == "numeric":
+            cm = age_cs["mean"]
+            sub_parts.append(f"평균 {cm:.0f}세")
+        
+        # 중복 제거 (순서 유지)
+        seen = set()
+        sub_parts_unique = []
+        for item in sub_parts:
+            if item not in seen:
+                seen.add(item)
+                sub_parts_unique.append(item)
+        sub_parts = sub_parts_unique
+        
+        sub_description = "·".join(sub_parts) if sub_parts else ""
+        
+        return {
+            "main": main_name,
+            "sub": sub_description
+        }
+    
+    # 하드코딩된 이름이 없으면 동적 생성 로직 사용
+    main_parts = []
+    sub_parts = []
+    
+    # === 메인 이름 생성 (최대 3-4단어) ===
+    
+    # 1. 소득 레벨 (메인 이름에 우선 반영)
+    income_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("Q6_income", "Q6_scaled") 
+         and d["effect"].get("type") == "numeric"),
+        None
+    )
+    income_effect_size = 0.0
+    if income_eff:
+        income_effect_size = income_eff["effect"]["effect_size"]
+        if income_effect_size >= 0.7:
+            main_parts.append("고소득")
+            sub_parts.append("고소득")
+        elif income_effect_size >= 0.3:
+            sub_parts.append("중상소득")
+        elif income_effect_size <= -0.7:
+            main_parts.append("저소득")
+            sub_parts.append("저소득")
+        elif income_effect_size <= -0.3:
+            sub_parts.append("중하소득")
+    else:
+        # distinctive에 없으면 cluster_stats에서 직접 확인
+        income_cs = cluster_stats.get("Q6_income") or cluster_stats.get("Q6_scaled")
+        income_os = overall_stats.get("Q6_income") or overall_stats.get("Q6_scaled")
+        if income_cs and income_os and income_cs.get("type") == "numeric" and income_os.get("type") == "numeric":
+            cm = income_cs["mean"]
+            om = income_os["mean"]
+            std_o = income_os.get("std", 1.0) or 1.0
+            income_effect_size = (cm - om) / std_o if std_o > 0 else 0.0
+            if income_effect_size >= 0.7:
+                main_parts.append("고소득")
+                sub_parts.append("고소득")
+            elif income_effect_size >= 0.3:
+                sub_parts.append("중상소득")
+            elif income_effect_size <= -0.7:
+                main_parts.append("저소득")
+                sub_parts.append("저소득")
+            elif income_effect_size <= -0.3:
+                sub_parts.append("중하소득")
+    
+    # 2. 연령대 (핵심 인구통계)
+    premium_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("Q8_premium_index", "is_premium_car", "is_apple_user")
+         and d["effect"].get("type") in ("numeric", "binary")),
+        None
+    )
+    if premium_eff:
+        eff = premium_eff["effect"]
+        if eff.get("type") == "numeric" and eff.get("effect_size", 0) > 0.5:
+            main_parts.append("프리미엄")
+        elif eff.get("type") == "binary" and eff.get("lift", 0) > 0.3:
+            main_parts.append("프리미엄")
+        elif eff.get("type") == "numeric" and eff.get("effect_size", 0) < -0.3:
+            main_parts.append("실용")
+    
+    # 테크 프리미엄 체크
+    tech_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("is_apple_user", "is_premium_phone")
+         and d["effect"].get("type") == "binary"
+         and d["effect"].get("lift", 0) > 0.3),
+        None
+    )
+    if tech_eff and "프리미엄" not in main_parts:
+        main_parts.append("테크 프리미엄")
+    
+    age_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "age" 
+         and d["effect"].get("type") == "numeric"),
+        None
+    )
+    age_mean = None
+    if age_eff:
+        age_mean = age_eff["effect"]["cluster_mean"]
+    else:
+        age_cs = cluster_stats.get("age")
+        if age_cs and age_cs.get("type") == "numeric":
+            age_mean = age_cs["mean"]
+    
+    if age_mean is not None:
+        if age_mean < 30:
+            main_parts.append("20대")
+        elif age_mean < 35:
+            main_parts.append("30대")
+        elif age_mean < 45:
+            main_parts.append("40대")
+        elif age_mean < 55:
+            main_parts.append("50대")
+        elif age_mean < 60:
+            main_parts.append("50대")
+        else:
+            main_parts.append("시니어")
+    
+    # 3. 프리미엄/실용 성향
+    premium_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("Q8_premium_index", "is_premium_car", "is_apple_user")
+         and d["effect"].get("type") in ("numeric", "binary")),
+        None
+    )
+    if premium_eff:
+        eff = premium_eff["effect"]
+        if eff.get("type") == "numeric" and eff.get("effect_size", 0) > 0.5:
+            if "프리미엄" not in " ".join(main_parts):
+                main_parts.append("프리미엄")
+        elif eff.get("type") == "binary" and eff.get("lift", 0) > 0.3:
+            if "프리미엄" not in " ".join(main_parts):
+                main_parts.append("프리미엄")
+        elif eff.get("type") == "numeric" and eff.get("effect_size", 0) < -0.3:
+            if "실용" not in " ".join(main_parts):
+                main_parts.append("실용")
+    
+    # 4. 프리미엄차 보유 (특별 케이스)
+    car_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "is_premium_car"
+         and d["effect"].get("type") == "binary"
+         and d["effect"].get("lift", 0) > 0.3),
+        None
+    )
+    if car_eff and "프리미엄차" not in " ".join(main_parts):
+        # 기존 프리미엄을 프리미엄차로 교체
+        if "프리미엄" in main_parts:
+            main_parts = [p.replace("프리미엄", "프리미엄차") if p == "프리미엄" else p for p in main_parts]
+        else:
+            main_parts.append("프리미엄차")
+        main_parts.append("보유")
+    
+    # 4. 가족 구성 (메인 이름과 서브 설명 모두에 사용)
+    children_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "has_children"
+         and d["effect"].get("type") == "binary"),
+        None
+    )
+    has_children = None
+    if children_eff:
+        lift = children_eff["effect"].get("lift", 0)
+        if lift > 0.2:
+            has_children = True
+            sub_parts.append("자녀 있는")
+        elif lift < -0.2:
+            has_children = False
+            sub_parts.append("자녀 없는")
+    else:
+        # distinctive에 없으면 cluster_stats에서 직접 확인
+        children_cs = cluster_stats.get("has_children")
+        if children_cs and children_cs.get("type") == "binary":
+            p = children_cs.get("p", 0)
+            if p > 0.6:
+                has_children = True
+                sub_parts.append("자녀 있는")
+            elif p < 0.4:
+                has_children = False
+                sub_parts.append("자녀 없는")
+    
+    # 5. 가족/싱글 (연령대 다음에 추가)
+    if has_children is True and age_mean is not None:
+        if age_mean >= 60:
+            if "시니어" in main_parts:
+                main_parts = [p.replace("시니어", "시니어 가족") if p == "시니어" else p for p in main_parts]
+            else:
+                main_parts.append("가족")
+        elif age_mean < 40:
+            if "20대" in main_parts or "30대" in main_parts:
+                main_parts.append("가족")
+        elif age_mean >= 40 and age_mean < 60:
+            if "40대" in main_parts or "50대" in main_parts:
+                main_parts.append("가족")
+    elif has_children is False and age_mean is not None and age_mean < 40:
+        if "20대" in main_parts or "30대" in main_parts:
+            main_parts.append("싱글")
+    
+    # 메인 이름 생성 (최대 4단어)
+    main_name = " ".join(main_parts[:4]) if main_parts else f"군집 {cluster_id}"
+    
+    # === 서브 설명 생성 (상세 특징) ===
+    # (소득, 가족 구성은 이미 위에서 추가됨)
+    
+    # 3. 애플 유저 (특정 군집에만 표시)
+    apple_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "is_apple_user"
+         and d["effect"].get("type") == "binary"
+         and d["effect"].get("lift", 0) > 0.3),
+        None
+    )
+    if apple_eff:
+        sub_parts.append("애플유저")
+    
+    # 4. 지역
+    metro_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("is_metro", "is_metro_city")
+         and d["effect"].get("type") == "binary"),
+        None
+    )
+    if metro_eff:
+        lift = metro_eff["effect"].get("lift", 0)
+        if lift > 0.2:
+            sub_parts.append("대도시 거주")
+        elif lift < -0.2:
+            sub_parts.append("중소도시 거주")
+    
+    # 3. 애플 유저 (특정 군집에만 표시)
+    apple_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "is_apple_user"
+         and d["effect"].get("type") == "binary"
+         and d["effect"].get("lift", 0) > 0.3),
+        None
+    )
+    if apple_eff:
+        sub_parts.append("애플유저")
+    
+    # 4. 평균 연령 (구체적 수치)
+    if age_mean is not None:
+        sub_parts.append(f"평균 {age_mean:.0f}세")
+    
+    # 서브 설명 생성
+    sub_description = "·".join(sub_parts) if sub_parts else ""
+    
+    return {
+        "main": main_name,
+        "sub": sub_description
+    }
+
+
+def generate_hierarchical_tags(
+    distinctive: List[dict],
+    cluster_stats: Dict[str, dict],
+    overall_stats: Dict[str, dict],
+    percentage: float
+) -> Dict[str, List[Dict[str, Any]]]:
+    """계층적 태그 생성 (1차 + 2차 + 라이프스타일)"""
+    
+    # 아이콘 매핑
+    ICON_MAP = {
+        "premium": "💎",
+        "tech": "📱",
+        "age_20s": "👔",
+        "age_30s": "💼",
+        "age_40s": "👨‍💼",
+        "age_50s": "👴",
+        "metro": "🏙️",
+        "education": "🎓",
+        "family": "👨‍👩‍👧",
+        "apple": "🍎",
+        "wine": "🍷",
+        "health": "💪"
+    }
+    
+    primary_tags = []
+    secondary_tags = []
+    lifestyle_tags = []
+    
+    # 1차 태그: Effect Size가 가장 큰 특징 1개
+    if distinctive:
+        top_feature = max(distinctive, key=lambda x: x["score"])
+        feature = top_feature["feature"]
+        if "premium" in feature.lower() or "apple" in feature.lower():
+            primary_tags.append({
+                "label": "프리미엄",
+                "icon": ICON_MAP.get("premium", "💎"),
+                "color": "purple",
+                "category": "consumption"
+            })
+        elif "income" in feature.lower():
+            income_eff = top_feature["effect"]
+            if income_eff.get("type") == "numeric" and income_eff.get("effect_size", 0) >= 0.7:
+                primary_tags.append({
+                    "label": "고소득",
+                    "icon": "💰",
+                    "color": "gold",
+                    "category": "economic"
+                })
+    
+    # 연령대 (항상 포함)
+    age_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "age" 
+         and d["effect"].get("type") == "numeric"),
+        None
+    )
+    if age_eff:
+        cm = age_eff["effect"]["cluster_mean"]
+        if cm < 30:
+            primary_tags.append({
+                "label": "20대",
+                "icon": ICON_MAP["age_20s"],
+                "color": "blue",
+                "category": "demographic"
+            })
+        elif cm < 40:
+            primary_tags.append({
+                "label": "30대",
+                "icon": ICON_MAP["age_30s"],
+                "color": "blue",
+                "category": "demographic"
+            })
+        elif cm < 50:
+            primary_tags.append({
+                "label": "40대",
+                "icon": ICON_MAP["age_40s"],
+                "color": "blue",
+                "category": "demographic"
+            })
+        elif cm < 60:
+            primary_tags.append({
+                "label": "50대",
+                "icon": ICON_MAP["age_50s"],
+                "color": "blue",
+                "category": "demographic"
+            })
+    else:
+        age_cs = cluster_stats.get("age")
+        if age_cs and age_cs.get("type") == "numeric":
+            cm = age_cs["mean"]
+            if cm < 30:
+                primary_tags.append({
+                    "label": "20대",
+                    "icon": ICON_MAP["age_20s"],
+                    "color": "blue",
+                    "category": "demographic"
+                })
+            elif cm < 40:
+                primary_tags.append({
+                    "label": "30대",
+                    "icon": ICON_MAP["age_30s"],
+                    "color": "blue",
+                    "category": "demographic"
+                })
+            elif cm < 50:
+                primary_tags.append({
+                    "label": "40대",
+                    "icon": ICON_MAP["age_40s"],
+                    "color": "blue",
+                    "category": "demographic"
+                })
+    
+    # 소비 성향 또는 지역 (선택, 최대 4개까지만)
+    if len(primary_tags) < 4:
+        premium_eff = next(
+            (d for d in distinctive 
+             if d["feature"] in ("Q8_premium_index", "is_premium_car")
+             and d["effect"].get("type") in ("numeric", "binary")),
+            None
+        )
+        if premium_eff and "프리미엄" not in [t["label"] for t in primary_tags]:
+            primary_tags.append({
+                "label": "프리미엄",
+                "icon": ICON_MAP["premium"],
+                "color": "purple",
+                "category": "consumption"
+            })
+        elif len(primary_tags) < 4:
+            metro_eff = next(
+                (d for d in distinctive 
+                 if d["feature"] == "is_metro"
+                 and d["effect"].get("type") == "binary"
+                 and d["effect"].get("lift", 0) > 0.2),
+                None
+            )
+            if metro_eff:
+                primary_tags.append({
+                    "label": "도심형",
+                    "icon": ICON_MAP["metro"],
+                    "color": "green",
+                    "category": "location"
+                })
+    
+    # 2차 태그: 1차에 포함되지 않은 특징 중 Effect Size 상위
+    used_features = {t.get("label") for t in primary_tags}
+    remaining = [d for d in distinctive if d["feature"] not in used_features]
+    remaining.sort(key=lambda x: x["score"], reverse=True)
+    
+    for d in remaining[:6]:  # 최대 6개
+        feature = d["feature"]
+        if "education" in feature.lower() or "college" in feature.lower():
+            secondary_tags.append({
+                "label": "고학력",
+                "icon": ICON_MAP["education"],
+                "category": "education"
+            })
+        elif feature == "has_children":
+            secondary_tags.append({
+                "label": "자녀有",
+                "icon": ICON_MAP["family"],
+                "category": "family"
+            })
+        elif "apple" in feature.lower():
+            secondary_tags.append({
+                "label": "애플유저",
+                "icon": ICON_MAP["apple"],
+                "category": "device"
+            })
+    
+    # 라이프스타일 태그: 흡연/음주 관련만
+    wine_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("drinks_wine", "drinks_western")
+         and d["effect"].get("type") == "binary"
+         and d["effect"].get("lift", 0) > 0.3),
+        None
+    )
+    if wine_eff:
+        lifestyle_tags.append({
+            "label": "와인",
+            "icon": ICON_MAP["wine"],
+            "category": "drinking"
+        })
+    
+    smoke_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "has_smoking_experience"
+         and d["effect"].get("type") == "binary"
+         and d["effect"].get("lift", 0) < -0.3),
+        None
+    )
+    if smoke_eff:
+        lifestyle_tags.append({
+            "label": "헬스",
+            "icon": ICON_MAP["health"],
+            "category": "health"
+        })
+    
+    return {
+        "primary": primary_tags[:4],  # 최대 4개
+        "secondary": secondary_tags[:6],  # 최대 6개
+        "lifestyle": lifestyle_tags
+    }
+
+
+# 기존 함수는 호환성을 위해 유지
 def build_cluster_name(
     cluster_id: int,
     distinctive: List[dict],
     cluster_stats: Dict[str, dict],
     overall_stats: Dict[str, dict],
 ) -> str:
-    """군집 이름 자동 생성"""
-    ls = life_stage(cluster_stats, overall_stats)   # 젊은 / 중장년 / 중간 연령 / 일반
-    vl = value_level(distinctive)                  # 고소득 / 저소득 / 중간 소득 / 실속형
-    fv = flavor_tag(distinctive)                   # 프리미엄 소비 / 테크 프리미엄 / ...
-    
-    base = f"{vl} {ls}".strip()  # 예: "고소득 젊은"
-    if fv:
-        return f"{base} · {fv} 군집"
-    return f"{base} 군집"
+    """군집 이름 자동 생성 (기존 호환용)"""
+    name_dict = build_two_tier_cluster_name(cluster_id, distinctive, cluster_stats, overall_stats)
+    if name_dict["sub"]:
+        return f"{name_dict['main']} ({name_dict['sub']})"
+    return name_dict["main"]
 
 
-def build_insights(
+def build_storytelling_insights(
     cluster_id: int,
     df: pd.DataFrame,
     distinctive: List[dict],
     cluster_stats: Dict[str, dict],
     overall_stats: Dict[str, dict],
-) -> Dict[str, List[str]]:
-    """카테고리별 인사이트 생성"""
-    insights: Dict[str, List[str]] = {
-        "size": [],
-        "demographic": [],
-        "economic": [],
-        "device_premium": [],
-        "lifestyle": [],
+    all_cluster_stats: Optional[Dict[int, Dict[str, dict]]] = None
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    스토리텔링 형식 인사이트 생성
+    - Who: 이 그룹은 누구인가?
+    - Why: 왜 이 그룹인가?
+    - What: 무엇을 특징으로 하는가?
+    - How Different: 다른 군집과 어떻게 다른가?
+    """
+    insights: Dict[str, List[Dict[str, Any]]] = {
+        "who": [],
+        "why": [],
+        "what": [],
+        "how_different": [],
     }
     
     cluster_df = df[df["cluster"] == cluster_id]
     size = len(cluster_df)
     total = len(df)
     pct = (size / total * 100.0) if total > 0 else 0.0
-    
-    # 1) 크기
-    if pct >= 30:
-        insights["size"].append(f"대형 군집 ({size}명, 전체의 {pct:.1f}%)")
-    elif pct >= 15:
-        insights["size"].append(f"중형 군집 ({size}명, 전체의 {pct:.1f}%)")
-    else:
-        insights["size"].append(f"소형 군집 ({size}명, 전체의 {pct:.1f}%)")
     
     # helper: distinctive에서 feature별 effect 가져오기
     by_feature = {d["feature"]: d for d in distinctive}
@@ -345,51 +1065,389 @@ def build_insights(
             return eff
         return None
     
-    # 2) 연령
+    # === Who: 이 그룹은 누구인가? ===
+    if pct >= 30:
+        insights["who"].append({
+            "message": f"💎 이 그룹은 전체의 {pct:.1f}%를 차지하는 대형 군집이에요 ({size:,}명)",
+            "strength": "⚡⚡⚡",
+            "category": "size"
+        })
+    elif pct >= 15:
+        insights["who"].append({
+            "message": f"📊 이 그룹은 전체의 {pct:.1f}%를 차지하는 중형 군집이에요 ({size:,}명)",
+            "strength": "⚡⚡",
+            "category": "size"
+        })
+    else:
+        insights["who"].append({
+            "message": f"🔍 이 그룹은 전체의 {pct:.1f}%를 차지하는 소형 군집이에요 ({size:,}명)",
+            "strength": "⚡",
+            "category": "size"
+        })
+    
+    # 연령 (distinctive에서 가져오거나, 없으면 cluster_stats에서 직접 계산)
     age_eff = get_numeric_eff("age")
+    age_cs = None
+    age_os = None
+    
     if age_eff:
-        d = age_eff["effect_size"]
         cm = age_eff["cluster_mean"]
         om = age_eff["overall_mean"]
-        if d > 0.4:
-            insights["demographic"].append(f"평균 연령이 {cm:.1f}세로 전체({om:.1f}세)보다 높음")
-        elif d < -0.4:
-            insights["demographic"].append(f"평균 연령이 {cm:.1f}세로 전체({om:.1f}세)보다 낮음")
+    else:
+        # distinctive에 age가 없으면 cluster_stats에서 직접 가져오기
+        age_cs = cluster_stats.get("age")
+        age_os = overall_stats.get("age")
+        if age_cs and age_os and age_cs.get("type") == "numeric" and age_os.get("type") == "numeric":
+            cm = age_cs["mean"]
+            om = age_os["mean"]
+        else:
+            cm = None
+            om = None
     
-    # 3) 소득
+    if cm is not None and om is not None:
+        diff = cm - om
+        if abs(diff) >= 5:
+            # visual_strength 계산
+            if age_eff:
+                effect_size = age_eff.get("effect_size", abs(diff) / 10.0)
+                visual_strength = get_visual_strength(effect_size)
+            elif age_os:
+                std_o = age_os.get("std", 1.0) or 1.0
+                effect_size = abs(diff) / std_o if std_o > 0 else abs(diff) / 10.0
+                visual_strength = get_visual_strength(effect_size)
+            else:
+                visual_strength = "⚡⚡"
+            
+            if diff < 0:
+                insights["who"].append({
+                    "message": f"👔 이 그룹의 평균 연령은 {cm:.0f}세로, 전체 평균({om:.0f}세)보다 {abs(diff):.0f}년 이상 젊어요",
+                    "strength": visual_strength,
+                    "category": "demographic"
+                })
+            else:
+                insights["who"].append({
+                    "message": f"👴 이 그룹의 평균 연령은 {cm:.0f}세로, 전체 평균({om:.0f}세)보다 {diff:.0f}년 이상 많아요",
+                    "strength": visual_strength,
+                    "category": "demographic"
+                })
+    
+    # === Why: 왜 이 그룹인가? ===
+    # 소득 (distinctive에서 가져오거나, 없으면 cluster_stats에서 직접 계산)
     income_eff = get_numeric_eff("Q6_income") or get_numeric_eff("Q6_scaled")
     if income_eff:
-        d = income_eff["effect_size"]
         cm = income_eff["cluster_mean"]
         om = income_eff["overall_mean"]
-        if d > 0.4:
-            insights["economic"].append(f"평균 소득이 {cm:.0f}만원으로 전체({om:.0f}만원)보다 높음")
-        elif d < -0.4:
-            insights["economic"].append(f"평균 소득이 {cm:.0f}만원으로 전체({om:.0f}만원)보다 낮음")
+        d = income_eff["effect_size"]
+    else:
+        # distinctive에 income이 없으면 cluster_stats에서 직접 가져오기
+        income_cs = cluster_stats.get("Q6_income") or cluster_stats.get("Q6_scaled")
+        income_os = overall_stats.get("Q6_income") or overall_stats.get("Q6_scaled")
+        if income_cs and income_os and income_cs.get("type") == "numeric" and income_os.get("type") == "numeric":
+            cm = income_cs["mean"]
+            om = income_os["mean"]
+            # effect_size 계산
+            std_o = income_os.get("std", 1.0) or 1.0
+            d = (cm - om) / std_o if std_o > 0 else 0.0
+        else:
+            cm = None
+            om = None
+            d = 0.0
     
-    # 4) 프리미엄/디바이스
+    if cm is not None and om is not None and abs(d) >= 0.4:
+        visual_strength = get_visual_strength(abs(d)) if income_eff else "⚡⚡"
+        if d > 0:
+            insights["why"].append({
+                "message": f"💰 이 그룹의 평균 소득은 {cm:.0f}만원으로, 전체 평균({om:.0f}만원)보다 {cm-om:.0f}만원 더 높아요",
+                "strength": visual_strength,
+                "category": "economic"
+            })
+        else:
+            insights["why"].append({
+                "message": f"💸 이 그룹의 평균 소득은 {cm:.0f}만원으로, 전체 평균({om:.0f}만원)보다 {om-cm:.0f}만원 더 낮아요",
+                "strength": visual_strength,
+                "category": "economic"
+            })
+    
+    # === What: 무엇을 특징으로 하는가? ===
+    # 프리미엄/디바이스
     premium_eff = get_numeric_eff("Q8_premium_index")
     if premium_eff and premium_eff["effect_size"] > 0.4:
-        insights["device_premium"].append("프리미엄 가전/디바이스 보유 수준이 전체보다 높음")
+        insights["what"].append({
+            "message": "💎 이 그룹은 프리미엄 가전/디바이스 보유 수준이 전체보다 높아요",
+            "strength": premium_eff.get("visual_strength", "⚡⚡⚡"),
+            "category": "device_premium"
+        })
     
     apple_eff = get_binary_eff("is_apple_user")
     if apple_eff and apple_eff["lift"] > 0.3:
-        insights["device_premium"].append("애플 사용자 비율이 전체 대비 크게 높음")
+        cluster_p = apple_eff["cluster_p"]
+        overall_p = apple_eff["overall_p"]
+        index = apple_eff["index"]
+        insights["what"].append({
+            "message": f"🍎 이 그룹의 절반 이상이 아이폰을 쓰고 있어요 (전체 평균의 {index:.1f}배)",
+            "strength": apple_eff.get("visual_strength", "⚡⚡⚡"),
+            "category": "device_premium"
+        })
     
     phone_eff = get_binary_eff("is_premium_phone")
     if phone_eff and phone_eff["lift"] > 0.3:
-        insights["device_premium"].append("프리미엄 스마트폰 비율이 전체보다 높음")
+        insights["what"].append({
+            "message": "📱 이 그룹은 프리미엄 스마트폰 비율이 전체보다 높아요",
+            "strength": phone_eff.get("visual_strength", "⚡⚡"),
+            "category": "device_premium"
+        })
     
-    # 5) 라이프스타일
+    # === How Different: 다른 군집과 어떻게 다른가? ===
+    # 군집 간 상대적 포지셔닝 (all_cluster_stats가 제공된 경우)
+    if all_cluster_stats:
+        # 연령 비교 (distinctive에서 가져오거나 cluster_stats에서 직접)
+        age_eff = get_numeric_eff("age")
+        if age_eff:
+            cm = age_eff["cluster_mean"]
+        else:
+            age_cs = cluster_stats.get("age")
+            if age_cs and age_cs.get("type") == "numeric":
+                cm = age_cs["mean"]
+            else:
+                cm = None
+        
+        if cm is not None:
+            other_ages = []
+            for cid, stats in all_cluster_stats.items():
+                if cid != cluster_id and stats.get("age") and stats["age"].get("type") == "numeric":
+                    other_ages.append((cid, stats["age"]["mean"]))
+            other_ages.sort(key=lambda x: x[1])
+            
+            younger_count = sum(1 for _, age in other_ages if age < cm)
+            total_clusters = len(all_cluster_stats)
+            position = total_clusters - younger_count
+            
+            if position <= total_clusters:
+                insights["how_different"].append({
+                    "message": f"📊 {total_clusters}개 군집 중 {position}번째로 젊은 그룹이에요",
+                    "strength": "⚡⚡",
+                    "category": "comparison"
+                })
+    
+    # 라이프스타일
     wine_eff = get_binary_eff("drinks_wine")
     if wine_eff and wine_eff["lift"] > 0.3:
-        insights["lifestyle"].append("와인 음용 비율이 전체보다 높음")
+        cluster_p = wine_eff["cluster_p"]
+        index = wine_eff["index"]
+        insights["what"].append({
+            "message": f"🍷 이 그룹의 와인 음용 비율이 전체보다 높아요 (전체 평균의 {index:.1f}배)",
+            "strength": wine_eff.get("visual_strength", "⚡⚡"),
+            "category": "lifestyle"
+        })
     
     smoke_eff = get_binary_eff("has_smoking_experience")
     if smoke_eff and smoke_eff["lift"] < -0.3:
-        insights["lifestyle"].append("흡연 경험 비율이 전체보다 낮음")
+        insights["what"].append({
+            "message": "💪 이 그룹은 흡연 경험 비율이 전체보다 낮아요 (건강 지향)",
+            "strength": smoke_eff.get("visual_strength", "⚡⚡"),
+            "category": "lifestyle"
+        })
     
     return insights
+
+
+def get_cluster_positioning(
+    cluster_id: int,
+    feature: str,
+    cluster_value: float,
+    all_cluster_stats: Dict[int, Dict[str, dict]]
+) -> Optional[Dict[str, Any]]:
+    """
+    군집 간 상대적 포지셔닝 계산
+    예: "5개 군집 중 2번째로 젊은 그룹"
+    """
+    if not all_cluster_stats:
+        return None
+    
+    # 모든 군집의 해당 feature 값 수집
+    feature_values = []
+    for cid, stats in all_cluster_stats.items():
+        if feature in stats and stats[feature].get("type") == "numeric":
+            feature_values.append((cid, stats[feature]["mean"]))
+    
+    if len(feature_values) < 2:
+        return None
+    
+    # 정렬 (낮은 값이 좋은 경우와 높은 값이 좋은 경우 구분)
+    # age의 경우 낮을수록 "젊은"이므로 역순 정렬
+    if feature == "age":
+        feature_values.sort(key=lambda x: x[1], reverse=True)  # 높은 값(나이 많은)이 먼저
+    else:
+        feature_values.sort(key=lambda x: x[1], reverse=False)  # 낮은 값이 먼저
+    
+    # 현재 군집의 위치 찾기
+    position = None
+    for idx, (cid, val) in enumerate(feature_values):
+        if cid == cluster_id:
+            position = idx + 1
+            break
+    
+    if position is None:
+        return None
+    
+    total = len(feature_values)
+    
+    # 포지션 설명 생성
+    if feature == "age":
+        if position == 1:
+            description = f"{total}개 군집 중 가장 젊은 그룹"
+        elif position == total:
+            description = f"{total}개 군집 중 가장 나이 많은 그룹"
+        else:
+            description = f"{total}개 군집 중 {position}번째로 젊은 그룹"
+    else:
+        if position == 1:
+            description = f"{total}개 군집 중 가장 낮은 그룹"
+        elif position == total:
+            description = f"{total}개 군집 중 가장 높은 그룹"
+        else:
+            description = f"{total}개 군집 중 {position}번째로 낮은 그룹"
+    
+    return {
+        "position": position,
+        "total": total,
+        "description": description,
+        "percentile": round((position / total) * 100, 1)
+    }
+
+
+def build_marketing_segments(
+    cluster_id: int,
+    distinctive: List[dict],
+    cluster_stats: Dict[str, dict],
+    overall_stats: Dict[str, dict],
+    percentage: float
+) -> Dict[str, Any]:
+    """
+    마케팅 활용 가이드 생성
+    - 추천 채널
+    - 제품 적합도
+    - 캠페인 아이디어
+    (마케팅 가치 점수는 제거됨)
+    """
+    segments = {}
+    
+    # 1. 추천 채널
+    recommended_channels = []
+    
+    age_eff = next(
+        (d for d in distinctive 
+         if d["feature"] == "age"
+         and d["effect"].get("type") == "numeric"),
+        None
+    )
+    if age_eff:
+        cm = age_eff["effect"]["cluster_mean"]
+        if cm < 30:
+            recommended_channels.extend(["인스타그램", "틱톡", "유튜브 쇼츠"])
+        elif cm < 40:
+            recommended_channels.extend(["유튜브", "페이스북", "네이버 블로그"])
+        elif cm < 50:
+            recommended_channels.extend(["네이버", "카카오톡", "이메일"])
+        else:
+            recommended_channels.extend(["TV 광고", "신문", "라디오"])
+    
+    # 프리미엄 소비자면 디지털 프리미엄 채널 추가
+    premium_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("Q8_premium_index", "is_premium_car", "is_apple_user")
+         and d["effect"].get("type") in ("numeric", "binary")),
+        None
+    )
+    if premium_eff:
+        recommended_channels = ["유튜브 프리미엄", "넷플릭스", "디즈니+"] + recommended_channels[:3]
+    
+    # 2. 제품 적합도
+    product_fit = []
+    
+    if premium_eff:
+        product_fit.append({
+            "category": "프리미엄 제품",
+            "score": 90,
+            "examples": ["명품 가방", "프리미엄 스마트폰", "고급 와인"]
+        })
+    
+    income_eff = next(
+        (d for d in distinctive 
+         if d["feature"] in ("Q6_income", "Q6_scaled")
+         and d["effect"].get("type") == "numeric"),
+        None
+    )
+    if income_eff and income_eff["effect"]["effect_size"] >= 0.5:
+        product_fit.append({
+            "category": "고가 제품",
+            "score": 85,
+            "examples": ["자동차", "부동산", "투자 상품"]
+        })
+    
+    # 3. 캠페인 아이디어
+    campaign_ideas = []
+    
+    if age_eff and age_eff["effect"]["cluster_mean"] < 35:
+        campaign_ideas.append({
+            "title": "젊은 세대 타겟 캠페인",
+            "concept": "트렌디하고 개성 있는 메시지",
+            "hashtag": "#젊은에너지 #트렌드세터"
+        })
+    
+    if premium_eff:
+        campaign_ideas.append({
+            "title": "프리미엄 라이프스타일 캠페인",
+            "concept": "품질과 가치를 중시하는 메시지",
+            "hashtag": "#프리미엄라이프 #품질중시"
+        })
+    
+    segments = {
+        "recommended_channels": recommended_channels[:5],
+        "product_fit": product_fit,
+        "campaign_ideas": campaign_ideas
+    }
+    
+    return segments
+
+
+# 기존 함수는 호환성을 위해 유지
+def build_insights(
+    cluster_id: int,
+    df: pd.DataFrame,
+    distinctive: List[dict],
+    cluster_stats: Dict[str, dict],
+    overall_stats: Dict[str, dict],
+) -> Dict[str, List[str]]:
+    """카테고리별 인사이트 생성 (기존 호환용)"""
+    storytelling = build_storytelling_insights(
+        cluster_id, df, distinctive, cluster_stats, overall_stats
+    )
+    
+    # 기존 형식으로 변환
+    result: Dict[str, List[str]] = {
+        "size": [],
+        "demographic": [],
+        "economic": [],
+        "device_premium": [],
+        "lifestyle": [],
+    }
+    
+    for category, items in storytelling.items():
+        for item in items:
+            msg = item["message"]
+            if category == "who" and "size" in item.get("category", ""):
+                result["size"].append(msg)
+            elif category in ("who", "why") and "demographic" in item.get("category", ""):
+                result["demographic"].append(msg)
+            elif category == "why" and "economic" in item.get("category", ""):
+                result["economic"].append(msg)
+            elif category == "what" and "device_premium" in item.get("category", ""):
+                result["device_premium"].append(msg)
+            elif category == "what" and "lifestyle" in item.get("category", ""):
+                result["lifestyle"].append(msg)
+    
+    return result
 
 
 @router.get("/k-analysis/{session_id}")

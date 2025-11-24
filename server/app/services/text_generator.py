@@ -206,7 +206,7 @@ class CategoryTextGenerator:
             if ": " in item:
                 key, value = item.split(": ", 1)
                 metadata_dict[key] = value
-        
+
         metadata_str = ", ".join([f"{k}: {v}" for k, v in metadata_dict.items()])
         
         # 카테고리별 QuickPoll 문장 구조 프롬프트

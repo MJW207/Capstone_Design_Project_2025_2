@@ -8,7 +8,7 @@ export type HashtagColor =
 
 interface PIHashtagProps {
   color: HashtagColor;
-  children: string;
+  children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
@@ -128,7 +128,7 @@ export function PIHashtag({ color, children, onClick, disabled = false, classNam
       }}
     >
       <span style={{ fontSize: '12px', fontWeight: 500 }}>
-        #{children}
+        {typeof children === 'string' ? `#${children}` : children}
       </span>
     </button>
   );

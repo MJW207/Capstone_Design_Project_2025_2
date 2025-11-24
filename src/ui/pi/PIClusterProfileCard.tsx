@@ -11,6 +11,14 @@ interface PIClusterProfileCardProps {
   snippets: string[];
   size?: number;
   silhouette?: number;
+  // 새로운 필드들
+  name_main?: string;
+  name_sub?: string;
+  tags_hierarchical?: {
+    primary?: Array<{label: string; icon?: string; color?: string; category?: string}>;
+    secondary?: Array<{label: string; icon?: string; category?: string}>;
+    lifestyle?: Array<{label: string; icon?: string; category?: string}>;
+  };
 }
 
 export function PIClusterProfileCard({
@@ -22,6 +30,9 @@ export function PIClusterProfileCard({
   snippets,
   size,
   silhouette,
+  name_main,
+  name_sub,
+  tags_hierarchical,
 }: PIClusterProfileCardProps) {
   const { isDark } = useDarkMode();
   const colors = useThemeColors();
@@ -87,11 +98,18 @@ export function PIClusterProfileCard({
         </div>
         
         <h3 style={{ fontSize: '16px', fontWeight: 600, color: colors.text.primary, marginBottom: '4px' }}>
-          {name}
+          {name_main || name}
         </h3>
-        <p style={{ fontSize: '12px', fontWeight: 400, color: colors.text.secondary, lineHeight: '1.4' }}>
-          {description}
-        </p>
+        {name_sub && (
+          <p style={{ fontSize: '12px', fontWeight: 400, color: colors.text.secondary, lineHeight: '1.4', marginBottom: '4px' }}>
+            {name_sub}
+          </p>
+        )}
+        {!name_sub && (
+          <p style={{ fontSize: '12px', fontWeight: 400, color: colors.text.secondary, lineHeight: '1.4' }}>
+            {description}
+          </p>
+        )}
       </div>
 
       {/* Body */}
@@ -108,13 +126,46 @@ export function PIClusterProfileCard({
           }}>
             주요 특성
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {tags.map((tag, idx) => (
-              <PIHashtag key={idx} color={getHashtagColor(tag)}>
-                {tag}
-              </PIHashtag>
-            ))}
-          </div>
+          {tags_hierarchical?.primary && tags_hierarchical.primary.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {tags_hierarchical.primary.map((tag, idx) => (
+                <PIHashtag key={idx} color={getHashtagColor(tag.label || '')}>
+                  {tag.icon ? <span style={{ marginRight: '4px' }}>{tag.icon}</span> : null}
+                  {tag.label || ''}
+                </PIHashtag>
+              ))}
+              {/* Secondary 태그도 기본적으로 모두 표시 */}
+              {tags_hierarchical.secondary && tags_hierarchical.secondary.length > 0 && (
+                <>
+                  {tags_hierarchical.secondary.map((tag, idx) => (
+                    <PIHashtag key={`secondary-${idx}`} color={getHashtagColor(tag.label || '')}>
+                      {tag.icon ? <span style={{ marginRight: '4px' }}>{tag.icon}</span> : null}
+                      {tag.label || ''}
+                    </PIHashtag>
+                  ))}
+                </>
+              )}
+              {/* Lifestyle 태그도 기본적으로 모두 표시 */}
+              {tags_hierarchical.lifestyle && tags_hierarchical.lifestyle.length > 0 && (
+                <>
+                  {tags_hierarchical.lifestyle.map((tag, idx) => (
+                    <PIHashtag key={`lifestyle-${idx}`} color={getHashtagColor(tag.label || '')}>
+                      {tag.icon ? <span style={{ marginRight: '4px' }}>{tag.icon}</span> : null}
+                      {tag.label || ''}
+                    </PIHashtag>
+                  ))}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((tag, idx) => (
+                <PIHashtag key={idx} color={getHashtagColor(tag)}>
+                  {tag}
+                </PIHashtag>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Snippets */}

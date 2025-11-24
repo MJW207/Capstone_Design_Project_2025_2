@@ -387,9 +387,6 @@ async def api_search_post(
                     "error": "필터 조건에 맞는 결과가 없습니다.",
                     "results": []
                 }
-        else:
-            # Pinecone 검색 실패 시 필터 검색으로 폴백
-            logger.info("Pinecone 검색 실패, 필터 검색으로 폴백")
         
         # 쿼리가 없거나 Pinecone 검색 실패 시: 필터만으로 Pinecone 검색
         if filters_dict and any(filters_dict.values()):

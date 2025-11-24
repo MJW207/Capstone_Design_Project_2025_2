@@ -87,18 +87,6 @@ export function convertSummaryDataToBarProps(
     });
   }
 
-  // 평균 수입 포맷
-  const avgIncome = data.avgPersonalIncome 
-    ? `${data.avgPersonalIncome}만원`
-    : data.avgHouseholdIncome 
-    ? `${data.avgHouseholdIncome}만원`
-    : undefined;
-
-  // 주요 직업 포맷
-  const topJob = data.occupationTop && data.occupationTop.length > 0
-    ? `${data.occupationTop[0].name} ${data.occupationTop[0].rate}%`
-    : undefined;
-
   return {
     foundCount: data.total,
     queryLabel,
@@ -107,8 +95,6 @@ export function convertSummaryDataToBarProps(
     avgAge,
     genderText,
     genderSubText,
-    avgIncome,
-    topJob,
     profileChips,
   };
 }

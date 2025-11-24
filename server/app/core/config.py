@@ -1,6 +1,7 @@
 """DB 설정 모듈 - 스키마/테이블명을 환경변수로 관리"""
 import os
 import json
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Final, Dict, Any
 from functools import lru_cache
@@ -64,8 +65,34 @@ PINECONE_API_KEY: Final[str] = os.getenv("PINECONE_API_KEY", "")
 PINECONE_INDEX_NAME: Final[str] = os.getenv("PINECONE_INDEX_NAME", "panel-profiles")
 PINECONE_ENVIRONMENT: Final[str] = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 
-# 카테고리 설정
-CATEGORY_CONFIG_PATH: Final[str] = os.getenv("CATEGORY_CONFIG_PATH", r"C:\Capstone_Project\category_config.json")
+# 카테고리 설정 - 프로젝트 루트 기준 상대 경로
+def _get_project_root() -> Path:
+    """프로젝트 루트 디렉토리를 자동으로 찾기"""
+    # 현재 파일 위치: server/app/core/config.py
+    current_file = Path(__file__).resolve()
+    # 프로젝트 루트: server/app/core -> server/app -> server -> 프로젝트 루트
+    project_root = current_file.parent.parent.parent.parent
+    return project_root
+
+_PROJECT_ROOT = _get_project_root()
+
+# 환경변수가 있으면 사용, 없으면 자동으로 찾기
+_category_config_env = os.getenv("CATEGORY_CONFIG_PATH")
+if _category_config_env:
+    # 환경변수로 절대 경로 또는 상대 경로 지정 가능
+    CATEGORY_CONFIG_PATH: Final[str] = _category_config_env
+else:
+    # 우선순위: 1) 프로젝트 루트/category_config.json, 2) 프로젝트 루트/notebooks/category_config.json
+    _root_path = _PROJECT_ROOT / "category_config.json"
+    _notebooks_path = _PROJECT_ROOT / "notebooks" / "category_config.json"
+    
+    if _root_path.exists():
+        CATEGORY_CONFIG_PATH: Final[str] = str(_root_path)
+    elif _notebooks_path.exists():
+        CATEGORY_CONFIG_PATH: Final[str] = str(_notebooks_path)
+    else:
+        # 둘 다 없으면 notebooks 경로를 기본값으로 (에러는 load_category_config에서 처리)
+        CATEGORY_CONFIG_PATH: Final[str] = str(_notebooks_path)
 
 # API Keys (환경변수 우선, 없으면 기본값 사용 - 보안상 .env 파일 사용 권장)
 ANTHROPIC_API_KEY: Final[str] = os.getenv("ANTHROPIC_API_KEY", "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")

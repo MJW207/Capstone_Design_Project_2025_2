@@ -29,8 +29,6 @@ export interface SummaryBarProps {
   avgAge?: string;              // 예: "27세"
   genderText?: string;          // 예: "50 : 50"
   genderSubText?: string;       // 예: "남 50%, 여 50%"
-  avgIncome?: string;           // 예: "350만원"
-  topJob?: string;              // 예: "회사원 25%"
   profileChips: SummaryProfileChip[];
   onChipClick?: (chip: SummaryProfileChip) => void;
   className?: string;           // 외부에서 여백 조정용
@@ -89,8 +87,6 @@ export function SummaryBar({
   avgAge,
   genderText,
   genderSubText,
-  avgIncome,
-  topJob,
   profileChips,
   onChipClick,
   className = '',
@@ -108,7 +104,7 @@ export function SummaryBar({
     <div className={`summary-bar-new ${className}`} style={{ marginBottom: '24px' }}>
       {/* 상단 SummaryBar 한 줄 */}
       <div
-        className="flex items-center justify-between gap-8 px-8 py-5 rounded-xl transition-colors"
+        className="flex items-center justify-between gap-6 px-6 py-4 rounded-xl transition-colors"
         style={{
           background: 'var(--card)',
           border: '1px solid var(--border)',
@@ -116,25 +112,24 @@ export function SummaryBar({
         }}
       >
         {/* 왼쪽: FOUND + 설명 */}
-        <div className="flex items-center gap-6 flex-1 min-w-0">
-          <div className="flex items-center gap-4 flex-shrink-0">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
             <div
-              className="flex items-center justify-center rounded-xl"
+              className="flex items-center justify-center rounded-lg"
               style={{
-                width: '56px',
-                height: '56px',
+                width: '40px',
+                height: '40px',
                 background: 'linear-gradient(135deg, #4b74ff 0%, #8055ff 50%, #c35bff 100%)',
                 color: 'white',
-                boxShadow: '0 4px 12px rgba(75, 116, 255, 0.3)',
               }}
             >
-              <Users className="w-7 h-7" />
+              <Users className="w-5 h-5" />
             </div>
-            <div className="flex items-baseline gap-3">
+            <div className="flex items-baseline gap-2">
               <span
                 className="font-bold"
                 style={{
-                  fontSize: '36px',
+                  fontSize: '28px',
                   lineHeight: '1',
                   color: 'var(--text-primary)',
                 }}
@@ -144,9 +139,9 @@ export function SummaryBar({
               <span
                 className="font-semibold uppercase tracking-wide"
                 style={{
-                  fontSize: '14px',
+                  fontSize: '12px',
                   color: 'var(--text-secondary)',
-                  letterSpacing: '0.12em',
+                  letterSpacing: '0.1em',
                 }}
               >
                 FOUND
@@ -156,11 +151,11 @@ export function SummaryBar({
           
           {queryLabel && (
             <div
-              className="flex items-center gap-3 flex-1 min-w-0"
+              className="flex items-center gap-2 flex-1 min-w-0"
               style={{
-                fontSize: '15px',
+                fontSize: '14px',
                 color: 'var(--text-secondary)',
-                lineHeight: '1.6',
+                lineHeight: '1.5',
               }}
             >
               <div className="flex-1 min-w-0 truncate">{queryLabel}</div>
@@ -169,19 +164,19 @@ export function SummaryBar({
         </div>
 
         {/* 오른쪽: KPI 2~3개 */}
-        <div className="flex items-center gap-6 flex-shrink-0">
+        <div className="flex items-center gap-5 flex-shrink-0">
           {/* COST */}
           {costKb !== undefined && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
             }}>
-              <Database className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
-              <div className="flex flex-col gap-0.5">
+              <Database className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+              <div className="flex flex-col">
                 <div
                   className="font-semibold leading-tight"
                   style={{
-                    fontSize: '18px',
+                    fontSize: '15px',
                     color: 'var(--text-primary)',
                   }}
                 >
@@ -192,7 +187,7 @@ export function SummaryBar({
                     className="text-xs leading-tight"
                     style={{
                       color: 'var(--text-tertiary)',
-                      fontSize: '12px',
+                      marginTop: '1px',
                     }}
                   >
                     {latencyText}
@@ -204,16 +199,16 @@ export function SummaryBar({
 
           {/* 평균 연령 */}
           {avgAge && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
             }}>
-              <Calendar className="w-5 h-5 flex-shrink-0" style={{ color: '#4b74ff' }} />
-              <div className="flex flex-col gap-0.5">
+              <Calendar className="w-4 h-4" style={{ color: '#4b74ff' }} />
+              <div className="flex flex-col">
                 <div
                   className="font-semibold leading-tight"
                   style={{
-                    fontSize: '18px',
+                    fontSize: '15px',
                     color: 'var(--text-primary)',
                   }}
                 >
@@ -223,7 +218,7 @@ export function SummaryBar({
                   className="text-xs leading-tight"
                   style={{
                     color: 'var(--text-tertiary)',
-                    fontSize: '12px',
+                    marginTop: '1px',
                   }}
                 >
                   평균 연령
@@ -234,16 +229,16 @@ export function SummaryBar({
 
           {/* 성비 */}
           {genderText && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
             }}>
-              <Users className="w-5 h-5 flex-shrink-0" style={{ color: '#c35bff' }} />
-              <div className="flex flex-col gap-0.5">
+              <Users className="w-4 h-4" style={{ color: '#c35bff' }} />
+              <div className="flex flex-col">
                 <div
                   className="font-semibold leading-tight"
                   style={{
-                    fontSize: '18px',
+                    fontSize: '15px',
                     color: 'var(--text-primary)',
                   }}
                 >
@@ -254,7 +249,7 @@ export function SummaryBar({
                     className="text-xs leading-tight"
                     style={{
                       color: 'var(--text-tertiary)',
-                      fontSize: '12px',
+                      marginTop: '1px',
                     }}
                   >
                     {genderSubText}
@@ -264,72 +259,12 @@ export function SummaryBar({
                     className="text-xs leading-tight"
                     style={{
                       color: 'var(--text-tertiary)',
-                      fontSize: '12px',
+                      marginTop: '1px',
                     }}
                   >
                     성비
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* 평균 수입 */}
-          {avgIncome && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-            }}>
-              <DollarSign className="w-5 h-5 flex-shrink-0" style={{ color: '#10b981' }} />
-              <div className="flex flex-col gap-0.5">
-                <div
-                  className="font-semibold leading-tight"
-                  style={{
-                    fontSize: '18px',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  {avgIncome}
-                </div>
-                <div
-                  className="text-xs leading-tight"
-                  style={{
-                    color: 'var(--text-tertiary)',
-                    fontSize: '12px',
-                  }}
-                >
-                  평균 수입
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 주요 직업 */}
-          {topJob && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-            }}>
-              <Briefcase className="w-5 h-5 flex-shrink-0" style={{ color: '#8b5cf6' }} />
-              <div className="flex flex-col gap-0.5">
-                <div
-                  className="font-semibold leading-tight"
-                  style={{
-                    fontSize: '18px',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  {topJob}
-                </div>
-                <div
-                  className="text-xs leading-tight"
-                  style={{
-                    color: 'var(--text-tertiary)',
-                    fontSize: '12px',
-                  }}
-                >
-                  주요 직업
-                </div>
               </div>
             </div>
           )}
@@ -351,7 +286,7 @@ export function SummaryBar({
               
               // 칩별 아이콘 매핑 및 색상
               const getChipIcon = () => {
-                const iconSize = 20;
+                const iconSize = 16;
                 const iconColorMap: Record<string, string> = {
                   indigo: '#6366f1',
                   blue: '#3b82f6',
@@ -383,7 +318,7 @@ export function SummaryBar({
                   key={chip.key}
                   onClick={() => onChipClick?.(chip)}
                   className={`
-                    flex items-center gap-3 px-5 py-3 rounded-xl
+                    flex items-center gap-2.5 px-4 py-2.5 rounded-lg
                     border transition-all duration-200
                     ${colorClass.bg}
                     ${colorClass.border}
@@ -398,12 +333,11 @@ export function SummaryBar({
                   }}
                 >
                   {getChipIcon()}
-                  <div className="flex flex-col items-start gap-0.5">
+                  <div className="flex flex-col items-start">
                     <span
                       className="text-xs font-medium leading-tight"
                       style={{
                         color: 'var(--text-tertiary)',
-                        fontSize: '12px',
                       }}
                     >
                       {chip.label}
@@ -411,7 +345,8 @@ export function SummaryBar({
                     <span
                       className="font-semibold leading-tight"
                       style={{
-                        fontSize: '16px',
+                        fontSize: '14px',
+                        marginTop: '1px',
                       }}
                     >
                       {chip.value}
@@ -419,9 +354,9 @@ export function SummaryBar({
                   </div>
                   {onChipClick && (
                     <ChevronRight
-                      className="w-4 h-4 opacity-50 flex-shrink-0"
+                      className="w-3.5 h-3.5 opacity-50 flex-shrink-0"
                       style={{
-                        marginLeft: '4px',
+                        marginLeft: '2px',
                       }}
                     />
                   )}

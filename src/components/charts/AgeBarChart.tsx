@@ -1,12 +1,12 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import type { CarData } from '../../utils/statistics';
+import type { AgeData } from '../../utils/statistics';
 
-interface CarBarChartProps {
-  data: CarData[];
+interface AgeBarChartProps {
+  data: AgeData[];
   totalCount: number;
 }
 
-export function CarBarChart({ data, totalCount }: CarBarChartProps) {
+export function AgeBarChart({ data, totalCount }: AgeBarChartProps) {
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-sm" style={{ color: 'var(--text-tertiary)' }}>
@@ -34,7 +34,7 @@ export function CarBarChart({ data, totalCount }: CarBarChartProps) {
           <YAxis 
             dataKey="name" 
             type="category" 
-            width={100}
+            width={80}
             style={{ fill: 'var(--text-secondary)', fontSize: '12px' }}
           />
           <Tooltip
@@ -62,10 +62,8 @@ export function CarBarChart({ data, totalCount }: CarBarChartProps) {
       </div>
       
       {/* 범례 */}
-      <div className="mt-4 pt-4 border-t flex-shrink-0" style={{ borderColor: 'var(--border-secondary)' }}>
-        <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          총 {totalCount.toLocaleString()}명 (차량 보유자 기준)
-        </div>
+      <div className="mt-4 text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
+        총 {totalCount.toLocaleString()}명 중 연령 정보가 있는 {data.reduce((sum, item) => sum + item.count, 0)}명 기준
       </div>
     </div>
   );

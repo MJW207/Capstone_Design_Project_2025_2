@@ -16,8 +16,9 @@ export function RegionBarChart({ data, totalCount }: RegionBarChartProps) {
   }
 
   return (
-    <div className="w-full">
-      <ResponsiveContainer width="100%" height={Math.max(300, data.length * 40)}>
+    <div className="w-full h-full flex flex-col">
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
           layout="vertical"
@@ -58,9 +59,10 @@ export function RegionBarChart({ data, totalCount }: RegionBarChartProps) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      </div>
       
       {/* 범례 */}
-      <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
+      <div className="mt-4 pt-4 border-t flex-shrink-0" style={{ borderColor: 'var(--border-secondary)' }}>
         <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
           총 {totalCount.toLocaleString()}명
         </div>

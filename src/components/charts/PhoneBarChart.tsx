@@ -16,8 +16,9 @@ export function PhoneBarChart({ data, totalCount }: PhoneBarChartProps) {
   }
 
   return (
-    <div className="w-full">
-      <ResponsiveContainer width="100%" height={Math.max(250, data.length * 50)}>
+    <div className="w-full h-full flex flex-col">
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
           layout="vertical"
@@ -58,9 +59,10 @@ export function PhoneBarChart({ data, totalCount }: PhoneBarChartProps) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      </div>
       
       {/* 범례 */}
-      <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
+      <div className="mt-4 pt-4 border-t flex-shrink-0" style={{ borderColor: 'var(--border-secondary)' }}>
         <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
           총 {totalCount.toLocaleString()}명
         </div>

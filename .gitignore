@@ -72,3 +72,12 @@ organize_folders.bat
 *.md
 !README.md
 !docs/**/*.md
+
+# Invalid/accidental files
+nul
+tatus
+*echo*
+*afety*
+*저장*
+*.ipynb
+!notebooks/**/*.ipynb

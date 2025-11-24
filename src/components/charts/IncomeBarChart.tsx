@@ -16,8 +16,9 @@ export function IncomeBarChart({ data, totalCount }: IncomeBarChartProps) {
   }
 
   return (
-    <div className="w-full">
-      <ResponsiveContainer width="100%" height={Math.max(300, data.length * 40)}>
+    <div className="w-full h-full flex flex-col">
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
           layout="vertical"
@@ -58,9 +59,10 @@ export function IncomeBarChart({ data, totalCount }: IncomeBarChartProps) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      </div>
       
       {/* 범례 */}
-      <div className="mt-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+      <div className="mt-4 text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
         총 {totalCount}명 중 소득 정보가 있는 {data.reduce((sum, item) => sum + item.count, 0)}명 기준
       </div>
     </div>

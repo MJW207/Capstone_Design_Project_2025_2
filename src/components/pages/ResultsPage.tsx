@@ -1004,7 +1004,7 @@ export function ResultsPage({
             {...summaryBarProps}
             onChipClick={(chip) => {
               // 인터랙티브 칩만 드로우아웃 열기
-              const interactiveChips = ['region', 'car', 'phone', 'job', 'income'];
+              const interactiveChips = ['region', 'car', 'phone', 'job', 'income', 'age', 'marriage'];
               if (interactiveChips.includes(chip.key)) {
                 setSelectedChip(chip);
                 setStatDrawerOpen(true);

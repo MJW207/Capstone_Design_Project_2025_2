@@ -60,6 +60,22 @@ export interface IncomeData {
   color: string;
 }
 
+// 연령 분포 데이터
+export interface AgeData {
+  name: string;
+  count: number;
+  rate: number;
+  color: string;
+}
+
+// 자녀 분포 데이터
+export interface ChildrenData {
+  name: string;
+  count: number;
+  rate: number;
+  color: string;
+}
+
 /**
  * 지역별 분포 계산 (Top 10)
  */
@@ -428,6 +444,168 @@ export function calculateIncomeDistribution(panels: Panel[]): IncomeData[] {
     '#78350f', // amber-900
     '#451a03', // amber-950
     '#7c2d12', // red-900 (높은 소득)
+  ];
+
+  return sorted.map((item, index) => ({
+    name: item.name,
+    count: item.count,
+    rate: item.rate,
+    color: colors[Math.min(index, colors.length - 1)] || '#9ca3af',
+  }));
+}
+
+/**
+ * 연령대별 분포 계산
+ */
+export function calculateAgeDistribution(panels: Panel[]): AgeData[] {
+  if (!panels || panels.length === 0) return [];
+
+  // 연령대별 카운트
+  const ageGroups: Record<string, number> = {};
+  let totalCount = 0;
+
+  panels.forEach((panel) => {
+    const age = panel.age || 0;
+    if (!age || age <= 0) return;
+
+    // 연령대 분류
+    let ageGroup = '';
+    if (age < 20) {
+      ageGroup = '10대';
+    } else if (age < 30) {
+      ageGroup = '20대';
+    } else if (age < 40) {
+      ageGroup = '30대';
+    } else if (age < 50) {
+      ageGroup = '40대';
+    } else if (age < 60) {
+      ageGroup = '50대';
+    } else {
+      ageGroup = '60대+';
+    }
+
+    ageGroups[ageGroup] = (ageGroups[ageGroup] || 0) + 1;
+    totalCount++;
+  });
+
+  if (totalCount === 0) return [];
+
+  // 연령대 순서 정의
+  const ageOrder = ['10대', '20대', '30대', '40대', '50대', '60대+'];
+
+  // 정렬 (정의된 순서대로)
+  const sorted = Object.entries(ageGroups)
+    .map(([name, count]) => ({
+      name,
+      count,
+      rate: Math.round((count / totalCount) * 100 * 10) / 10,
+      order: ageOrder.indexOf(name) !== -1 ? ageOrder.indexOf(name) : 999,
+    }))
+    .sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return b.count - a.count;
+    });
+
+  // 색상 그라데이션 (연령대별)
+  const colors = [
+    '#fef3c7', // amber-100 (10대)
+    '#fde68a', // amber-200 (20대)
+    '#fcd34d', // amber-300 (30대)
+    '#fbbf24', // amber-400 (40대)
+    '#f59e0b', // amber-500 (50대)
+    '#d97706', // amber-600 (60대+)
+  ];
+
+  return sorted.map((item, index) => ({
+    name: item.name,
+    count: item.count,
+    rate: item.rate,
+    color: colors[Math.min(index, colors.length - 1)] || '#9ca3af',
+  }));
+}
+
+/**
+ * 기혼인 사람의 자녀 수 분포 계산
+ */
+export function calculateChildrenDistribution(panels: Panel[]): ChildrenData[] {
+  if (!panels || panels.length === 0) return [];
+
+  // 기혼인 패널만 필터링
+  const marriedPanels = panels.filter((panel) => {
+    const marriage = panel.metadata?.결혼여부 || panel.metadata?.marriage || '';
+    const marriageStr = String(marriage).toLowerCase();
+    return marriageStr.includes('기혼') || marriageStr.includes('married') || marriageStr === '기혼';
+  });
+
+  if (marriedPanels.length === 0) return [];
+
+  // 자녀 수별 카운트
+  const childrenCount: Record<string, number> = {};
+  let totalCount = 0;
+
+  marriedPanels.forEach((panel) => {
+    const children = panel.metadata?.자녀수;
+    if (children === null || children === undefined) {
+      // 자녀 수 정보가 없으면 "정보 없음"으로 분류
+      const key = '정보 없음';
+      childrenCount[key] = (childrenCount[key] || 0) + 1;
+      totalCount++;
+      return;
+    }
+
+    // 숫자로 변환
+    const childrenNum = typeof children === 'number' ? children : parseInt(String(children), 10);
+    if (isNaN(childrenNum)) {
+      const key = '정보 없음';
+      childrenCount[key] = (childrenCount[key] || 0) + 1;
+      totalCount++;
+      return;
+    }
+
+    // 자녀 수 분류
+    let key = '';
+    if (childrenNum === 0) {
+      key = '0명';
+    } else if (childrenNum === 1) {
+      key = '1명';
+    } else if (childrenNum === 2) {
+      key = '2명';
+    } else if (childrenNum === 3) {
+      key = '3명';
+    } else {
+      key = '4명 이상';
+    }
+
+    childrenCount[key] = (childrenCount[key] || 0) + 1;
+    totalCount++;
+  });
+
+  if (totalCount === 0) return [];
+
+  // 자녀 수 순서 정의
+  const childrenOrder = ['0명', '1명', '2명', '3명', '4명 이상', '정보 없음'];
+
+  // 정렬 (정의된 순서대로)
+  const sorted = Object.entries(childrenCount)
+    .map(([name, count]) => ({
+      name,
+      count,
+      rate: Math.round((count / totalCount) * 100 * 10) / 10,
+      order: childrenOrder.indexOf(name) !== -1 ? childrenOrder.indexOf(name) : 999,
+    }))
+    .sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return b.count - a.count;
+    });
+
+  // 색상 그라데이션
+  const colors = [
+    '#dbeafe', // blue-100 (0명)
+    '#bfdbfe', // blue-200 (1명)
+    '#93c5fd', // blue-300 (2명)
+    '#60a5fa', // blue-400 (3명)
+    '#3b82f6', // blue-500 (4명 이상)
+    '#9ca3af', // gray-400 (정보 없음)
   ];
 
   return sorted.map((item, index) => ({

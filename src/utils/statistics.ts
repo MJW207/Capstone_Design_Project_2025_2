@@ -72,9 +72,11 @@ export function calculateRegionDistribution(panels: Panel[]): RegionData[] {
 
   panels.forEach((panel) => {
     const region = panel.region || panel.metadata?.location || '';
-    if (region && region.trim() !== '') {
+    // ⭐ 문자열로 변환하고 유효성 검사
+    const regionStr = region ? String(region).trim() : '';
+    if (regionStr && regionStr !== '') {
       // 지역명 정규화 (공백 제거, 대소문자 통일)
-      const normalizedRegion = region.trim();
+      const normalizedRegion = regionStr;
       regionCount[normalizedRegion] = (regionCount[normalizedRegion] || 0) + 1;
       totalCount++;
     }

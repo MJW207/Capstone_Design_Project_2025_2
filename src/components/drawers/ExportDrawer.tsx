@@ -173,8 +173,7 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
             if (resp.key && resp.key !== 'no_qpoll') {
               exportPanel.qpollResponses[resp.key] = {
                 question: resp.title || resp.key,
-                answer: resp.answer || '',
-                date: resp.date || ''
+                answer: resp.answer || ''
               };
             }
           });
@@ -271,9 +270,6 @@ export function ExportDrawer({ isOpen, onClose, data = [], query = '', filters =
             if (resp.key && resp.key !== 'no_qpoll') {
               lines.push(`  Q [${resp.key}]: ${resp.title || resp.key}`);
               lines.push(`  A: ${resp.answer || ''}`);
-              if (resp.date) {
-                lines.push(`  날짜: ${resp.date}`);
-              }
               lines.push('');
             }
           });

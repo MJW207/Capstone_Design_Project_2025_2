@@ -37,6 +37,16 @@ export type SummaryData = {
   bookmarkedRate?: number; // 0~1 (북마크된 패널 비율)
   avgSimilarity?: number; // 평균 유사도 점수
   metadataCompleteness?: number; // 0~1 (메타데이터 완성도)
+  
+  // 라이프스타일 관련 (신규)
+  carOwnershipRate?: number; // 차량 보유율 (0~1)
+  topPhoneBrand?: { // 주요 스마트폰 브랜드
+    name: string;
+    count: number;
+    rate: number; // 비율 (0~100)
+  };
+  smokingRate?: number; // 흡연자 비율 (0~1)
+  drinkingRate?: number; // 음주자 비율 (0~1)
 };
 
 /**

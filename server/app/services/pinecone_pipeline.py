@@ -71,7 +71,10 @@ class PanelSearchPipeline:
             logger.info("[검색] 빈 쿼리, 외부 필터만으로 검색")
             # 필터만으로 검색 진행 (임베딩 생성 불필요)
             metadata = {}
-            classified = {}
+            # 외부 필터의 카테고리로 classified 초기화 (필터만으로 검색 가능하도록)
+            classified = {cat: {} for cat in external_filters.keys()}
+            final_count = top_k  # top_k가 None이면 전체 반환
+            logger.info(f"[검색] 외부 필터 카테고리: {list(classified.keys())}")
         else:
             # 1단계: 메타데이터 추출
             step_start = time.time()
@@ -87,9 +90,19 @@ class PanelSearchPipeline:
                 logger.warning(f"[1단계 경고] 메타데이터 추출 실패 (계속 진행): {e}")
                 metadata = {}  # 빈 메타데이터로 계속 진행
             
+            # ⭐ 메타데이터 추출 실패 시 필터 폴백 처리
             if not metadata:
-                logger.error("[ERROR] 메타데이터 추출 실패 - 빈 메타데이터 반환")
-                return []  # 노트북과 동일하게 즉시 종료
+                if external_filters:
+                    # 필터가 있으면 필터만으로 검색 진행
+                    logger.warning("[경고] 메타데이터 추출 실패, 필터만으로 검색 진행")
+                    # 필터만 검색 모드로 전환
+                    classified = {cat: {} for cat in external_filters.keys()}
+                    final_count = top_k  # top_k가 None이면 전체 반환
+                    logger.info(f"[검색] 외부 필터 카테고리: {list(classified.keys())}")
+                else:
+                    # 필터도 없으면 검색 불가
+                    logger.error("[ERROR] 메타데이터 추출 실패 - 빈 메타데이터 반환, 필터도 없음")
+                    return []
             
             # ⭐ top_k 결정: query에서 추출 또는 파라미터 사용
             final_count = None  # 기본값: None (전체 반환)
@@ -197,6 +210,7 @@ class PanelSearchPipeline:
             category_filters.update(external_filters)
         
         # 쿼리에서 추출한 메타데이터 필터 추가 (외부 필터와 병합)
+        filter_conflicts = []  # 충돌 감지용
         for category in classified.keys():
             if category not in category_filters:  # 외부 필터가 없을 때만 추가
                 cat_filter = self.filter_extractor.extract_filters(metadata, category)
@@ -208,75 +222,117 @@ class PanelSearchPipeline:
                 if cat_filter:
                     # 외부 필터에 없는 키만 추가
                     for key, value in cat_filter.items():
-                        if key not in category_filters[category]:
+                        if key in category_filters[category]:
+                            # ⭐ 필터 충돌 감지
+                            external_value = category_filters[category][key]
+                            if external_value != value:
+                                # 값이 다르면 충돌
+                                filter_conflicts.append({
+                                    'category': category,
+                                    'key': key,
+                                    'query_value': value,
+                                    'filter_value': external_value
+                                })
+                                logger.warning(
+                                    f"[필터 충돌] {category}.{key}: "
+                                    f"쿼리='{value}', 필터='{external_value}' → 필터 값 우선 적용"
+                                )
+                        else:
+                            # 충돌 없으면 추가
                             category_filters[category][key] = value
+        
+        # 필터 충돌이 있으면 경고 로그
+        if filter_conflicts:
+            logger.warning(
+                f"[필터 충돌] 총 {len(filter_conflicts)}개 충돌 감지: "
+                f"{', '.join([f'{c['category']}.{c['key']}' for c in filter_conflicts])} "
+                f"→ 외부 필터 값이 우선 적용됩니다"
+            )
         
         step_time = time.time() - step_start
         logger.info(f"[2.5단계 완료] 필터 추출: {step_time:.2f}초, 결과: {category_filters}")
 
-        # 3단계: 자연어 텍스트 생성 (병렬 처리)
-        step_start = time.time()
-        logger.info("[3단계] 자연어 텍스트 생성 시작 (병렬)")
-        texts = {}
+        # ⭐ 필터만 검색하는 경우 (빈 쿼리 + 외부 필터만): 임베딩 생성 생략하고 바로 필터 검색
+        is_filter_only_search = (not query or not query.strip()) and external_filters and not metadata
         
-        # 빈 쿼리이고 외부 필터만 있는 경우 텍스트 생성 생략
-        if (not query or not query.strip()) and external_filters and not classified:
-            logger.info("[3단계] 빈 쿼리, 텍스트 생성 생략 (필터만 사용)")
-            # 필터만으로 검색하기 위해 더미 텍스트 생성
-            for category in external_filters.keys():
-                texts[category] = ""  # 빈 텍스트
-        elif classified:
-            # 병렬 처리로 텍스트 생성
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            with ThreadPoolExecutor(max_workers=min(len(classified), 5)) as executor:
-                futures = {
-                    executor.submit(self.text_generator.generate, category, items): category
-                    for category, items in classified.items()
-                }
-                
-                for future in as_completed(futures):
-                    category = futures[future]
-                    text = future.result()
-                    if text:
-                        texts[category] = text
-        
-        step_time = time.time() - step_start
-        logger.info(f"[3단계 완료] 텍스트 생성: {step_time:.2f}초, 카테고리 수: {len(texts)}")
-
-        # 4단계: 임베딩 생성
-        step_start = time.time()
-        logger.info("[4단계] 임베딩 생성 시작")
-        try:
-                # 빈 텍스트가 있으면 랜덤 벡터 사용
-            if any(not text for text in texts.values()):
-                logger.info("[4단계] 빈 텍스트 감지, 랜덤 벡터 사용")
-                import numpy as np
-                dimension = 1536  # OpenAI text-embedding-3-small embedding dimension
-                random_vector = np.random.rand(dimension).astype(np.float32).tolist()
-                norm = np.linalg.norm(random_vector)
-                if norm > 0:
-                    random_vector = (np.array(random_vector) / norm).tolist()
-                
-                embeddings = {}
-                for category in texts.keys():
-                    embeddings[category] = random_vector
-            else:
-                embeddings = self.embedding_generator.generate(texts)
-            step_time = time.time() - step_start
-            logger.info(f"[4단계 완료] 임베딩 생성: {step_time:.2f}초, 카테고리 수: {len(embeddings)}")
-        except Exception as e:
-            logger.warning(f"[4단계 경고] 임베딩 생성 실패 (계속 진행): {e}")
+        if is_filter_only_search:
+            logger.info("[검색] 필터만 검색 모드 - 임베딩 생성 생략, 메타데이터 필터만으로 검색")
+            
+            # 랜덤 벡터 생성 (Pinecone 검색에 필요하지만 유사도는 무시)
+            import numpy as np
+            dimension = 1536  # OpenAI text-embedding-3-small embedding dimension
+            random_vector = np.random.rand(dimension).astype(np.float32).tolist()
+            norm = np.linalg.norm(random_vector)
+            if norm > 0:
+                random_vector = (np.array(random_vector) / norm).tolist()
+            
+            # 각 카테고리별로 동일한 랜덤 벡터 사용 (유사도는 무시하고 필터만 적용)
             embeddings = {}
-        
-        if not embeddings:
-            logger.warning("[경고] 임베딩이 비어있음, 검색 불가")
-            return []
+            category_order = list(category_filters.keys())
+            for category in category_order:
+                embeddings[category] = random_vector
+            
+            logger.info(f"[검색] 랜덤 벡터 생성 완료, 카테고리: {category_order}")
+        else:
+            # 3단계: 자연어 텍스트 생성 (병렬 처리)
+            step_start = time.time()
+            logger.info("[3단계] 자연어 텍스트 생성 시작 (병렬)")
+            texts = {}
+            
+            if classified:
+                # 병렬 처리로 텍스트 생성
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                with ThreadPoolExecutor(max_workers=min(len(classified), 5)) as executor:
+                    futures = {
+                        executor.submit(self.text_generator.generate, category, items): category
+                        for category, items in classified.items()
+                    }
+                    
+                    for future in as_completed(futures):
+                        category = futures[future]
+                        text = future.result()
+                        if text:
+                            texts[category] = text
+            
+            step_time = time.time() - step_start
+            logger.info(f"[3단계 완료] 텍스트 생성: {step_time:.2f}초, 카테고리 수: {len(texts)}")
+
+            # 4단계: 임베딩 생성
+            step_start = time.time()
+            logger.info("[4단계] 임베딩 생성 시작")
+            try:
+                if texts:
+                    embeddings = self.embedding_generator.generate(texts)
+                else:
+                    # 텍스트가 없으면 랜덤 벡터 사용
+                    logger.info("[4단계] 텍스트 없음, 랜덤 벡터 사용")
+                    import numpy as np
+                    dimension = 1536
+                    random_vector = np.random.rand(dimension).astype(np.float32).tolist()
+                    norm = np.linalg.norm(random_vector)
+                    if norm > 0:
+                        random_vector = (np.array(random_vector) / norm).tolist()
+                    
+                    embeddings = {}
+                    for category in classified.keys():
+                        embeddings[category] = random_vector
+                
+                step_time = time.time() - step_start
+                logger.info(f"[4단계 완료] 임베딩 생성: {step_time:.2f}초, 카테고리 수: {len(embeddings)}")
+            except Exception as e:
+                logger.warning(f"[4단계 경고] 임베딩 생성 실패 (계속 진행): {e}")
+                embeddings = {}
+            
+            if not embeddings:
+                logger.warning("[경고] 임베딩이 비어있음, 검색 불가")
+                return []
+            
+            category_order = list(embeddings.keys())
 
         # 5단계: 단계적 필터링 검색
         step_start = time.time()
         logger.info("[5단계] 단계적 필터링 검색 시작")
 
-        category_order = list(embeddings.keys())
         final_results = self.result_filter.filter_by_categories(
             embeddings=embeddings,
             category_order=category_order,

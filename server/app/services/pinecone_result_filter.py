@@ -90,10 +90,36 @@ class PineconeResultFilter:
             metadata_filter=first_filter
         )
 
-        # ⭐ 메타데이터 필터 사용 시 - 모든 결과를 후보로 (후보 다잡기)
+        # ⭐ 메타데이터 필터 사용 시 - 필터 조건 만족하는 패널 중 유사도 높은 순으로 정렬
         if has_metadata_filter:
-            candidate_mb_sns = list(set([r["mb_sn"] for r in first_results if r.get("mb_sn")]))
-            logger.info(f"   -> [메타데이터 필터] {len(candidate_mb_sns)}개 후보 확보 (조건 만족하는 전체)")
+            # 필터 조건을 만족하는 패널의 유사도 점수 수집
+            filtered_mb_sn_scores = {}
+            for r in first_results:
+                mb_sn = r.get("mb_sn", "")
+                if mb_sn:
+                    score = r.get("score", 0.0)
+                    # 최고 점수만 유지 (여러 카테고리에서 같은 mb_sn이 나올 수 있음)
+                    if mb_sn not in filtered_mb_sn_scores or score > filtered_mb_sn_scores[mb_sn]:
+                        filtered_mb_sn_scores[mb_sn] = score
+            
+            # ⭐ 유사도 점수 기준으로 정렬 (필터 조건 만족하는 패널 중에서)
+            sorted_filtered = sorted(
+                filtered_mb_sn_scores.items(), 
+                key=lambda x: x[1], 
+                reverse=True  # 높은 점수부터
+            )
+            
+            if final_count is None:
+                # 명수 미명시 → 필터 조건 만족하는 전체 반환 (유사도 순)
+                candidate_mb_sns = [mb_sn for mb_sn, score in sorted_filtered]
+            else:
+                # 명수 명시 → 상위 유사도 패널만 (필터 조건 만족하는 패널 중에서)
+                candidate_mb_sns = [mb_sn for mb_sn, score in sorted_filtered[:final_count * 3]]
+            
+            logger.info(
+                f"   -> [메타데이터 필터 + 유사도 정렬] {len(candidate_mb_sns)}개 후보 확보 "
+                f"(필터 조건 만족 + 유사도 상위)"
+            )
         else:
             # 필터 없을 때
             mb_sn_scores = {}
@@ -160,21 +186,32 @@ class PineconeResultFilter:
 
             # ⭐ 메타데이터 필터 여부에 따라 다른 전략
             if has_category_filter:
-                # 메타데이터 필터 O → 모든 결과 유지 (후보 다잡기)
+                # 메타데이터 필터 O → 필터 조건 만족하는 패널 중 유사도 높은 순으로 정렬
                 filtered_mb_sns = set([r["mb_sn"] for r in results if r.get("mb_sn") in candidate_mb_sns])
                 
-                # mb_sn별 최고 점수로 정렬
+                # mb_sn별 최고 점수로 정렬 (여러 카테고리에서 같은 mb_sn이 나올 수 있음)
                 mb_sn_scores = {}
                 for r in results:
                     mb_sn = r.get("mb_sn", "")
                     if mb_sn in filtered_mb_sns:
-                        if mb_sn not in mb_sn_scores or r.get("score", 0.0) > mb_sn_scores[mb_sn]:
-                            mb_sn_scores[mb_sn] = r.get("score", 0.0)
+                        score = r.get("score", 0.0)
+                        if mb_sn not in mb_sn_scores or score > mb_sn_scores[mb_sn]:
+                            mb_sn_scores[mb_sn] = score
                 
+                # ⭐ 유사도 점수 기준으로 정렬 (필터 조건 만족하는 패널 중에서)
                 sorted_mb_sns = sorted(mb_sn_scores.items(), key=lambda x: x[1], reverse=True)
-                candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns]
                 
-                logger.info(f"   -> [메타데이터 필터] {len(candidate_mb_sns)}개 후보 유지 (조건 만족하는 전체)")
+                if final_count is None:
+                    # 명수 미명시 → 필터 조건 만족하는 전체 반환 (유사도 순)
+                    candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns]
+                else:
+                    # 명수 명시 → 상위 유사도 패널만 (필터 조건 만족하는 패널 중에서)
+                    candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns[:final_count * 3]]
+                
+                logger.info(
+                    f"   -> [메타데이터 필터 + 유사도 정렬] {len(candidate_mb_sns)}개 후보 유지 "
+                    f"(필터 조건 만족 + 유사도 상위)"
+                )
             else:
                 # 메타데이터 필터 X → 벡터 유사도 기반 상위 선별
                 mb_sn_scores = {}

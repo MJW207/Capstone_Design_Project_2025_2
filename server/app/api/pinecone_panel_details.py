@@ -170,25 +170,59 @@ async def _get_panel_details_from_pinecone(
     # 응답, AI 요약 등은 패널 상세 정보창에서만 로딩 (/api/panels/{panel_id})
     logger.info(f"[Panel Details] 메타데이터 수집 완료: {len(panel_metadata_map)}개 패널, 결과 변환 시작 (응답 제외)")
     
-    # ⭐ 검색 결과에서는 Pinecone 메타데이터만 사용
-    # merged_data는 패널 상세정보 조회 시(/api/panels/{panel_id})에만 NeonDB에서 로드
+    # ⭐ 페이지네이션 적용 (전체 리스트에서 현재 페이지만 처리)
+    total_count = len(mb_sn_list)
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    paginated_mb_sn_list = mb_sn_list[start_idx:end_idx]
+    
+    logger.info(f"[Panel Details] 페이지네이션: 전체 {total_count}개 중 {start_idx}~{end_idx}번째 ({len(paginated_mb_sn_list)}개) 처리")
+    
+    # ⭐ merged 데이터도 함께 로드하여 metadata에 병합 (SummaryBar 통계 계산을 위해)
+    # 배치로 merged 데이터 조회
+    from app.utils.merged_data_loader import get_panels_from_merged_db_batch
+    merged_data_map = {}
+    try:
+        merged_data_map = await get_panels_from_merged_db_batch(paginated_mb_sn_list)
+        logger.info(f"[Panel Details] merged 데이터 로드 완료: {len(merged_data_map)}개 패널")
+    except Exception as e:
+        logger.warning(f"[Panel Details] merged 데이터 로드 실패: {e}, Pinecone 메타데이터만 사용")
+    
+    # ⭐ 검색 결과에서는 Pinecone 메타데이터 + merged 데이터 병합
     results = []
-    for mb_sn in mb_sn_list:
+    for mb_sn in paginated_mb_sn_list:
         metadata = panel_metadata_map.get(mb_sn, {})
         
-        # 기본 정보 추출 (Pinecone 메타데이터만 사용)
-        gender = metadata.get("성별", "")
-        region = metadata.get("지역", "")
-        detail_location = metadata.get("지역구", "")
+        # ⭐ merged 데이터 가져오기 (fallback용)
+        merged_data = merged_data_map.get(mb_sn, {})
+        
+        # 기본 정보 추출 (Pinecone 메타데이터 우선, 없으면 merged_data 사용)
+        gender = metadata.get("성별", "") or merged_data.get("gender", "")
+        region = metadata.get("지역", "") or merged_data.get("location", "")
+        detail_location = metadata.get("지역구", "") or merged_data.get("detail_location", "")
+        
+        # 지역 정보 조합
         if detail_location and region:
             region = f"{region} {detail_location}"
         elif detail_location:
             region = detail_location
+        elif not region and merged_data.get("location"):
+            region = merged_data.get("location", "")
+            if merged_data.get("detail_location"):
+                region = f"{region} {merged_data.get('detail_location')}"
         
         age = 0
+        # Pinecone 메타데이터에서 나이 가져오기
         if metadata.get("나이"):
             try:
                 age = int(float(metadata["나이"]))
+            except (ValueError, TypeError):
+                pass
+        
+        # merged_data에서 나이 가져오기 (Pinecone에 없을 때)
+        if not age and merged_data.get("age"):
+            try:
+                age = int(float(merged_data["age"]))
             except (ValueError, TypeError):
                 pass
         
@@ -227,10 +261,67 @@ async def _get_panel_details_from_pinecone(
             if key not in ["topic", "index", "mb_sn", "text", "_index_values"]:  # 시스템 필드 제외
                 clean_metadata[key] = value
         
-        # ⭐ 검색 결과에서는 Pinecone 메타데이터만 사용
-        # 직업/직무 정보는 패널 상세정보 조회 시(/api/panels/{panel_id}) NeonDB merged 테이블에서 로드
+        # ⭐ merged 데이터를 metadata에 병합 (SummaryBar 통계 계산을 위해)
+        # merged_data는 이미 위에서 가져왔음
+        if merged_data:
+            # merged_data의 base_profile 필드들을 metadata에 병합
+            # 시스템 필드 및 중복 필드 제외 (Pinecone 메타데이터 우선)
+            exclude_fields = ['mb_sn', 'quick_answers', 'id', 'name', 'gender', 'age', 'region', 'income', 'location', 'detail_location']
+            for key, value in merged_data.items():
+                if key not in exclude_fields and value is not None:
+                    # Pinecone 메타데이터가 있으면 유지, 없으면 merged 데이터 사용
+                    # 단, SummaryBar에 필요한 필드들(보유차량여부, 보유 휴대폰 단말기 브랜드, 흡연경험, 음용경험 술 등)은 항상 merged 데이터 사용
+                    important_fields = ['보유차량여부', '보유 휴대폰 단말기 브랜드', '흡연경험', '음용경험 술', 
+                                       '궐련형 전자담배/가열식 전자담배 이용경험', '보유전제품']
+                    if key in important_fields or key not in clean_metadata:
+                        clean_metadata[key] = value
+        
+        # ⭐ 검색 결과에서는 Pinecone 메타데이터 + merged 데이터 병합 완료
         original_job = ""
         original_job_role = ""
+        
+        # ⭐ coverage 계산 (QuickPoll 응답 여부 확인)
+        coverage = None
+        index_values = metadata.get("_index_values", [])
+        has_w1 = "w1" in index_values or any("w1" in str(v) for v in index_values)
+        has_w2 = "w2" in index_values or any("w2" in str(v) for v in index_values)
+        has_q = "q" in index_values or any("q" in str(v) for v in index_values)
+        
+        # merged_data에서 quick_answers 확인 (Pinecone에 없을 때 fallback)
+        # ⭐ 실제로 유효한 QuickPoll 응답이 있는지 확인
+        if not has_q and merged_data:
+            quick_answers = merged_data.get("quick_answers", {})
+            if quick_answers and isinstance(quick_answers, dict):
+                # 빈 딕셔너리가 아니고, 실제로 값이 있는 항목이 있는지 확인
+                # quick_answers의 값이 None이 아니고, 빈 문자열이 아닌 항목이 하나라도 있어야 함
+                has_valid_quick_answer = False
+                for key, value in quick_answers.items():
+                    if value is not None and value != "" and value != []:
+                        # 리스트인 경우 비어있지 않은지 확인
+                        if isinstance(value, list) and len(value) > 0:
+                            has_valid_quick_answer = True
+                            break
+                        # 문자열이나 다른 타입인 경우 값이 있으면 유효
+                        elif not isinstance(value, list):
+                            has_valid_quick_answer = True
+                            break
+                if has_valid_quick_answer:
+                    has_q = True
+        
+        if has_q and has_w1 and has_w2:
+            coverage = "qw"  # Q + W1 + W2
+        elif has_q and has_w1:
+            coverage = "qw1"  # Q + W1
+        elif has_q and has_w2:
+            coverage = "qw2"  # Q + W2
+        elif has_q:
+            coverage = "q"  # Q만
+        elif has_w1 and has_w2:
+            coverage = "w"  # W1 + W2
+        elif has_w1:
+            coverage = "w1"  # W1만
+        elif has_w2:
+            coverage = "w2"  # W2만
         
         results.append({
             "id": mb_sn,
@@ -240,6 +331,7 @@ async def _get_panel_details_from_pinecone(
             "age": age,
             "region": region,
             "income": str(income) if income else "",
+            "coverage": coverage,  # ⭐ coverage 추가
             "welcome1_info": {
                 "gender": gender,
                 "age": age,
@@ -264,23 +356,20 @@ async def _get_panel_details_from_pinecone(
             "metadata": clean_metadata
         })
     
-    # 페이지네이션
-    total_count = len(results)
-    start_idx = (page - 1) * limit
-    end_idx = start_idx + limit
-    paginated_results = results[start_idx:end_idx]
-    
-    pages = max(1, (total_count + limit - 1) // limit) if total_count > 0 else 0
+    # ⭐ 페이지네이션은 이미 mb_sn_list 단계에서 적용됨
+    # results는 이미 페이지네이션된 결과이므로 추가 페이지네이션 불필요
+    import math
+    pages = math.ceil(total_count / limit) if limit > 0 else 1
     
     convert_time = time.time() - convert_start_time
-    logger.info(f"[Panel Details] 완료: {convert_time:.2f}초, 총 {total_count}개 패널, 페이지네이션 후 {len(paginated_results)}개 반환")
+    logger.info(f"[Panel Details] 완료: {convert_time:.2f}초, 전체 {total_count}개 패널 중 현재 페이지 {len(results)}개 반환")
     
     return {
-        "count": len(paginated_results),
-        "total": total_count,
+        "count": len(results),
+        "total": total_count,  # 전체 검색 결과 개수
         "page": page,
         "page_size": limit,
         "pages": pages,
-        "results": paginated_results
+        "results": results  # 이미 페이지네이션된 결과
     }
 

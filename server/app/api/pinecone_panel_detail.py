@@ -314,7 +314,6 @@ def get_panel_from_pinecone(panel_id: str) -> Optional[Dict[str, Any]]:
                     "title": topic,
                     "question": question if is_quick_answer and question else None,  # quick_answer인 경우만 질문 포함
                     "answer": answer,
-                    "date": datetime.now().strftime("%Y.%m.%d"),
                     "index": index_val,  # 커버리지 표시용
                     "is_quick_answer": is_quick_answer
                 }
@@ -341,7 +340,6 @@ def get_panel_from_pinecone(panel_id: str) -> Optional[Dict[str, Any]]:
                 "title": "Quick Poll",
                 "question": "Quick Poll",
                 "answer": "이 패널은 qpoll에 대해 응답하지 않았습니다.",
-                "date": datetime.now().strftime("%Y.%m.%d"),
                 "index": 3,
                 "is_quick_answer": True
             }
@@ -356,8 +354,7 @@ def get_panel_from_pinecone(panel_id: str) -> Optional[Dict[str, Any]]:
             all_responses = [{
                 "key": "no_response",
                 "title": "응답 없음",
-                "answer": "해당 패널의 응답 정보가 없습니다.",
-                "date": datetime.now().strftime("%Y.%m.%d")
+                "answer": "해당 패널의 응답 정보가 없습니다."
             }]
         
         # ⭐ 커버리지 계산

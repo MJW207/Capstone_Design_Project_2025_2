@@ -375,9 +375,12 @@ export default function App() {
             if (view === 'start') {
               setView('results');
             }
-            // 필터 적용 시 자동으로 검색 실행 (Pinecone 검색만)
-            if (query) {
+            // 필터 적용 시 자동으로 검색 실행 (쿼리가 있으면 쿼리 검색, 없으면 필터만 검색)
+            if (query && query.trim()) {
               handleSearch(query);
+            } else {
+              // 쿼리가 없어도 필터만으로 검색 실행
+              handleSearch('');
             }
             setEditingPreset(null);
           }}

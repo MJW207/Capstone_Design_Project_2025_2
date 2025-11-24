@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PIPagination } from '../../ui/pi/PIPagination';
-import { Search, Filter, Download, Quote, MapPin, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Loader2, RefreshCw } from 'lucide-react';
+import { Search, Filter, Download, Quote, MapPin, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, Copy, Loader2, RefreshCw, User, Calendar, Briefcase, DollarSign } from 'lucide-react';
 import { PITextField } from '../../ui/pi/PITextField';
 import { PIButton } from '../../ui/pi/PIButton';
 import { PIChip } from '../../ui/pi/PIChip';
@@ -22,6 +22,8 @@ import { presetManager, type FilterPreset } from '../../lib/presetManager';
 import { toast } from 'sonner';
 import { historyManager } from '../../lib/history';
 import { searchApi } from '../../lib/utils';
+import { SummaryStatDrawer } from '../drawers/SummaryStatDrawer';
+import type { SummaryProfileChip } from '../../ui/summary/SummaryBarNew';
 
 interface ResultsPageProps {
   query: string;
@@ -84,6 +86,10 @@ export function ResultsPage({
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = 최신순, asc = 오래된순
   const [bookmarkedPanels, setBookmarkedPanels] = useState<Set<string>>(new Set());
   const [isBookmarkPanelOpen, setIsBookmarkPanelOpen] = useState(false);
+  
+  // SummaryBar 통계 드로우아웃 상태
+  const [statDrawerOpen, setStatDrawerOpen] = useState(false);
+  const [selectedChip, setSelectedChip] = useState<SummaryProfileChip | null>(null);
   
   // 로컬 더미 + 페이지네이션 상태
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -688,16 +694,17 @@ export function ResultsPage({
         </div>
       </section>
 
-      {/* Summary Bar - 현재 검색 결과(panels) 기준으로 계산 */}
+      {/* Summary Bar - 전체 검색 결과 기준으로 계산 */}
       {(() => {
-        // 현재 검색 결과(panels) 기준으로 통계 계산
-        const currentPanels = panels; // 현재 페이지의 패널들
-        const currentTotal = currentPanels.length;
-        const currentQCount = currentPanels.filter((p: Panel) => p.coverage === 'qw').length;
-        const currentWOnlyCount = currentPanels.filter((p: Panel) => p.coverage === 'w').length;
+        // 전체 검색 결과 기준으로 통계 계산 (searchCache의 allResults 사용)
+        const allSearchResults = searchCache?.allResults || panels; // 전체 결과가 있으면 사용, 없으면 현재 페이지만
+        const currentPanels = panels; // 현재 페이지의 패널들 (표시용)
+        const currentTotal = allSearchResults.length; // 전체 검색 결과 수
+        const currentQCount = allSearchResults.filter((p: Panel) => p.coverage === 'qw' || p.coverage === 'qw1' || p.coverage === 'qw2' || p.coverage === 'q').length;
+        const currentWOnlyCount = allSearchResults.filter((p: Panel) => p.coverage === 'w' || p.coverage === 'w1' || p.coverage === 'w2').length;
 
-        // 성별 통계 (현재 검색 결과 기준)
-        const genders = currentPanels.map((p: Panel) => {
+        // 성별 통계 (전체 검색 결과 기준)
+        const genders = allSearchResults.map((p: Panel) => {
           const genderStr = (p as any).gender || '';
           if (typeof genderStr === 'string') {
             const lower = genderStr.toLowerCase();
@@ -713,8 +720,8 @@ export function ResultsPage({
         const femaleCount = genders.filter(g => g === 'F').length;
         const femaleRate = genders.length > 0 ? femaleCount / genders.length : undefined;
 
-        // 지역 통계 (현재 검색 결과 기준)
-        const regions = currentPanels.map((p: Panel) => (p as any).region || '').filter(Boolean);
+        // 지역 통계 (전체 검색 결과 기준)
+        const regions = allSearchResults.map((p: Panel) => (p as any).region || (p as any).location || '').filter(Boolean);
         const regionCount: Record<string, number> = {};
         regions.forEach(region => {
           regionCount[region] = (regionCount[region] || 0) + 1;
@@ -728,8 +735,8 @@ export function ResultsPage({
             rate: currentTotal > 0 ? Math.round((count / currentTotal) * 100) : 0
           }));
 
-        // 연령대 통계 (현재 검색 결과 기준)
-        const ages = currentPanels.map((p: Panel) => (p as any).age || 0).filter((age: number) => age > 0);
+        // 연령대 통계 (전체 검색 결과 기준)
+        const ages = allSearchResults.map((p: Panel) => (p as any).age || 0).filter((age: number) => age > 0);
         const avgAge = ages.length > 0 ? Math.round(ages.reduce((sum: number, age: number) => sum + age, 0) / ages.length) : undefined;
 
         // 연령대 분포 계산
@@ -751,24 +758,35 @@ export function ResultsPage({
           };
         });
 
-        // 소득 통계 계산
-        const personalIncomes = currentPanels
-          .map((p: Panel) => {
-            const incomeStr = p.metadata?.["월평균 개인소득"];
-            if (!incomeStr) return null;
-            // 문자열에서 숫자만 추출 (예: "300만원" -> 300)
-            const match = String(incomeStr).match(/(\d+)/);
-            return match ? parseInt(match[1]) : null;
-          })
+        // 소득 파싱 함수 (범위 처리: "200~299만원" -> 250)
+        const parseIncome = (incomeStr: string | undefined): number | null => {
+          if (!incomeStr) return null;
+          const str = String(incomeStr);
+          
+          // 범위 형식: "200~299만원", "월 200~299만원" 등
+          const rangeMatch = str.match(/(\d+)~(\d+)/);
+          if (rangeMatch) {
+            const min = parseInt(rangeMatch[1]);
+            const max = parseInt(rangeMatch[2]);
+            return Math.round((min + max) / 2); // 중간값 반환
+          }
+          
+          // 단일 숫자 형식: "300만원", "월 300만원" 등
+          const singleMatch = str.match(/(\d+)/);
+          if (singleMatch) {
+            return parseInt(singleMatch[1]);
+          }
+          
+          return null;
+        };
+
+        // 소득 통계 계산 (전체 검색 결과 기준)
+        const personalIncomes = allSearchResults
+          .map((p: Panel) => parseIncome(p.metadata?.["월평균 개인소득"]))
           .filter((v): v is number => v !== null && v > 0);
         
-        const householdIncomes = currentPanels
-          .map((p: Panel) => {
-            const incomeStr = p.metadata?.["월평균 가구소득"];
-            if (!incomeStr) return null;
-            const match = String(incomeStr).match(/(\d+)/);
-            return match ? parseInt(match[1]) : null;
-          })
+        const householdIncomes = allSearchResults
+          .map((p: Panel) => parseIncome(p.metadata?.["월평균 가구소득"]))
           .filter((v): v is number => v !== null && v > 0);
         
         const avgPersonalIncome = personalIncomes.length > 0
@@ -802,8 +820,8 @@ export function ResultsPage({
           return { label: group.label, count, rate };
         });
 
-        // 직업 통계
-        const occupations = currentPanels
+        // 직업 통계 (전체 검색 결과 기준)
+        const occupations = allSearchResults
           .map((p: Panel) => p.metadata?.직업)
           .filter(Boolean) as string[];
         const occupationCount: Record<string, number> = {};
@@ -819,8 +837,8 @@ export function ResultsPage({
             rate: currentTotal > 0 ? Math.round((count / currentTotal) * 100) : 0
           }));
 
-        // 학력 분포
-        const educations = currentPanels
+        // 학력 분포 (전체 검색 결과 기준)
+        const educations = allSearchResults
           .map((p: Panel) => p.metadata?.최종학력)
           .filter(Boolean) as string[];
         const educationCount: Record<string, number> = {};
@@ -835,8 +853,8 @@ export function ResultsPage({
           }))
           .sort((a, b) => b.count - a.count);
 
-        // 결혼 여부 통계
-        const marriedStatuses = currentPanels
+        // 결혼 여부 통계 (전체 검색 결과 기준)
+        const marriedStatuses = allSearchResults
           .map((p: Panel) => {
             const status = p.metadata?.결혼여부;
             if (!status) return null;
@@ -847,8 +865,8 @@ export function ResultsPage({
         const marriedCount = marriedStatuses.filter(s => s === 'married').length;
         const marriedRate = marriedStatuses.length > 0 ? marriedCount / marriedStatuses.length : undefined;
 
-        // 자녀 수 통계
-        const childrenCounts = currentPanels
+        // 자녀 수 통계 (전체 검색 결과 기준)
+        const childrenCounts = allSearchResults
           .map((p: Panel) => {
             const count = p.metadata?.자녀수;
             return typeof count === 'number' ? count : null;
@@ -858,8 +876,8 @@ export function ResultsPage({
           ? Math.round((childrenCounts.reduce((sum, val) => sum + val, 0) / childrenCounts.length) * 10) / 10
           : undefined;
 
-        // 가구원 수 분포
-        const householdSizes = currentPanels
+        // 가구원 수 분포 (전체 검색 결과 기준)
+        const householdSizes = allSearchResults
           .map((p: Panel) => {
             const size = p.metadata?.가족수;
             if (!size) return null;
@@ -886,13 +904,13 @@ export function ResultsPage({
           return { label: group.label, count, rate };
         });
 
-        // 북마크 비율
-        const bookmarkedCount = currentPanels.filter((p: Panel) => bookmarkedPanels.has(p.id)).length;
+        // 북마크 비율 (전체 검색 결과 기준)
+        const bookmarkedCount = allSearchResults.filter((p: Panel) => bookmarkedPanels.has(p.id)).length;
         const bookmarkedRate = currentTotal > 0 ? bookmarkedCount / currentTotal : undefined;
 
-        // 메타데이터 완성도 계산
+        // 메타데이터 완성도 계산 (전체 검색 결과 기준)
         const metadataFields = ['직업', '최종학력', '결혼여부', '자녀수', '가족수', '월평균 개인소득', '월평균 가구소득'];
-        const completenessScores = currentPanels.map((p: Panel) => {
+        const completenessScores = allSearchResults.map((p: Panel) => {
           const filledFields = metadataFields.filter(field => {
             const value = p.metadata?.[field];
             return value !== undefined && value !== null && value !== '';
@@ -903,11 +921,49 @@ export function ResultsPage({
           ? completenessScores.reduce((sum, score) => sum + score, 0) / completenessScores.length
           : undefined;
 
-        // SummaryData 변환 (현재 검색 결과 기준)
+        // 차량 보유율 계산 (전체 검색 결과 기준)
+        const carOwnershipStatuses = allSearchResults
+          .map((p: Panel) => {
+            const status = p.metadata?.["보유차량여부"];
+            if (!status) return null;
+            const lower = String(status).toLowerCase();
+            return lower.includes('있다') || lower === '있음' || lower === 'yes' ? 'has_car' : 'no_car';
+          })
+          .filter(Boolean) as string[];
+        const carOwnershipRate = carOwnershipStatuses.length > 0
+          ? carOwnershipStatuses.filter(s => s === 'has_car').length / carOwnershipStatuses.length
+          : undefined;
+
+        // 주요 스마트폰 브랜드 통계 (전체 검색 결과 기준)
+        const phoneBrands = allSearchResults
+          .map((p: Panel) => {
+            const brand = p.metadata?.["보유 휴대폰 단말기 브랜드"];
+            if (!brand || brand === '무응답' || String(brand).trim() === '') return null;
+            return String(brand).trim();
+          })
+          .filter(Boolean) as string[];
+        const phoneBrandCount: Record<string, number> = {};
+        phoneBrands.forEach(brand => {
+          phoneBrandCount[brand] = (phoneBrandCount[brand] || 0) + 1;
+        });
+        const topPhoneBrand = Object.entries(phoneBrandCount).length > 0
+          ? (() => {
+              const sorted = Object.entries(phoneBrandCount)
+                .sort((a, b) => b[1] - a[1])[0];
+              return {
+                name: sorted[0],
+                count: sorted[1],
+                rate: phoneBrands.length > 0 ? Math.round((sorted[1] / phoneBrands.length) * 100) : 0
+              };
+            })()
+          : undefined;
+
+
+        // SummaryData 변환 (전체 검색 결과 수 사용)
         const summaryData: SummaryData = {
-          total: loading ? 0 : currentTotal,
-          qCount: loading ? 0 : currentQCount,
-          wOnlyCount: loading ? 0 : currentWOnlyCount,
+          total: loading ? 0 : totalResults, // 전체 검색 결과 수 사용
+          qCount: loading ? 0 : currentQCount, // 현재 페이지 기준 (전체 데이터 없음)
+          wOnlyCount: loading ? 0 : currentWOnlyCount, // 현재 페이지 기준 (전체 데이터 없음)
           femaleRate: femaleRate,
           avgAge: avgAge,
           regionsTop: regionsTop,
@@ -927,6 +983,9 @@ export function ResultsPage({
           // 검색 품질 지표
           bookmarkedRate,
           metadataCompleteness,
+          // 라이프스타일 관련
+          carOwnershipRate,
+          topPhoneBrand,
           // latestDate와 medianDate는 현재 데이터가 없음
           // previousTotal도 현재 추적하지 않음
         };
@@ -944,9 +1003,15 @@ export function ResultsPage({
           <SummaryBarNew
             {...summaryBarProps}
             onChipClick={(chip) => {
-              // 칩 클릭 시 상세 차트 하이라이트 등의 동작
-              console.log('Chip clicked:', chip);
-              // TODO: 상세 차트 하이라이트 로직 추가
+              // 인터랙티브 칩만 드로우아웃 열기
+              const interactiveChips = ['region', 'car', 'phone', 'job', 'income'];
+              if (interactiveChips.includes(chip.key)) {
+                setSelectedChip(chip);
+                setStatDrawerOpen(true);
+              } else {
+                // 기타 칩은 기존 로직 (필요시 추가)
+                console.log('Chip clicked:', chip);
+              }
             }}
           />
         );
@@ -1110,18 +1175,147 @@ export function ResultsPage({
                       >
                         <Copy className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />
                       </button>
-                      <PIBadge kind={panel.coverage === 'qw' ? 'coverage-qw' : 'coverage-w'}>
-                        {panel.coverage === 'qw' ? 'Q+W' : 'W'}
-                      </PIBadge>
+                      {(() => {
+                        // QuickPoll 응답 여부 확인
+                        // ⭐ coverage 필드가 명시적으로 q, qw, qw1, qw2로 시작하는 경우만 Q+W로 표시
+                        const hasQuickPoll = panel.coverage && (
+                          panel.coverage === 'q' || 
+                          panel.coverage === 'qw' || 
+                          panel.coverage === 'qw1' || 
+                          panel.coverage === 'qw2'
+                        );
+                        // ⭐ coverage가 없을 때만 metadata의 quick_answers를 확인 (fallback)
+                        // 단, 실제로 유효한 값이 있는지 확인
+                        const hasValidQuickAnswers = !hasQuickPoll && panel.metadata?.quick_answers && 
+                          Object.keys(panel.metadata.quick_answers).length > 0 &&
+                          Object.values(panel.metadata.quick_answers).some((val: any) => {
+                            if (val === null || val === undefined || val === '') return false;
+                            if (Array.isArray(val)) return val.length > 0;
+                            return true;
+                          });
+                        const finalHasQuickPoll = hasQuickPoll || hasValidQuickAnswers;
+                        const coverageText = finalHasQuickPoll ? 'Q+W' : 'W';
+                        const coverageKind = finalHasQuickPoll ? 'coverage-qw' : 'coverage-w';
+                        return (
+                          <PIBadge kind={coverageKind}>
+                            {coverageText}
+                          </PIBadge>
+                        );
+                      })()}
                     </div>
                   </div>
 
-                  {/* Meta Chips */}
-                  <div className="flex flex-wrap gap-1.5">
-                    <PIChip type="tag">{panel.gender}</PIChip>
-                    <PIChip type="tag">{panel.age}세</PIChip>
-                    <PIChip type="tag">{panel.region}</PIChip>
-                  </div>
+                  {/* Meta Chips with Icons and Colors */}
+                  {(() => {
+                    const gender = panel.gender || panel.metadata?.성별 || panel.welcome1_info?.gender || '';
+                    const isFemale = gender === '여';
+                    return (
+                      <div 
+                        className="flex flex-wrap gap-2 p-3 rounded-lg transition-colors"
+                        style={{
+                          background: isFemale ? 'rgba(236, 72, 153, 0.05)' : 'transparent',
+                          border: isFemale ? '1px solid rgba(236, 72, 153, 0.15)' : 'none'
+                        }}
+                      >
+                    {/* 성별 */}
+                    {(() => {
+                      const gender = panel.gender || panel.metadata?.성별 || panel.welcome1_info?.gender || '';
+                      if (!gender) return null;
+                      return (
+                        <div
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                          style={{
+                            background: gender === '여' 
+                              ? 'rgba(236, 72, 153, 0.1)' 
+                              : 'rgba(59, 130, 246, 0.1)',
+                            color: gender === '여' 
+                              ? '#ec4899' 
+                              : '#3b82f6',
+                            border: `1px solid ${gender === '여' ? 'rgba(236, 72, 153, 0.2)' : 'rgba(59, 130, 246, 0.2)'}`
+                          }}
+                        >
+                          <User className="w-3.5 h-3.5" />
+                          <span>{gender}</span>
+                        </div>
+                      );
+                    })()}
+                    
+                    {/* 나이 */}
+                    {(() => {
+                      const age = panel.age || panel.metadata?.나이 || panel.welcome1_info?.age || 0;
+                      if (!age) return null;
+                      return (
+                        <div
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                          style={{
+                            background: 'rgba(139, 92, 246, 0.1)',
+                            color: '#8b5cf6',
+                            border: '1px solid rgba(139, 92, 246, 0.2)'
+                          }}
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>{age}세</span>
+                        </div>
+                      );
+                    })()}
+                    
+                    {/* 지역 */}
+                    {(() => {
+                      const region = panel.region || panel.metadata?.지역 || panel.welcome1_info?.region || '';
+                      if (!region) return null;
+                      return (
+                        <div
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                          style={{
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            color: '#10b981',
+                            border: '1px solid rgba(16, 185, 129, 0.2)'
+                          }}
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span>{region}</span>
+                        </div>
+                      );
+                    })()}
+                    
+                    {/* 직업 (있는 경우) */}
+                    {panel.metadata?.직업 && (() => {
+                      // 괄호와 그 안의 내용 제거
+                      const jobWithoutParentheses = panel.metadata.직업.replace(/\s*\([^)]*\)/g, '').trim();
+                      return (
+                        <div
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                          style={{
+                            background: 'rgba(99, 102, 241, 0.1)',
+                            color: '#6366f1',
+                            border: '1px solid rgba(99, 102, 241, 0.2)'
+                          }}
+                        >
+                          <Briefcase className="w-3.5 h-3.5" />
+                          <span className="truncate max-w-[100px]">{jobWithoutParentheses}</span>
+                        </div>
+                      );
+                    })()}
+                    
+                    {/* 소득 (있는 경우) */}
+                    {(panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"]) && (
+                      <div
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                        style={{
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          color: '#059669',
+                          border: '1px solid rgba(16, 185, 129, 0.2)'
+                        }}
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        <span className="truncate max-w-[80px]">
+                          {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"]}
+                        </span>
+                      </div>
+                    )}
+                      </div>
+                    );
+                  })()}
 
                   {/* AI 인사이트 */}
                   {panel.aiSummary && (
@@ -1178,6 +1372,7 @@ export function ResultsPage({
                   <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>지역/구</th>
                   <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>직업</th>
                   <th className="px-4 py-3 text-left text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>소득</th>
+                  <th className="px-4 py-3 text-center text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>응답</th>
                   <th className="px-4 py-3 text-center text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)', verticalAlign: 'middle' }}>북마크</th>
                   <th className="px-4 py-3 text-center text-base font-semibold whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>위치</th>
                 </tr>
@@ -1226,29 +1421,142 @@ export function ResultsPage({
                     >
                       {panel.name}
                     </td>
-                    <td className="px-4 py-3 text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {panel.gender || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {panel.age ? `${panel.age}세` : '-'}
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const gender = panel.gender || panel.metadata?.성별 || panel.welcome1_info?.gender || '';
+                        if (!gender) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+                        const isFemale = gender === '여';
+                        return (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium"
+                            style={{
+                              background: isFemale 
+                                ? 'rgba(236, 72, 153, 0.1)' 
+                                : 'rgba(59, 130, 246, 0.1)',
+                              color: isFemale 
+                                ? '#ec4899' 
+                                : '#3b82f6',
+                              border: `1px solid ${isFemale ? 'rgba(236, 72, 153, 0.2)' : 'rgba(59, 130, 246, 0.2)'}`
+                            }}
+                          >
+                            <User className="w-4 h-4" />
+                            <span>{gender}</span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {panel.region || panel.metadata?.location || '-'}
-                        </span>
-                        {panel.metadata?.detail_location && panel.metadata.detail_location !== '무응답' && (
-                          <span className="text-base" style={{ color: 'var(--text-tertiary)' }}>
-                            {panel.metadata.detail_location}
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const age = panel.age || panel.metadata?.나이 || panel.welcome1_info?.age || 0;
+                        if (!age) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+                        return (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium"
+                            style={{
+                              background: 'rgba(139, 92, 246, 0.1)',
+                              color: '#8b5cf6',
+                              border: '1px solid rgba(139, 92, 246, 0.2)'
+                            }}
+                          >
+                            <Calendar className="w-4 h-4" />
+                            <span>{age}세</span>
+                          </div>
+                        );
+                      })()}
                     </td>
-                    <td className="px-4 py-3 text-lg" style={{ color: 'var(--text-secondary)' }}>
-                      {panel.metadata?.직업 || '-'}
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const region = panel.region || panel.metadata?.지역 || panel.welcome1_info?.region || panel.metadata?.location || '';
+                        if (!region) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+                        return (
+                          <div className="flex flex-col gap-1">
+                            <div
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium w-fit"
+                              style={{
+                                background: 'rgba(16, 185, 129, 0.1)',
+                                color: '#10b981',
+                                border: '1px solid rgba(16, 185, 129, 0.2)'
+                              }}
+                            >
+                              <MapPin className="w-4 h-4" />
+                              <span>{region}</span>
+                            </div>
+                            {panel.metadata?.detail_location && panel.metadata.detail_location !== '무응답' && (
+                              <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+                                {panel.metadata.detail_location}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
-                    <td className="px-4 py-3 text-lg" style={{ color: 'var(--text-secondary)' }}>
-                      {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income || '-'}
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const job = panel.metadata?.직업;
+                        if (!job) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+                        // 괄호와 그 안의 내용 제거
+                        const jobWithoutParentheses = job.replace(/\s*\([^)]*\)/g, '').trim();
+                        return (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium max-w-[200px]"
+                            style={{
+                              background: 'rgba(99, 102, 241, 0.1)',
+                              color: '#6366f1',
+                              border: '1px solid rgba(99, 102, 241, 0.2)'
+                            }}
+                          >
+                            <Briefcase className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">{jobWithoutParentheses}</span>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const income = panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income || '';
+                        if (!income) return <span style={{ color: 'var(--text-tertiary)' }}>-</span>;
+                        return (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium max-w-[150px]"
+                            style={{
+                              background: 'rgba(16, 185, 129, 0.1)',
+                              color: '#059669',
+                              border: '1px solid rgba(16, 185, 129, 0.2)'
+                            }}
+                          >
+                            <DollarSign className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">{income}</span>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {(() => {
+                        // QuickPoll 응답 여부 확인
+                        // ⭐ coverage 필드가 명시적으로 q, qw, qw1, qw2로 시작하는 경우만 Q+W로 표시
+                        const hasQuickPoll = panel.coverage && (
+                          panel.coverage === 'q' || 
+                          panel.coverage === 'qw' || 
+                          panel.coverage === 'qw1' || 
+                          panel.coverage === 'qw2'
+                        );
+                        // ⭐ coverage가 없을 때만 metadata의 quick_answers를 확인 (fallback)
+                        // 단, 실제로 유효한 값이 있는지 확인
+                        const hasValidQuickAnswers = !hasQuickPoll && panel.metadata?.quick_answers && 
+                          Object.keys(panel.metadata.quick_answers).length > 0 &&
+                          Object.values(panel.metadata.quick_answers).some((val: any) => {
+                            if (val === null || val === undefined || val === '') return false;
+                            if (Array.isArray(val)) return val.length > 0;
+                            return true;
+                          });
+                        const finalHasQuickPoll = hasQuickPoll || hasValidQuickAnswers;
+                        const coverageText = finalHasQuickPoll ? 'Q+W' : 'W';
+                        return (
+                          <PIBadge kind={finalHasQuickPoll ? 'coverage-qw' : 'coverage-w'}>
+                            {coverageText}
+                          </PIBadge>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center" style={{ verticalAlign: 'middle' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1301,6 +1609,17 @@ export function ResultsPage({
             </div>
           )}
         </main>
+
+        {/* SummaryBar 통계 드로우아웃 */}
+        <SummaryStatDrawer
+          isOpen={statDrawerOpen}
+          onClose={() => {
+            setStatDrawerOpen(false);
+            setSelectedChip(null);
+          }}
+          chip={selectedChip}
+          allSearchResults={searchCache?.allResults || panels}
+        />
     </div>
   );
 }

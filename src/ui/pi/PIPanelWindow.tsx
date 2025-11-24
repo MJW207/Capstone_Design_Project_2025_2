@@ -126,12 +126,18 @@ export function PIPanelWindow({
     { title: '스킨케어 관심도', answer: '매우 높음 (5/5)', date: '2025.09.15' },
   ];
 
-  // Sort responses by date
+  // Sort responses by index (date가 없으므로 인덱스 순서로 정렬)
   const sortedResponses = useMemo(() => {
-    return [...responses].sort((a, b) => {
-      const dateA = new Date(a.date.replace(/\./g, '-')).getTime();
-      const dateB = new Date(b.date.replace(/\./g, '-')).getTime();
-      return responseSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    const sorted = [...responses];
+    // date가 있으면 date로 정렬, 없으면 인덱스 순서 유지
+    return sorted.sort((a, b) => {
+      if (a.date && b.date) {
+        const dateA = new Date(a.date.replace(/\./g, '-')).getTime();
+        const dateB = new Date(b.date.replace(/\./g, '-')).getTime();
+        return responseSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      }
+      // date가 없으면 원래 순서 유지
+      return 0;
     });
   }, [responses, responseSortOrder]);
 
@@ -330,12 +336,9 @@ export function PIPanelWindow({
                     border: '1px solid rgba(17, 24, 39, 0.06)',
                   }}
                 >
-                  <div className="flex items-start justify-between mb-2">
+                  <div className="mb-2">
                     <div style={{ fontSize: '14px', fontWeight: 600, color: '#0F172A' }}>
                       {item.title}
-                    </div>
-                    <div style={{ fontSize: '12px', fontWeight: 400, color: '#64748B' }}>
-                      {item.date}
                     </div>
                   </div>
                   <p style={{ fontSize: '12px', fontWeight: 400, color: '#64748B' }}>

@@ -401,34 +401,55 @@ async def api_search_post(
                 
                 if external_filters:
                     # 빈 쿼리로 Pinecone 검색 (필터만 적용)
+                    # ⭐ 필터만 검색하는 경우 조건에 부합하는 모든 패널 반환 (top_k=None)
                     import asyncio
                     pipeline = _get_pipeline()
                     loop = asyncio.get_event_loop()
                     
-                    # 빈 쿼리로 검색 (필터만 적용)
-                    mb_sn_list = await loop.run_in_executor(
+                    # 빈 쿼리로 검색 (필터만 적용, 전체 반환)
+                    logger.info("[API] 필터만 검색 - 조건 부합하는 전체 패널 반환 (페이지네이션 없음)")
+                    search_result = await loop.run_in_executor(
                         None,
-                        lambda: pipeline.search("", top_k=limit * page, external_filters=external_filters)
+                        lambda: pipeline.search("", top_k=None, external_filters=external_filters)
                     )
                     
+                    # pipeline.search()는 {"mb_sns": [...], "scores": {...}} 형태로 반환
+                    if isinstance(search_result, dict):
+                        mb_sn_list = search_result.get("mb_sns", [])
+                        scores = search_result.get("scores", {})
+                    elif isinstance(search_result, list):
+                        # 호환성을 위해 리스트 형태도 처리
+                        mb_sn_list = search_result
+                        scores = {}
+                    else:
+                        mb_sn_list = []
+                        scores = {}
+                    
                     if mb_sn_list:
-                        # 페이지네이션
-                        start_idx = (page - 1) * limit
-                        end_idx = start_idx + limit
-                        paginated_mb_sns = mb_sn_list[start_idx:end_idx]
+                        logger.info(f"[API] 필터 검색 결과: {len(mb_sn_list)}개 패널 (전체 반환)")
                         
-                        # 패널 상세 정보 조회
+                        # ⭐ 전체 mb_sn_list를 전달하고, _get_panel_details_from_pinecone 내부에서 페이지네이션 처리
+                        # 전체 개수를 실제 검색 결과 개수로 설정
+                        total_count = len(mb_sn_list)
+                        import math
+                        total_pages = math.ceil(total_count / limit) if limit > 0 else 1
+                        
+                        # 패널 상세 정보 조회 (전체 리스트 전달, 내부에서 페이지네이션)
                         panel_details = await _get_panel_details_from_pinecone(
-                            paginated_mb_sns, page, limit
+                            mb_sn_list, page, limit, similarity_scores=scores
                         )
+                        
+                        # ⭐ 반환된 total을 전체 검색 결과 개수로 덮어쓰기
+                        panel_details["total"] = total_count
+                        panel_details["pages"] = total_pages
                         
                         return {
                             "query": "",
                             "page": page,
                             "page_size": limit,
                             "count": panel_details["count"],
-                            "total": panel_details["total"],
-                            "pages": panel_details["pages"],
+                            "total": total_count,  # 전체 검색 결과 개수
+                            "pages": total_pages,
                             "mode": "pinecone_filter",
                             "results": panel_details["results"]
                         }

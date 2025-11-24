@@ -125,14 +125,29 @@ async def load_merged_data_from_db() -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"[ERROR] merged.panel_data 로드 실패: {str(e)}", exc_info=True)
             # Fallback: JSON 파일 시도
+            logger.warning(
+                f"[Merged Data] ⚠️ NeonDB 로드 실패, JSON 파일 fallback 시도\n"
+                f"  → 모든 패널 데이터는 NeonDB의 merged.panel_data 테이블에 저장되어야 합니다.\n"
+                f"  → JSON fallback은 개발/테스트 목적으로만 사용됩니다."
+            )
             return _load_merged_data_from_json_fallback()
 
 
 def _load_merged_data_from_json_fallback() -> Dict[str, Any]:
-    """JSON 파일에서 로드 (fallback)"""
+    """
+    JSON 파일에서 로드 (fallback)
+    
+    ⚠️ 주의: 이 함수는 개발/테스트 목적으로만 사용됩니다.
+    프로덕션 환경에서는 모든 데이터가 NeonDB에 저장되어야 하며,
+    이 fallback은 사용되지 않아야 합니다.
+    """
     global _merged_data_cache
     
-    logger.warning(f"[Merged Data] DB 로드 실패, JSON 파일로 fallback: {MERGED_FINAL_JSON}")
+    logger.warning(
+        f"[Merged Data] ⚠️ DB 로드 실패, JSON 파일로 fallback 시도: {MERGED_FINAL_JSON}\n"
+        f"  → 프로덕션 환경에서는 이 fallback이 사용되지 않아야 합니다.\n"
+        f"  → 모든 패널 데이터는 NeonDB의 merged.panel_data 테이블에 저장되어야 합니다."
+    )
     if not MERGED_FINAL_JSON.exists():
         logger.warning(f"[Merged Data] 경고: merged_final.json 파일이 존재하지 않음: {MERGED_FINAL_JSON}")
         return {}
@@ -204,6 +219,11 @@ def load_merged_data() -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"[ERROR] merged.panel_data 로드 실패: {str(e)}", exc_info=True)
+        logger.warning(
+            f"[Merged Data] ⚠️ NeonDB 로드 실패, JSON 파일 fallback 시도\n"
+            f"  → 모든 패널 데이터는 NeonDB의 merged.panel_data 테이블에 저장되어야 합니다.\n"
+            f"  → JSON fallback은 개발/테스트 목적으로만 사용됩니다."
+        )
         return _load_merged_data_from_json_fallback()
 
 

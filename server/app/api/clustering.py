@@ -130,10 +130,27 @@ async def cluster_from_csv(
     req: ClusterRequest
 ):
     """
-    CSV 파일에서 직접 클러스터링 실행 (DB 연동 없이)
+    [DEPRECATED] CSV 파일에서 직접 클러스터링 실행 (DB 연동 없이)
+    
+    ⚠️ 이 엔드포인트는 더 이상 사용되지 않습니다.
+    모든 클러스터링은 NeonDB를 통해 수행됩니다.
+    대신 `/api/clustering/cluster` 엔드포인트를 사용하세요.
     """
     logger = logging.getLogger(__name__)
     
+    # Deprecated 엔드포인트 경고
+    logger.warning("[DEPRECATED] /cluster-from-csv 엔드포인트는 더 이상 사용되지 않습니다. /api/clustering/cluster를 사용하세요.")
+    
+    raise HTTPException(
+        status_code=410,  # Gone
+        detail={
+            "error": "이 엔드포인트는 더 이상 사용되지 않습니다.",
+            "message": "모든 클러스터링은 NeonDB를 통해 수행됩니다.",
+            "alternative": "/api/clustering/cluster 엔드포인트를 사용하세요."
+        }
+    )
+    
+    # 아래 코드는 실행되지 않음 (deprecated 처리)
     debug_info = {
         'step': 'start',
         'errors': []
@@ -852,51 +869,118 @@ async def get_panel_cluster_mapping(req: PanelClusterMappingRequest):
     try:
         logger.info(f"[패널-클러스터 매핑] session_id: {req.session_id}, panel_ids: {len(req.panel_ids)}개")
         
-        # Precomputed 데이터인 경우 직접 CSV 로드
-        if req.session_id == 'precomputed_default':
-            logger.info(f"[패널-클러스터 매핑] Precomputed 데이터 사용")
-            from pathlib import Path
-            import os
+        # 1. 먼저 일반 세션으로 시도 (NeonDB에서 직접 조회)
+        from app.utils.clustering_loader import load_panel_cluster_mappings_from_db
+        from app.clustering.artifacts import load_artifacts
+        
+        # session_id가 실제 DB에 있는지 확인
+        mappings_df = None
+        db_session_id = None
+        
+        # Precomputed 세션인 경우 (precomputed_default, hdbscan_default 등)
+        is_precomputed = (
+            req.session_id == 'precomputed_default' or 
+            req.session_id == 'hdbscan_default' or 
+            (req.session_id and req.session_id.startswith('precomputed_'))
+        )
+        
+        if is_precomputed:
+            logger.info(f"[패널-클러스터 매핑] Precomputed 데이터 사용 (NeonDB)")
+            from app.utils.clustering_loader import get_precomputed_session_id
             
-            # 프로젝트 루트 기준 경로
-            # server/app/api/clustering.py -> parents[0]=api, parents[1]=app, parents[2]=server, parents[3]=프로젝트 루트
-            PROJECT_ROOT = Path(__file__).resolve().parents[3]
-            PRECOMPUTED_CSV = PROJECT_ROOT / 'clustering_data' / 'data' / 'precomputed' / 'clustering_results.csv'
+            # Precomputed 세션 ID 조회
+            precomputed_name = "hdbscan_default"
+            db_session_id = await get_precomputed_session_id(precomputed_name)
             
-            logger.debug(f"[패널-클러스터 매핑] __file__: {__file__}")
-            logger.debug(f"[패널-클러스터 매핑] PROJECT_ROOT: {PROJECT_ROOT}")
-            logger.debug(f"[패널-클러스터 매핑] PROJECT_ROOT 존재: {PROJECT_ROOT.exists()}")
-            
-            logger.debug(f"[패널-클러스터 매핑] Precomputed CSV 경로: {PRECOMPUTED_CSV}")
-            logger.debug(f"[패널-클러스터 매핑] CSV 존재 여부: {PRECOMPUTED_CSV.exists()}")
-            
-            if not PRECOMPUTED_CSV.exists():
-                logger.error(f"[패널-클러스터 매핑] Precomputed CSV 파일을 찾을 수 없음: {PRECOMPUTED_CSV}")
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Precomputed 데이터를 찾을 수 없습니다. 경로: {PRECOMPUTED_CSV}"
-                )
-            
-            df = pd.read_csv(PRECOMPUTED_CSV)
-            logger.info(f"[패널-클러스터 매핑] Precomputed CSV 로드 완료: {len(df)}행")
-            
-            # cluster 컬럼에서 레이블 추출
-            if 'cluster' not in df.columns:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Precomputed CSV에 cluster 컬럼이 없습니다."
-                )
-            labels = df['cluster'].tolist()
+            if db_session_id:
+                logger.info(f"[패널-클러스터 매핑] Precomputed 세션 ID 찾음: {db_session_id}")
+                mappings_df = await load_panel_cluster_mappings_from_db(db_session_id)
         else:
+            # 일반 세션: 먼저 NeonDB에서 직접 조회 시도
+            logger.info(f"[패널-클러스터 매핑] 일반 세션 데이터 사용: {req.session_id}")
+            mappings_df = await load_panel_cluster_mappings_from_db(req.session_id)
+            if mappings_df is not None and not mappings_df.empty:
+                db_session_id = req.session_id
+                logger.info(f"[패널-클러스터 매핑] NeonDB에서 세션 데이터 찾음: {db_session_id}")
+        
+        # NeonDB에서 매핑을 찾은 경우
+        if mappings_df is not None and not mappings_df.empty:
+            logger.info(f"[패널-클러스터 매핑] NeonDB에서 매핑 로드 완료: {len(mappings_df)}개 매핑")
+            
+            # 요청된 panel_ids에 해당하는 매핑만 필터링
+            if req.panel_ids:
+                # mb_sn 정규화 (대소문자, 공백 제거)
+                mappings_df['mb_sn_normalized'] = mappings_df['mb_sn'].astype(str).str.strip().str.lower()
+                requested_panel_ids_normalized = [str(pid).strip().lower() for pid in req.panel_ids]
+                
+                # 필터링
+                filtered_df = mappings_df[mappings_df['mb_sn_normalized'].isin(requested_panel_ids_normalized)]
+                logger.info(f"[패널-클러스터 매핑] 요청된 {len(req.panel_ids)}개 패널 중 {len(filtered_df)}개 매핑 찾음")
+                
+                # panel_to_cluster 생성
+                panel_id_to_cluster = dict(zip(filtered_df['mb_sn_normalized'], filtered_df['cluster']))
+                panel_to_cluster = {}
+                for panel_id in req.panel_ids:
+                    normalized_id = str(panel_id).strip().lower()
+                    cluster_id = panel_id_to_cluster.get(normalized_id, -1)
+                    panel_to_cluster[str(panel_id).strip()] = int(cluster_id) if cluster_id != -1 else None
+            else:
+                # 전체 매핑 생성
+                panel_to_cluster = {}
+                for _, row in mappings_df.iterrows():
+                    normalized_id = str(row['mb_sn']).strip()
+                    cluster_id = int(row['cluster'])
+                    panel_to_cluster[normalized_id] = cluster_id if cluster_id != -1 else None
+            
+            # 결과 생성
+            mapping_results = []
+            not_found_ids = []
+            for panel_id in req.panel_ids:
+                normalized_request_id = str(panel_id).strip()
+                cluster_id = panel_to_cluster.get(normalized_request_id, None)
+                
+                # 대소문자 무시 매칭 시도
+                if cluster_id is None:
+                    normalized_lower = normalized_request_id.lower()
+                    for key, value in panel_to_cluster.items():
+                        if key.lower() == normalized_lower:
+                            cluster_id = value
+                            break
+                
+                if cluster_id is not None and cluster_id != -1:
+                    mapping_results.append({
+                        'panel_id': str(panel_id),
+                        'cluster_id': int(cluster_id),
+                        'found': True
+                    })
+                else:
+                    not_found_ids.append(str(panel_id))
+                    mapping_results.append({
+                        'panel_id': str(panel_id),
+                        'cluster_id': None,
+                        'found': False
+                    })
+            
+            logger.info(f"[패널-클러스터 매핑] 결과: {len(mapping_results)}개 매핑, {len(not_found_ids)}개 미찾음")
+            
+            return {
+                'session_id': req.session_id,
+                'mappings': mapping_results,
+                'total_requested': len(req.panel_ids),
+                'total_found': len(mapping_results) - len(not_found_ids)
+            }
+        
+        # NeonDB에서 찾지 못한 경우: 파일 시스템 fallback (일반 세션만)
+        if not is_precomputed:
             # 일반 세션: artifacts에서 로드
-            from app.clustering.artifacts import load_artifacts
             artifacts = load_artifacts(req.session_id)
             
             if artifacts is None:
-                logger.error(f"[패널-클러스터 매핑] 세션을 찾을 수 없음: {req.session_id}")
+                error_msg = f"세션을 찾을 수 없습니다: {req.session_id}. NeonDB와 파일 시스템 모두 확인했지만 데이터를 찾을 수 없습니다."
+                logger.error(f"[패널-클러스터 매핑] {error_msg}")
                 raise HTTPException(
                     status_code=404,
-                    detail="세션을 찾을 수 없습니다."
+                    detail=error_msg
                 )
             
             df = artifacts.get('data')
@@ -931,77 +1015,74 @@ async def get_panel_cluster_mapping(req: PanelClusterMappingRequest):
                         status_code=400,
                         detail="클러스터 레이블을 찾을 수 없습니다."
                     )
-        
-        # panel_ids 추출 (mb_sn 컬럼 또는 인덱스)
-        if 'mb_sn' in df.columns:
-            df_panel_ids = df['mb_sn'].tolist()
-        else:
-            df_panel_ids = df.index.astype(str).tolist()
-        
-        logger.info(f"[패널-클러스터 매핑] 데이터프레임 패널 수: {len(df_panel_ids)}, 레이블 수: {len(labels)}")
-        
-        # 패널 ID와 클러스터 매핑 생성 (정규화된 키로 저장)
-        panel_to_cluster = {}
-        for idx, panel_id in enumerate(df_panel_ids):
-            if idx < len(labels):
-                # 정규화: 문자열로 변환하고 공백 제거
-                normalized_id = str(panel_id).strip()
-                panel_to_cluster[normalized_id] = int(labels[idx])
-        
-        logger.info(f"[패널-클러스터 매핑] 매핑 테이블 생성 완료: {len(panel_to_cluster)}개 패널")
-        logger.info(f"[패널-클러스터 매핑] 매핑 테이블 샘플: {list(panel_to_cluster.items())[:5]}")
-        logger.info(f"[패널-클러스터 매핑] 요청된 패널 ID 샘플: {req.panel_ids[:5]}")
-        
-        # 매핑 테이블의 키 샘플 확인 (디버깅)
-        sample_keys = list(panel_to_cluster.keys())[:10]
-        logger.debug(f"[패널-클러스터 매핑] 매핑 테이블 키 샘플: {sample_keys}")
-        logger.debug(f"[패널-클러스터 매핑] 매핑 테이블 키 타입 샘플: {[type(k).__name__ for k in sample_keys]}")
-        
-        # 요청된 패널 ID들의 클러스터 정보 추출 (정규화하여 매칭)
-        mapping_results = []
-        not_found_ids = []
-        for panel_id in req.panel_ids:
-            # 요청된 패널 ID도 정규화
-            normalized_request_id = str(panel_id).strip()
-            cluster_id = panel_to_cluster.get(normalized_request_id, None)
             
-            # 대소문자 무시 매칭 시도
-            if cluster_id is None:
-                for key, value in panel_to_cluster.items():
-                    if str(key).strip().lower() == normalized_request_id.lower():
-                        cluster_id = value
-                        logger.debug(f"[패널-클러스터 매핑] 대소문자 무시 매칭 성공: '{normalized_request_id}' -> '{key}'")
-                        break
-            
-            if cluster_id is not None:
-                mapping_results.append({
-                    'panel_id': panel_id,
-                    'cluster_id': cluster_id,
-                    'found': True
-                })
+            # panel_ids 추출 (mb_sn 컬럼 또는 인덱스)
+            if 'mb_sn' in df.columns:
+                df_panel_ids = df['mb_sn'].tolist()
             else:
-                # 매칭 실패 시 원본 ID와 정규화된 ID 모두 로그
-                not_found_ids.append(normalized_request_id)
-                logger.warning(f"[패널-클러스터 매핑] 패널 ID 매칭 실패: 원본='{panel_id}', 정규화='{normalized_request_id}'")
-                mapping_results.append({
-                    'panel_id': panel_id,
-                    'cluster_id': None,
-                    'found': False
-                })
-        
-        if not_found_ids:
-            logger.warning(f"[패널-클러스터 매핑] 매칭 실패한 패널 ID들: {not_found_ids[:10]}")
-            logger.warning(f"[패널-클러스터 매핑] 매핑 테이블에 있는 유사한 키들: {[k for k in list(panel_to_cluster.keys())[:20] if any(nfid.lower() in str(k).lower() or str(k).lower() in nfid.lower() for nfid in not_found_ids[:3])]}")
-        
-        found_count = sum(1 for r in mapping_results if r['found'])
-        logger.info(f"[패널-클러스터 매핑] 매칭 완료: {found_count}/{len(req.panel_ids)}개 패널 찾음")
-        
-        return {
-            'session_id': req.session_id,
-            'mappings': mapping_results,
-            'total_requested': len(req.panel_ids),
-            'total_found': found_count
-        }
+                df_panel_ids = df.index.astype(str).tolist()
+            
+            logger.info(f"[패널-클러스터 매핑] 데이터프레임 패널 수: {len(df_panel_ids)}, 레이블 수: {len(labels)}")
+            
+            # 패널 ID와 클러스터 매핑 생성 (정규화된 키로 저장)
+            panel_to_cluster = {}
+            for idx, panel_id in enumerate(df_panel_ids):
+                if idx < len(labels):
+                    # 정규화: 문자열로 변환하고 공백 제거
+                    normalized_id = str(panel_id).strip()
+                    cluster_id = int(labels[idx])
+                    panel_to_cluster[normalized_id] = cluster_id if cluster_id != -1 else None
+            
+            logger.info(f"[패널-클러스터 매핑] 매핑 테이블 생성 완료: {len(panel_to_cluster)}개 패널")
+            
+            # 결과 생성
+            mapping_results = []
+            not_found_ids = []
+            for panel_id in req.panel_ids:
+                normalized_request_id = str(panel_id).strip()
+                cluster_id = panel_to_cluster.get(normalized_request_id, None)
+                
+                # 대소문자 무시 매칭 시도
+                if cluster_id is None:
+                    normalized_lower = normalized_request_id.lower()
+                    for key, value in panel_to_cluster.items():
+                        if key.lower() == normalized_lower:
+                            cluster_id = value
+                            logger.debug(f"[패널-클러스터 매핑] 대소문자 무시 매칭 성공: '{normalized_request_id}' -> '{key}'")
+                            break
+                
+                if cluster_id is not None:
+                    mapping_results.append({
+                        'panel_id': panel_id,
+                        'cluster_id': int(cluster_id),
+                        'found': True
+                    })
+                else:
+                    not_found_ids.append(normalized_request_id)
+                    logger.warning(f"[패널-클러스터 매핑] 패널 ID 매칭 실패: 원본='{panel_id}', 정규화='{normalized_request_id}'")
+                    mapping_results.append({
+                        'panel_id': panel_id,
+                        'cluster_id': None,
+                        'found': False
+                    })
+            
+            found_count = sum(1 for r in mapping_results if r['found'])
+            logger.info(f"[패널-클러스터 매핑] 매칭 완료: {found_count}/{len(req.panel_ids)}개 패널 찾음")
+            
+            return {
+                'session_id': req.session_id,
+                'mappings': mapping_results,
+                'total_requested': len(req.panel_ids),
+                'total_found': found_count
+            }
+        else:
+            # Precomputed 세션인데 NeonDB에서 찾지 못한 경우
+            error_msg = f"Precomputed 세션 데이터를 찾을 수 없습니다: {req.session_id}. NeonDB에 데이터가 마이그레이션되었는지 확인하세요."
+            logger.error(f"[패널-클러스터 매핑] {error_msg}")
+            raise HTTPException(
+                status_code=404,
+                detail=error_msg
+            )
         
     except HTTPException:
         raise
@@ -1031,7 +1112,10 @@ _cached_file_path = None
 
 async def load_full_data_cached_from_db():
     """
-    NeonDB에서 전체 데이터 로드 (확장 클러스터링용)
+    [DEPRECATED] NeonDB에서 전체 데이터 로드
+    
+    ⚠️ 이 함수는 더 이상 사용되지 않습니다.
+    확장 클러스터링은 Precomputed HDBSCAN 결과만 사용하므로 원본 데이터 로드가 불필요합니다.
     
     Returns:
     --------
@@ -1161,7 +1245,10 @@ async def load_full_data_cached_from_db():
 
 def load_full_data_cached(file_path: Optional[str] = None):
     """
-    전체 데이터 캐싱 (NeonDB 사용, 파일 경로는 무시됨)
+    [DEPRECATED] 전체 데이터 캐싱
+    
+    ⚠️ 이 함수는 더 이상 사용되지 않습니다.
+    확장 클러스터링은 Precomputed HDBSCAN 결과만 사용하므로 원본 데이터 로드가 불필요합니다.
     
     Parameters:
     -----------
@@ -1237,8 +1324,9 @@ async def cluster_around_search(req: ClusterAroundSearchRequest):
         logger.info(f"[📋 검색 패널 ID 타입] {[type(pid).__name__ for pid in req.search_panel_ids[:5]]}")
         logger.info("=" * 80)
         
-        # 1. Precomputed HDBSCAN 데이터 로드 (NeonDB에서 조회) - 원본 데이터 로드 불필요
-        logger.info(f"[2단계] Precomputed 데이터 로드 시작 (NeonDB)")
+        # 1. Precomputed HDBSCAN 데이터 로드 (NeonDB에서 조회)
+        # ✅ 최적화: 원본 데이터 로드 불필요, Precomputed UMAP 좌표와 클러스터 매핑만 사용
+        logger.info(f"[1단계] Precomputed 데이터 로드 시작 (NeonDB)")
         from app.utils.clustering_loader import get_precomputed_session_id, load_umap_coordinates_from_db, load_panel_cluster_mappings_from_db
         
         # Precomputed 세션 ID 조회

@@ -115,12 +115,22 @@ def load_artifacts(session_id: str) -> Optional[Dict[str, Any]]:
             logger.info(f"[Artifacts] NeonDB에서 로드 성공: session_id={session_id}")
             return artifacts
         else:
-            logger.warning(f"[Artifacts] NeonDB에서 세션을 찾을 수 없음, 파일 시스템 fallback: session_id={session_id}")
+            logger.warning(
+                f"[Artifacts] ⚠️ NeonDB에서 세션을 찾을 수 없음, 파일 시스템 fallback 시도: session_id={session_id}\n"
+                f"  → 동적 클러스터링 세션은 파일 시스템(runs/)에만 저장됩니다.\n"
+                f"  → Precomputed 세션은 NeonDB에 저장되어야 합니다."
+            )
     except Exception as e:
-        logger.warning(f"[Artifacts] NeonDB 로드 실패, 파일 시스템 fallback: session_id={session_id}, 오류: {str(e)}")
+        logger.warning(
+            f"[Artifacts] ⚠️ NeonDB 로드 실패, 파일 시스템 fallback 시도: session_id={session_id}, 오류: {str(e)}\n"
+            f"  → 동적 클러스터링 세션은 파일 시스템(runs/)에만 저장됩니다.\n"
+            f"  → Precomputed 세션은 NeonDB에 저장되어야 합니다."
+        )
     
     # 2. 파일 시스템에서 로드 (fallback)
-    logger.debug(f"[Artifacts] 파일 시스템에서 로드 시도: session_id={session_id}")
+    # ⚠️ 주의: 동적 클러스터링 세션은 파일 시스템에만 저장됩니다.
+    # Precomputed 세션은 반드시 NeonDB에 저장되어야 하며, 파일 시스템 fallback은 사용되지 않아야 합니다.
+    logger.info(f"[Artifacts] 파일 시스템에서 로드 시도: session_id={session_id} (runs/{session_id})")
     session_dir = BASE / session_id
     
     if not session_dir.exists():

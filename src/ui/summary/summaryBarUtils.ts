@@ -60,32 +60,55 @@ export function convertSummaryDataToBarProps(
     });
   }
 
-  // 기혼 비율
+  // 기혼/미혼 비율
   if (data.marriedRate !== undefined) {
+    const marriedPercent = Math.round(data.marriedRate * 100);
+    const singlePercent = 100 - marriedPercent;
     profileChips.push({
       key: 'marriage',
-      label: '기혼 비율',
-      value: `${Math.round(data.marriedRate * 100)}%`,
+      label: '결혼 여부',
+      value: `기혼 ${marriedPercent}%, 미혼 ${singlePercent}%`,
       color: 'amber',
     });
   }
 
-  // 평균 소득
+  // 평균 월수입
   if (data.avgPersonalIncome !== undefined) {
     profileChips.push({
       key: 'income',
-      label: '평균 소득',
+      label: '평균 월수입',
       value: `${data.avgPersonalIncome}만원`,
       color: 'emerald',
     });
   } else if (data.avgHouseholdIncome !== undefined) {
     profileChips.push({
       key: 'income',
-      label: '평균 가구소득',
+      label: '평균 월수입',
       value: `${data.avgHouseholdIncome}만원`,
       color: 'emerald',
     });
   }
+
+  // 차량 보유율
+  if (data.carOwnershipRate !== undefined) {
+    profileChips.push({
+      key: 'car',
+      label: '차량 보유',
+      value: `${Math.round(data.carOwnershipRate * 100)}%`,
+      color: 'slate',
+    });
+  }
+
+  // 주요 스마트폰 브랜드
+  if (data.topPhoneBrand) {
+    profileChips.push({
+      key: 'phone',
+      label: '주요 스마트폰',
+      value: `${data.topPhoneBrand.name} ${data.topPhoneBrand.rate}%`,
+      color: 'indigo',
+    });
+  }
+
 
   return {
     foundCount: data.total,

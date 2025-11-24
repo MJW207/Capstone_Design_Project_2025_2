@@ -14,23 +14,18 @@ router = APIRouter(prefix="/api/precomputed", tags=["precomputed"])
 logger = logging.getLogger(__name__)
 
 # Precomputed 데이터 경로 (프로젝트 루트 기준)
+# 주의: 모든 API가 NeonDB를 우선 사용하며, 아래 경로는 fallback으로만 사용됩니다.
 # server/app/api/precomputed.py에서 프로젝트 루트로 이동
 import os
 PROJECT_ROOT = Path(__file__).resolve().parents[3]  # server/app/api/precomputed.py -> 프로젝트 루트
 PRECOMPUTED_DIR = PROJECT_ROOT / 'clustering_data' / 'data' / 'precomputed'
 
-# HDBSCAN 결과를 우선적으로 사용 (최고 성능)
-HDBSCAN_CSV = PRECOMPUTED_DIR / 'flc_income_clustering_hdbscan.csv'
-HDBSCAN_METADATA_JSON = PRECOMPUTED_DIR / 'flc_income_clustering_hdbscan_metadata.json'
-
-# 기존 파일 (fallback)
-CLUSTERING_CSV = PRECOMPUTED_DIR / 'clustering_results.csv'
-METADATA_JSON = PRECOMPUTED_DIR / 'clustering_metadata.json'
+# Fallback 파일 경로 (NeonDB 마이그레이션 완료 후 사용되지 않을 수 있음)
+# 비교 분석 API fallback
 COMPARISON_JSON = PRECOMPUTED_DIR / 'comparison_results.json'
+# 프로필 API fallback
+HDBSCAN_METADATA_JSON = PRECOMPUTED_DIR / 'flc_income_clustering_hdbscan_metadata.json'
 PROFILES_JSON = PRECOMPUTED_DIR / 'cluster_profiles.json'
-
-logger.info(f"[Precomputed API] 경로 설정: PRECOMPUTED_DIR={PRECOMPUTED_DIR}")
-logger.info(f"[Precomputed API] 경로 존재 여부: {PRECOMPUTED_DIR.exists()}")
 
 
 def _calculate_opportunity_areas(
@@ -81,142 +76,117 @@ def _calculate_opportunity_areas(
 @router.get("/clustering")
 async def get_precomputed_clustering(sample: Optional[int] = None):
     """
-    Precomputed 클러스터링 결과 반환 (HDBSCAN 우선 사용)
+    Precomputed 클러스터링 결과 반환 (NeonDB에서 로드)
     
     Args:
         sample: 샘플링할 포인트 수 (None이면 전체 반환)
     """
-    # HDBSCAN 결과를 우선적으로 사용
-    csv_path = HDBSCAN_CSV if HDBSCAN_CSV.exists() else CLUSTERING_CSV
-    metadata_path = HDBSCAN_METADATA_JSON if HDBSCAN_METADATA_JSON.exists() else METADATA_JSON
-    
-    logger.info(f"[Precomputed 클러스터링 요청] 사용할 CSV: {csv_path.name}")
-    logger.info(f"[Precomputed 클러스터링] 절대 경로: {csv_path.absolute()}")
-    logger.debug(f"[Precomputed 클러스터링] CSV 존재 여부: {csv_path.exists()}")
-    logger.debug(f"[Precomputed 클러스터링] 디렉토리 존재 여부: {PRECOMPUTED_DIR.exists()}")
-    if PRECOMPUTED_DIR.exists():
-        logger.debug(f"[Precomputed 클러스터링] 디렉토리 내용: {list(PRECOMPUTED_DIR.iterdir())}")
+    logger.info(f"[Precomputed 클러스터링 요청] NeonDB에서 데이터 로드 시도")
     
     try:
-        if not csv_path.exists():
-            error_msg = f"Precomputed 클러스터링 데이터가 없습니다. 경로: {csv_path.absolute()}"
+        # 1. NeonDB에서 데이터 로드
+        from app.utils.clustering_loader import (
+            get_precomputed_session_id,
+            load_clustering_session_from_db,
+            load_umap_coordinates_from_db,
+            load_panel_cluster_mappings_from_db
+        )
+        
+        precomputed_name = "hdbscan_default"
+        session_id = await get_precomputed_session_id(precomputed_name)
+        
+        if not session_id:
+            error_msg = f"Precomputed 세션을 찾을 수 없습니다: name={precomputed_name}. NeonDB에 데이터가 마이그레이션되었는지 확인하세요."
             logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
-            logger.error(f"[Precomputed 클러스터링] 프로젝트 루트: {PROJECT_ROOT}")
-            logger.error(f"[Precomputed 클러스터링] PRECOMPUTED_DIR: {PRECOMPUTED_DIR}")
-            logger.error(f"[Precomputed 클러스터링] 디렉토리 존재 여부: {PRECOMPUTED_DIR.exists()}")
-            if PRECOMPUTED_DIR.exists():
-                logger.error(f"[Precomputed 클러스터링] 디렉토리 내용: {list(PRECOMPUTED_DIR.iterdir())}")
-            raise HTTPException(
-                status_code=404,
-                detail=error_msg + " 먼저 HDBSCAN 클러스터링을 실행하세요."
-            )
+            raise HTTPException(status_code=404, detail=error_msg)
         
-        # CSV 로드
-        logger.debug(f"[Precomputed 클러스터링] CSV 로드 시작: {csv_path}")
-        df = pd.read_csv(csv_path)
-        logger.debug(f"[Precomputed 클러스터링] CSV 로드 완료: {len(df)}행, {len(df.columns)}열")
+        logger.info(f"[Precomputed 클러스터링] Precomputed 세션 ID 찾음: {session_id}")
         
-        # UMAP 좌표 및 클러스터 정보 추출
+        # 2. 세션 메타데이터 로드
+        session_data = await load_clustering_session_from_db(session_id)
+        if not session_data:
+            error_msg = f"NeonDB에서 세션 정보를 찾을 수 없습니다: session_id={session_id}"
+            logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        logger.info(f"[Precomputed 클러스터링] 세션 메타데이터 로드 완료")
+        
+        # 3. UMAP 좌표 로드
+        umap_df = await load_umap_coordinates_from_db(session_id)
+        if umap_df is None or umap_df.empty:
+            error_msg = f"NeonDB에서 UMAP 좌표를 찾을 수 없습니다: session_id={session_id}"
+            logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        logger.info(f"[Precomputed 클러스터링] UMAP 좌표 로드 완료: {len(umap_df)}개 좌표")
+        
+        # 4. 클러스터 매핑 로드
+        mappings_df = await load_panel_cluster_mappings_from_db(session_id)
+        if mappings_df is None or mappings_df.empty:
+            error_msg = f"NeonDB에서 클러스터 매핑을 찾을 수 없습니다: session_id={session_id}"
+            logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        logger.info(f"[Precomputed 클러스터링] 클러스터 매핑 로드 완료: {len(mappings_df)}개 매핑")
+        
+        # 5. 데이터 병합
+        df = umap_df.merge(mappings_df, on='mb_sn', how='inner')
+        
+        if df.empty:
+            error_msg = f"UMAP 좌표와 클러스터 매핑을 병합할 수 없습니다: session_id={session_id}"
+            logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        logger.info(f"[Precomputed 클러스터링] 데이터 병합 완료: {len(df)}행")
+        
+        # 6. UMAP 데이터 추출
         logger.debug(f"[Precomputed 클러스터링] UMAP 데이터 추출 시작")
-        umap_data = []
-        missing_cols = []
-        
-        # HDBSCAN은 cluster_hdbscan 컬럼 사용, 기존은 cluster 컬럼 사용
-        cluster_col = 'cluster_hdbscan' if 'cluster_hdbscan' in df.columns else 'cluster'
-        required_cols = ['umap_x', 'umap_y', cluster_col, 'mb_sn']
-        for col in required_cols:
-            if col not in df.columns:
-                missing_cols.append(col)
-        
-        if missing_cols:
-            error_msg = f"필수 컬럼이 없습니다: {missing_cols}. 존재하는 컬럼: {list(df.columns)[:20]}"
-            logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
-            raise HTTPException(status_code=400, detail=error_msg)
-        
-        # UMAP 데이터 추출 (전체 데이터 사용, 하지만 메모리 효율적으로)
-        logger.debug(f"[Precomputed 클러스터링] UMAP 데이터 추출 시작 (총 {len(df)}행), 클러스터 컬럼: {cluster_col}")
-        
-        # pandas iterrows()는 느리므로 벡터화된 연산 사용
-        try:
-            umap_data = [
-                {
-                    'x': float(x),
-                    'y': float(y),
-                    'cluster': int(c),
-                    'panelId': str(p),
-                }
-                for x, y, c, p in zip(
-                    df['umap_x'].values,
-                    df['umap_y'].values,
-                    df[cluster_col].values,
-                    df['mb_sn'].values
-                )
-            ]
-        except (ValueError, KeyError) as e:
-            logger.error(f"[Precomputed 클러스터링] 벡터화 처리 실패, 행 단위 처리로 전환: {str(e)}")
-            # 폴백: 행 단위 처리
-            umap_data = []
-            for idx, row in df.iterrows():
-                try:
-                    umap_data.append({
-                        'x': float(row['umap_x']),
-                        'y': float(row['umap_y']),
-                        'cluster': int(row[cluster_col]),
-                        'panelId': str(row['mb_sn']),
-                    })
-                except (ValueError, KeyError) as row_err:
-                    logger.warning(f"[Precomputed 클러스터링] 행 {idx} 처리 실패: {str(row_err)}")
-                    continue
+        umap_data = [
+            {
+                'x': float(row['umap_x']),
+                'y': float(row['umap_y']),
+                'cluster': int(row['cluster']),
+                'panelId': str(row['mb_sn']),
+            }
+            for _, row in df.iterrows()
+        ]
         
         logger.info(f"[Precomputed 클러스터링] UMAP 데이터 추출 완료: {len(umap_data)}개 포인트")
         
-        # 샘플링 옵션이 있으면 샘플링
+        # 7. 샘플링 옵션이 있으면 샘플링
         if sample is not None and sample > 0 and sample < len(umap_data):
             import random
             random.seed(42)  # 재현 가능한 샘플링
             umap_data = random.sample(umap_data, sample)
             logger.info(f"[Precomputed 클러스터링] 샘플링 적용: {len(umap_data)}개 포인트 (요청: {sample}개)")
         
-        # 메타데이터 로드
-        metadata = {}
-        if metadata_path.exists():
-            with open(metadata_path, 'r', encoding='utf-8') as f:
-                metadata = json.load(f)
-            logger.info(f"[Precomputed 클러스터링] 메타데이터 로드 완료: {metadata_path.name}")
+        # 8. 메타데이터 구성 (세션 데이터에서)
+        metadata = {
+            'method': session_data.get('algorithm', 'HDBSCAN'),
+            'silhouette_score': session_data.get('silhouette_score'),
+            'davies_bouldin_index': session_data.get('davies_bouldin_index'),
+            'calinski_harabasz_index': session_data.get('calinski_harabasz_index'),
+            'n_clusters': session_data.get('n_clusters'),
+            'n_noise': session_data.get('n_noise', 0),
+        }
         
-        # 클러스터 정보 생성
+        # 9. 클러스터 정보 생성 (매핑 데이터에서 계산)
+        cluster_counts = df['cluster'].value_counts().to_dict()
+        total = len(df)
         clusters = []
-        if 'cluster_profiles' in metadata:
-            # HDBSCAN 메타데이터 형식
-            for cluster_id_str, profile in metadata['cluster_profiles'].items():
-                cluster_id = int(cluster_id_str)
-                clusters.append({
-                    'id': cluster_id,
-                    'size': int(profile.get('size', 0)),
-                    'percentage': float(profile.get('size_pct', 0.0))
-                })
-        elif 'cluster_distribution' in metadata:
-            # 기존 메타데이터 형식
-            for cluster_id, count in metadata['cluster_distribution'].items():
-                clusters.append({
-                    'id': int(cluster_id),
-                    'size': int(count),
-                    'percentage': metadata['cluster_percentages'].get(str(cluster_id), 0.0)
-                })
-        else:
-            # 메타데이터가 없으면 CSV에서 계산
-            cluster_counts = df[cluster_col].value_counts().to_dict()
-            total = len(df)
-            for cluster_id, count in cluster_counts.items():
-                if cluster_id == -1:  # 노이즈는 제외하거나 별도 처리
-                    continue
-                clusters.append({
-                    'id': int(cluster_id),
-                    'size': int(count),
-                    'percentage': float(count / total * 100)
-                })
+        for cluster_id, count in cluster_counts.items():
+            if cluster_id == -1:  # 노이즈는 제외하거나 별도 처리
+                continue
+            clusters.append({
+                'id': int(cluster_id),
+                'size': int(count),
+                'percentage': float(count / total * 100)
+            })
         
-        # 응답 데이터 구성
+        # 클러스터 ID 순으로 정렬
+        clusters.sort(key=lambda x: x['id'])
+        
+        # 10. 응답 데이터 구성
         response_data = {
             'success': True,
             'data': {
@@ -225,15 +195,15 @@ async def get_precomputed_clustering(sample: Optional[int] = None):
                 'metadata': metadata,
                 'n_samples': len(df),
                 'n_clusters': len(clusters),
-                'method': metadata.get('method', 'Unknown'),
+                'method': metadata.get('method', 'HDBSCAN'),
                 'silhouette_score': metadata.get('silhouette_score'),
                 'davies_bouldin_index': metadata.get('davies_bouldin_index'),
                 'calinski_harabasz_index': metadata.get('calinski_harabasz_index'),
-                'n_noise': metadata.get('n_noise', 0) if 'cluster_profiles' in metadata else 0
+                'n_noise': metadata.get('n_noise', 0)
             }
         }
         
-        # 응답 크기 확인 및 로깅
+        # 11. 응답 크기 확인 및 로깅
         try:
             import sys
             import json as json_module
@@ -251,19 +221,10 @@ async def get_precomputed_clustering(sample: Optional[int] = None):
     
     except HTTPException:
         raise
-    except pd.errors.EmptyDataError as e:
-        error_msg = f"CSV 파일이 비어있습니다: {CLUSTERING_CSV}"
-        logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
-        raise HTTPException(status_code=400, detail=error_msg)
-    except pd.errors.ParserError as e:
-        error_msg = f"CSV 파일 파싱 오류: {str(e)}"
-        logger.error(f"[Precomputed 클러스터링 오류] {error_msg}")
-        raise HTTPException(status_code=400, detail=error_msg)
     except Exception as e:
         error_type = type(e).__name__
         error_msg = str(e)
         logger.error(f"[Precomputed 클러스터링 예외 발생] {error_type}: {error_msg}", exc_info=True)
-        logger.debug(f"[Precomputed 클러스터링] 예외 발생 위치: CSV={CLUSTERING_CSV}")
         raise HTTPException(
             status_code=500, 
             detail=f"데이터 로드 실패: {error_type} - {error_msg}"
@@ -273,40 +234,71 @@ async def get_precomputed_clustering(sample: Optional[int] = None):
 @router.get("/umap")
 async def get_precomputed_umap():
     """
-    Precomputed UMAP 좌표만 반환
+    Precomputed UMAP 좌표만 반환 (NeonDB에서 로드)
     """
-    logger.debug(f"[Precomputed UMAP 요청] CSV 경로: {CLUSTERING_CSV}")
+    logger.info(f"[Precomputed UMAP 요청] NeonDB에서 UMAP 좌표 로드 시도")
     
     try:
-        if not CLUSTERING_CSV.exists():
-            error_msg = f"Precomputed 데이터가 없습니다. 경로: {CLUSTERING_CSV.absolute()}"
+        # 1. NeonDB에서 데이터 로드
+        from app.utils.clustering_loader import (
+            get_precomputed_session_id,
+            load_umap_coordinates_from_db,
+            load_panel_cluster_mappings_from_db
+        )
+        
+        precomputed_name = "hdbscan_default"
+        session_id = await get_precomputed_session_id(precomputed_name)
+        
+        if not session_id:
+            error_msg = f"Precomputed 세션을 찾을 수 없습니다: name={precomputed_name}. NeonDB에 데이터가 마이그레이션되었는지 확인하세요."
             logger.error(f"[Precomputed UMAP 오류] {error_msg}")
             raise HTTPException(status_code=404, detail=error_msg)
         
-        df = pd.read_csv(CLUSTERING_CSV)
-        logger.debug(f"[Precomputed UMAP] CSV 로드 완료: {len(df)}행")
+        logger.info(f"[Precomputed UMAP] Precomputed 세션 ID 찾음: {session_id}")
         
+        # 2. UMAP 좌표 로드
+        umap_df = await load_umap_coordinates_from_db(session_id)
+        if umap_df is None or umap_df.empty:
+            error_msg = f"NeonDB에서 UMAP 좌표를 찾을 수 없습니다: session_id={session_id}"
+            logger.error(f"[Precomputed UMAP 오류] {error_msg}")
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        logger.info(f"[Precomputed UMAP] UMAP 좌표 로드 완료: {len(umap_df)}개 좌표")
+        
+        # 3. 클러스터 매핑 로드
+        mappings_df = await load_panel_cluster_mappings_from_db(session_id)
+        if mappings_df is None or mappings_df.empty:
+            error_msg = f"NeonDB에서 클러스터 매핑을 찾을 수 없습니다: session_id={session_id}"
+            logger.error(f"[Precomputed UMAP 오류] {error_msg}")
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        logger.info(f"[Precomputed UMAP] 클러스터 매핑 로드 완료: {len(mappings_df)}개 매핑")
+        
+        # 4. 데이터 병합 (mb_sn 기준)
+        df = umap_df.merge(mappings_df, on='mb_sn', how='inner')
+        
+        if df.empty:
+            error_msg = f"UMAP 좌표와 클러스터 매핑을 병합할 수 없습니다: session_id={session_id}"
+            logger.error(f"[Precomputed UMAP 오류] {error_msg}")
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        logger.info(f"[Precomputed UMAP] 데이터 병합 완료: {len(df)}개 포인트")
+        
+        # 5. 응답 형식으로 변환
         coordinates = []
         panel_ids = []
         labels = []
         
-        required_cols = ['umap_x', 'umap_y', 'cluster', 'mb_sn']
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            error_msg = f"필수 컬럼이 없습니다: {missing_cols}"
-            logger.error(f"[Precomputed UMAP 오류] {error_msg}")
-            raise HTTPException(status_code=400, detail=error_msg)
-        
-        for idx, row in df.iterrows():
+        for _, row in df.iterrows():
             try:
                 coordinates.append([float(row['umap_x']), float(row['umap_y'])])
                 panel_ids.append(str(row['mb_sn']))
                 labels.append(int(row['cluster']))
             except (ValueError, KeyError) as e:
-                logger.warning(f"[Precomputed UMAP] 행 {idx} 처리 실패: {str(e)}")
+                logger.warning(f"[Precomputed UMAP] 행 처리 실패: {str(e)}")
                 continue
         
-        logger.debug(f"[Precomputed UMAP] 데이터 추출 완료: {len(coordinates)}개 포인트")
+        logger.info(f"[Precomputed UMAP] 데이터 추출 완료: {len(coordinates)}개 포인트")
         
         return JSONResponse({
             'coordinates': coordinates,
@@ -455,150 +447,16 @@ async def get_precomputed_comparison(cluster_a: int, cluster_b: int):
             except (json.JSONDecodeError, IOError) as e:
                 logger.warning(f"[Precomputed 비교 분석] JSON 로드 실패, 동적 생성으로 전환: {str(e)}")
         
-        # 3. 비교 데이터가 없으면 동적으로 생성 (NeonDB 데이터 사용)
+        # 3. 비교 데이터가 없으면 에러 반환 (동적 생성 제거)
+        # 모든 클러스터 쌍의 비교 분석이 DB에 저장되어 있으므로 동적 생성 불필요
         if comparison is None:
-            logger.info(f"[Precomputed 비교 분석] 비교 데이터 없음, 동적 생성 시도 (NeonDB): {cluster_a} vs {cluster_b}")
-            
-            try:
-                import pandas as pd
-                from app.clustering.compare import compare_groups, CONTINUOUS_FEATURES, BINARY_FEATURES, CATEGORICAL_FEATURES
-                from app.utils.clustering_loader import get_precomputed_session_id, load_full_clustering_data_from_db
-                from app.utils.merged_data_loader import load_merged_data_from_db
-                
-                # NeonDB에서 데이터 로드
-                precomputed_name = "hdbscan_default"
-                session_id = await get_precomputed_session_id(precomputed_name)
-                
-                if not session_id:
-                    error_msg = f"Precomputed 세션을 찾을 수 없습니다: name={precomputed_name}. NeonDB에 데이터가 마이그레이션되었는지 확인하세요."
-                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
-                    raise HTTPException(status_code=404, detail=error_msg)
-                
-                # 클러스터링 데이터 로드 (매핑 + UMAP 좌표)
-                clustering_data = await load_full_clustering_data_from_db(session_id)
-                if not clustering_data:
-                    error_msg = f"NeonDB에서 클러스터링 데이터를 로드할 수 없습니다: session_id={session_id}"
-                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
-                    raise HTTPException(status_code=404, detail=error_msg)
-                
-                mappings_df = clustering_data.get('data')
-                if mappings_df is None or mappings_df.empty:
-                    error_msg = f"클러스터 매핑 데이터가 없습니다: session_id={session_id}"
-                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
-                    raise HTTPException(status_code=404, detail=error_msg)
-                
-                # 패널 데이터 로드 (비교 분석에 필요한 피처 포함)
-                merged_data = await load_merged_data_from_db()
-                if not merged_data:
-                    error_msg = "NeonDB에서 패널 데이터를 로드할 수 없습니다."
-                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
-                    raise HTTPException(status_code=404, detail=error_msg)
-                
-                # DataFrame 생성
-                panel_df = pd.DataFrame(list(merged_data.values()))
-                
-                # 클러스터 매핑과 병합
-                df = mappings_df.merge(panel_df, on='mb_sn', how='inner')
-                
-                cluster_col = 'cluster'
-                if cluster_col not in df.columns:
-                    error_msg = f"클러스터 컬럼을 찾을 수 없습니다: {cluster_col}"
-                    logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
-                    raise HTTPException(status_code=400, detail=error_msg)
-                
-                labels = df[cluster_col].values
-                
-                # 비교 분석에 사용할 컬럼 준비 (정규화된 변수 제외, 원본 변수만 사용)
-                numeric_cols = []
-                for col in CONTINUOUS_FEATURES:
-                    # 정규화된 변수는 제외
-                    if col.endswith('_scaled'):
-                        continue
-                    # 원본 변수가 있으면 사용
-                    if col in df.columns:
-                        numeric_cols.append(col)
-                    # Q6_income이 없으면 Q6 확인
-                    elif col == "Q6_income" and "Q6" in df.columns:
-                        numeric_cols.append("Q6")
-                
-                # Q8_premium_index는 항상 추가 (이미 있으면, 정규화되지 않은 값)
-                if "Q8_premium_index" in df.columns and "Q8_premium_index" not in numeric_cols:
-                    numeric_cols.append("Q8_premium_index")
-                
-                # 추가 원본 변수들
-                original_numeric_cols = ['Q8_count', 'Q6_income', 'Q6', 'age', 'children_count']
-                for col in original_numeric_cols:
-                    if col in df.columns and col not in numeric_cols:
-                        if df[col].dtype in ['int64', 'float64'] and df[col].nunique() > 2:
-                            numeric_cols.append(col)
-                
-                binary_cols = []
-                for col in BINARY_FEATURES:
-                    if col in df.columns and df[col].nunique() <= 2:
-                        binary_cols.append(col)
-                
-                # is_premium_car는 항상 추가 (이미 있으면)
-                if "is_premium_car" in df.columns and "is_premium_car" not in binary_cols:
-                    binary_cols.append("is_premium_car")
-                
-                categorical_cols = []
-                for col in CATEGORICAL_FEATURES:
-                    if col in df.columns:
-                        categorical_cols.append(col)
-                
-                # HDBSCAN CSV에 있는 범주형 변수 추가
-                if "life_stage" in df.columns and "life_stage" not in categorical_cols:
-                    categorical_cols.append("life_stage")
-                if "income_tier" in df.columns and "income_tier" not in categorical_cols:
-                    categorical_cols.append("income_tier")
-                
-                logger.debug(f"[Precomputed 비교 분석] 동적 생성 - 연속형: {len(numeric_cols)}, 이진: {len(binary_cols)}, 범주형: {len(categorical_cols)}")
-                
-                # 비교 분석 수행
-                comparison_result = compare_groups(
-                    df,
-                    labels,
-                    cluster_a,
-                    cluster_b,
-                    bin_cols=binary_cols,
-                    cat_cols=categorical_cols,
-                    num_cols=numeric_cols
-                )
-                
-                comparison = {
-                    'cluster_a': cluster_a,
-                    'cluster_b': cluster_b,
-                    'comparison': comparison_result.get('comparison', []),
-                    'group_a': comparison_result.get('group_a', {}),
-                    'group_b': comparison_result.get('group_b', {})
-                }
-                
-                # 기회 영역 계산 추가
-                opportunities = _calculate_opportunity_areas(
-                    comparison,
-                    cluster_a,
-                    cluster_b
-                )
-                comparison['opportunities'] = opportunities
-                
-                logger.info(f"[Precomputed 비교 분석] 동적 생성 완료: {len(comparison.get('comparison', []))}개 항목")
-                
-            except HTTPException:
-                raise
-            except Exception as e:
-                error_type = type(e).__name__
-                error_msg = str(e)
-                logger.error(f"[Precomputed 비교 분석 동적 생성 실패] {error_type}: {error_msg}", exc_info=True)
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"비교 분석 동적 생성 실패: {error_type} - {error_msg}"
-                )
-        
-        # 최종 검증: comparison이 여전히 None이면 에러
-        if comparison is None:
-            error_msg = f"Cluster {cluster_a} vs {cluster_b} 비교 데이터를 생성할 수 없습니다."
+            error_msg = (
+                f"Cluster {cluster_a} vs {cluster_b} 비교 분석 데이터를 찾을 수 없습니다. "
+                f"NeonDB의 merged.cluster_comparisons 테이블에 데이터가 저장되어 있는지 확인하세요. "
+                f"비교 분석 데이터는 미리 생성되어 저장되어야 합니다."
+            )
             logger.error(f"[Precomputed 비교 분석 오류] {error_msg}")
-            raise HTTPException(status_code=500, detail=error_msg)
+            raise HTTPException(status_code=404, detail=error_msg)
         
         logger.debug(f"[Precomputed 비교 분석] 비교 항목 수: {len(comparison.get('comparison', []))}")
         

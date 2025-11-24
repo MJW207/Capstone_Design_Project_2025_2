@@ -18,6 +18,7 @@ interface PanelDetailDrawerProps {
 
 interface PanelResponse {
   key: string;
+  category?: string;
   title: string;
   answer: string;
   date: string;
@@ -36,7 +37,7 @@ interface PanelData {
   age: number;
   region: string;
   income: string;
-  coverage: 'qw' | 'w';
+  coverage?: 'qw' | 'w';
   tags: string[];
   responses: PanelResponse[];
   evidence: PanelEvidence[];
@@ -228,11 +229,20 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
     setError(null);
     
     try {
-      // 특정 패널 ID에 대해 하드코딩된 데이터 사용 (일반 API 호출로 변경)
-      // 하드코딩 제거 - 모든 패널은 API에서 로드
-      
       // 일반 패널은 API에서 로드
       const panelData = await searchApi.getPanel(panelId);
+      
+      // AI 인사이트 로드 (비동기로 별도 로드)
+      try {
+        const aiSummaryData = await searchApi.getPanelAiSummary(panelId);
+        if (aiSummaryData && aiSummaryData.aiSummary) {
+          panelData.aiSummary = aiSummaryData.aiSummary;
+        }
+      } catch (aiErr) {
+        console.warn('AI 인사이트 로드 실패:', aiErr);
+        // AI 인사이트 로드 실패해도 계속 진행
+      }
+      
       setPanel(panelData);
       
       // 패널 상세정보 히스토리 저장
@@ -447,15 +457,17 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                     {panel.name || panel.id}
                   </h2>
                   <p 
-                    className="text-xs mt-0.5"
-                    style={{ color: 'var(--text-tertiary)' }}
+                    className="text-[10px] mt-0.5"
+                    style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}
                   >
                     ID: {panel.id}
                   </p>
                 </div>
-                <PIBadge kind={`coverage-${panel.coverage}`}>
-                  {panel.coverage.toUpperCase()}
-                </PIBadge>
+                {panel.coverage && (
+                  <PIBadge kind={`coverage-${panel.coverage}`}>
+                    {panel.coverage.toUpperCase()}
+                  </PIBadge>
+                )}
               </div>
             </div>
             <button
@@ -505,12 +517,12 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
           {/* Overview Tab */}
           <TabsContent 
             value="overview" 
-            className="flex-1 overflow-y-auto px-6 py-6 space-y-6"
+            className="flex-1 overflow-y-auto px-8 py-6 space-y-8"
             style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
           >
             {/* Basic Info */}
             <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-3 mb-4">
                 <div 
                   className="p-1.5 rounded-lg"
                   style={{
@@ -527,50 +539,54 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                   기본 정보
                 </h3>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 {panel.gender && (
-                  <PIChip type="tag" className="flex items-center gap-1">
-                    <User className="w-3 h-3" />
-                    {panel.gender}
+                  <PIChip type="tag" className="flex items-center gap-2">
+                    <User className="w-4 h-4" style={{ color: 'var(--text-primary)' }} />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{panel.gender}</span>
                   </PIChip>
                 )}
                 {panel.age > 0 && (
-                  <PIChip type="tag" className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {panel.age}세
+                  <PIChip type="tag" className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" style={{ color: 'var(--text-primary)' }} />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{panel.age}세</span>
                   </PIChip>
                 )}
                 {panel.region && (
-                  <PIChip type="tag" className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    {panel.region}
+                  <PIChip type="tag" className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{panel.region}</span>
                   </PIChip>
                 )}
                 {(panel.income || panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"]) && (
-                  <PIChip type="tag" className="flex items-center gap-1">
-                    <DollarSign className="w-3 h-3" />
-                    {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income}
+                  <PIChip type="tag" className="flex items-center gap-2">
+                    <DollarSign className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                    <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                      {panel.metadata?.["월평균 개인소득"] || panel.metadata?.["월평균 가구소득"] || panel.income}
+                    </span>
                   </PIChip>
                 )}
-                <PIChip type="tag" className="flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {new Date(panel.created_at).toLocaleDateString('ko-KR')}
+                <PIChip type="tag" className="flex items-center gap-2">
+                  <Calendar className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
+                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    {new Date(panel.created_at).toLocaleDateString('ko-KR')}
+                  </span>
                 </PIChip>
               </div>
             </div>
 
             {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <div 
-                className="p-4 rounded-xl relative overflow-hidden"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(37, 99, 235, 0.12))',
-                  border: '1px solid rgba(59, 130, 246, 0.2)',
-                }}
-              >
-                <div className="flex items-center justify-between mb-2">
+            <div 
+              className="p-5 rounded-xl relative overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(37, 99, 235, 0.1))',
+                border: '1px solid rgba(59, 130, 246, 0.15)',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
                   <div 
-                    className="p-2 rounded-lg"
+                    className="p-2 rounded-lg flex-shrink-0"
                     style={{
                       background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
                       color: 'white',
@@ -578,159 +594,186 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                   >
                     <MessageSquare className="w-4 h-4" />
                   </div>
-                </div>
-                <div 
-                  className="text-xs mb-1 font-medium"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  응답 수
-                </div>
-                <div 
-                  className="text-2xl font-bold"
-                  style={{ color: '#3B82F6' }}
-                >
-                  {panel.responses?.length || 0}
-                </div>
-                <div className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>개</div>
-              </div>
-              <div 
-                className="p-4 rounded-xl relative overflow-hidden"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(124, 58, 237, 0.12))',
-                  border: '1px solid rgba(139, 92, 246, 0.2)',
-                }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div 
-                    className="p-2 rounded-lg"
-                    style={{
-                      background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
-                      color: 'white',
-                    }}
-                  >
-                    <Tag className="w-4 h-4" />
+                  <div>
+                    <div 
+                      className="text-xs mb-0.5 font-medium"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
+                      응답 수
+                    </div>
+                    <div 
+                      className="text-xl font-bold"
+                      style={{ color: '#3B82F6' }}
+                    >
+                      {panel.responses?.length || 0}
+                      <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-tertiary)' }}>개</span>
+                    </div>
                   </div>
                 </div>
-                <div 
-                  className="text-xs mb-1 font-medium"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  태그 수
-                </div>
-                <div 
-                  className="text-2xl font-bold"
-                  style={{ color: '#8B5CF6' }}
-                >
-                  {panel.tags?.length || 0}
-                </div>
-                <div className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>개</div>
               </div>
             </div>
 
-            {/* 상세 메타데이터 */}
-            {panel.metadata && Object.keys(panel.metadata).length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <div 
-                    className="p-1.5 rounded-lg"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.1))',
-                      color: '#8B5CF6',
-                    }}
-                  >
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <h3 
-                    className="font-semibold"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    상세 정보
-                  </h3>
-                </div>
-                
-                {/* 인구통계 정보 */}
-                <div 
-                  className="p-4 rounded-xl space-y-3"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.08))',
-                    border: '1px solid rgba(16, 185, 129, 0.2)',
-                  }}
-                >
-                  <div className="flex items-center gap-2 mb-3">
+            {/* 상세 메타데이터 - 표시 가능한 데이터가 있을 때만 표시 */}
+            {(() => {
+              // 표시 가능한 데이터가 있는지 확인
+              const hasDisplayableData = 
+                panel.metadata && (
+                  // 인구통계
+                  panel.metadata.결혼여부 || 
+                  panel.metadata.자녀수 !== undefined || 
+                  panel.metadata.가족수 || 
+                  panel.metadata.최종학력 || 
+                  panel.metadata.직업 || 
+                  panel.metadata.직무 ||
+                  // 보유 제품
+                  (panel.metadata.보유전제품 && panel.metadata.보유전제품.length > 0) ||
+                  // 휴대폰 정보
+                  panel.metadata["보유 휴대폰 단말기 브랜드"] ||
+                  panel.metadata["보유 휴대폰 모델명"] ||
+                  // 차량 정보
+                  panel.metadata.보유차량여부 ||
+                  // 흡연 경험
+                  (panel.metadata.흡연경험 && (
+                    (Array.isArray(panel.metadata.흡연경험) && panel.metadata.흡연경험.length > 0) ||
+                    (!Array.isArray(panel.metadata.흡연경험) && panel.metadata.흡연경험)
+                  )) ||
+                  // 음용 경험
+                  (panel.metadata.음용경험 && (
+                    (Array.isArray(panel.metadata.음용경험) && panel.metadata.음용경험.length > 0) ||
+                    (!Array.isArray(panel.metadata.음용경험) && panel.metadata.음용경험)
+                  )) ||
+                  (panel.metadata["음용경험 술"] && panel.metadata["음용경험 술"].length > 0)
+                );
+              
+              if (!hasDisplayableData) return null;
+              
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
                     <div 
                       className="p-1.5 rounded-lg"
                       style={{
-                        background: 'linear-gradient(135deg, #10B981, #059669)',
-                        color: 'white',
+                        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.1))',
+                        color: '#8B5CF6',
                       }}
                     >
-                      <Users className="w-4 h-4" />
+                      <Sparkles className="w-4 h-4" />
                     </div>
-                    <h4 
-                      className="text-sm font-semibold"
+                    <h3 
+                      className="font-semibold"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      인구통계
-                    </h4>
+                      상세 정보
+                    </h3>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {panel.metadata.결혼여부 && (
-                      <div className="flex items-center gap-2">
-                        <Heart className="w-4 h-4" style={{ color: '#EC4899' }} />
-                        <span style={{ color: 'var(--text-tertiary)' }}>결혼여부: </span>
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.결혼여부}</span>
+                
+                {/* 인구통계 정보 - 데이터가 있을 때만 표시 */}
+                {(() => {
+                  const hasDemographics = 
+                    panel.metadata?.결혼여부 || 
+                    panel.metadata?.자녀수 !== undefined || 
+                    panel.metadata?.가족수 || 
+                    panel.metadata?.최종학력 || 
+                    panel.metadata?.직업 || 
+                    panel.metadata?.직무;
+                  
+                  if (!hasDemographics) return null;
+                  
+                  return (
+                    <div 
+                      className="p-6 rounded-xl space-y-3"
+                      style={{
+                        background: 'var(--surface-1)',
+                        border: '1px solid var(--border-primary)',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+                      }}
+                    >
+                      <div className="flex items-center gap-3 mb-4">
+                        <div 
+                          className="p-2 rounded-lg"
+                          style={{
+                            background: 'linear-gradient(135deg, #10B981, #059669)',
+                            color: 'white',
+                          }}
+                        >
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <h4 
+                          className="text-sm font-semibold"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          인구통계
+                        </h4>
                       </div>
-                    )}
-                    {panel.metadata.자녀수 !== undefined && (
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4" style={{ color: '#F59E0B' }} />
-                        <span style={{ color: 'var(--text-tertiary)' }}>자녀수: </span>
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.자녀수}명</span>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {panel.metadata.결혼여부 && (
+                          <div className="flex items-center gap-3">
+                            <Heart className="w-4 h-4 flex-shrink-0" style={{ color: '#EC4899' }} />
+                            <span style={{ color: 'var(--text-tertiary)' }}>결혼여부: </span>
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.결혼여부}</span>
+                          </div>
+                        )}
+                        {panel.metadata.자녀수 !== undefined && (
+                          <div className="flex items-center gap-3">
+                            <Users className="w-4 h-4 flex-shrink-0" style={{ color: '#F59E0B' }} />
+                            <span style={{ color: 'var(--text-tertiary)' }}>자녀수: </span>
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.자녀수}명</span>
+                          </div>
+                        )}
+                        {panel.metadata.가족수 && (
+                          <div className="flex items-center gap-3">
+                            <Home className="w-4 h-4 flex-shrink-0" style={{ color: '#10B981' }} />
+                            <span style={{ color: 'var(--text-tertiary)' }}>가족수: </span>
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.가족수}</span>
+                          </div>
+                        )}
+                        {panel.metadata.최종학력 && (
+                          <div className="flex items-center gap-3">
+                            <GraduationCap className="w-4 h-4 flex-shrink-0" style={{ color: '#6366F1' }} />
+                            <span style={{ color: 'var(--text-tertiary)' }}>최종학력: </span>
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.최종학력}</span>
+                          </div>
+                        )}
+                        {panel.metadata.직업 && (() => {
+                          // 괄호와 그 안의 내용 제거
+                          const jobWithoutParentheses = panel.metadata.직업.replace(/\s*\([^)]*\)/g, '').trim();
+                          return (
+                            <div className="col-span-2 flex items-center gap-3">
+                              <Briefcase className="w-4 h-4 flex-shrink-0" style={{ color: '#3B82F6' }} />
+                              <span style={{ color: 'var(--text-tertiary)' }}>직업: </span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{jobWithoutParentheses}</span>
+                            </div>
+                          );
+                        })()}
+                        {panel.metadata.직무 && (() => {
+                          // 괄호와 그 안의 내용 제거
+                          const jobRoleWithoutParentheses = panel.metadata.직무.replace(/\s*\([^)]*\)/g, '').trim();
+                          return (
+                            <div className="col-span-2 flex items-center gap-3">
+                              <Briefcase className="w-4 h-4 flex-shrink-0" style={{ color: '#8B5CF6' }} />
+                              <span style={{ color: 'var(--text-tertiary)' }}>직무: </span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{jobRoleWithoutParentheses}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
-                    )}
-                    {panel.metadata.가족수 && (
-                      <div className="flex items-center gap-2">
-                        <Home className="w-4 h-4" style={{ color: '#10B981' }} />
-                        <span style={{ color: 'var(--text-tertiary)' }}>가족수: </span>
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.가족수}</span>
-                      </div>
-                    )}
-                    {panel.metadata.최종학력 && (
-                      <div className="flex items-center gap-2">
-                        <GraduationCap className="w-4 h-4" style={{ color: '#6366F1' }} />
-                        <span style={{ color: 'var(--text-tertiary)' }}>최종학력: </span>
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.최종학력}</span>
-                      </div>
-                    )}
-                    {panel.metadata.직업 && (
-                      <div className="col-span-2 flex items-center gap-2">
-                        <Briefcase className="w-4 h-4" style={{ color: '#3B82F6' }} />
-                        <span style={{ color: 'var(--text-tertiary)' }}>직업: </span>
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.직업}</span>
-                      </div>
-                    )}
-                    {panel.metadata.직무 && (
-                      <div className="col-span-2 flex items-center gap-2">
-                        <Briefcase className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-                        <span style={{ color: 'var(--text-tertiary)' }}>직무: </span>
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.직무}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  );
+                })()}
 
                 {/* 보유 제품 정보 */}
                 {panel.metadata.보유전제품 && panel.metadata.보유전제품.length > 0 && (
                   <div 
-                    className="p-4 rounded-xl space-y-3"
+                    className="p-6 rounded-xl space-y-3"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.08))',
-                      border: '1px solid rgba(16, 185, 129, 0.2)',
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--border-primary)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-3 mb-3">
                       <div 
-                        className="p-1.5 rounded-lg"
+                        className="p-2 rounded-lg"
                         style={{
                           background: 'linear-gradient(135deg, #10B981, #059669)',
                           color: 'white',
@@ -756,15 +799,16 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                 {/* 휴대폰 정보 */}
                 {(panel.metadata["보유 휴대폰 단말기 브랜드"] || panel.metadata["보유 휴대폰 모델명"]) && (
                   <div 
-                    className="p-4 rounded-xl space-y-2"
+                    className="p-6 rounded-xl space-y-2"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(37, 99, 235, 0.08))',
-                      border: '1px solid rgba(59, 130, 246, 0.2)',
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--border-primary)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-3 mb-3">
                       <div 
-                        className="p-1.5 rounded-lg"
+                        className="p-2 rounded-lg"
                         style={{
                           background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
                           color: 'white',
@@ -779,17 +823,17 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                         휴대폰
                       </h4>
                     </div>
-                    <div className="text-sm space-y-1">
+                    <div className="text-sm space-y-3">
                       {panel.metadata["보유 휴대폰 단말기 브랜드"] && (
-                        <div>
-                          <span style={{ color: 'var(--text-tertiary)' }}>브랜드: </span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{panel.metadata["보유 휴대폰 단말기 브랜드"]}</span>
+                        <div className="flex items-center gap-3">
+                          <span style={{ color: 'var(--text-tertiary)' }}>브랜드:</span>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata["보유 휴대폰 단말기 브랜드"]}</span>
                         </div>
                       )}
                       {panel.metadata["보유 휴대폰 모델명"] && (
-                        <div>
-                          <span style={{ color: 'var(--text-tertiary)' }}>모델: </span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{panel.metadata["보유 휴대폰 모델명"]}</span>
+                        <div className="flex items-center gap-3">
+                          <span style={{ color: 'var(--text-tertiary)' }}>모델:</span>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata["보유 휴대폰 모델명"]}</span>
                         </div>
                       )}
                     </div>
@@ -799,15 +843,16 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                 {/* 차량 정보 */}
                 {panel.metadata.보유차량여부 && (
                   <div 
-                    className="p-4 rounded-xl space-y-2"
+                    className="p-6 rounded-xl space-y-2"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(217, 119, 6, 0.08))',
-                      border: '1px solid rgba(245, 158, 11, 0.2)',
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--border-primary)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-3 mb-3">
                       <div 
-                        className="p-1.5 rounded-lg"
+                        className="p-2 rounded-lg"
                         style={{
                           background: 'linear-gradient(135deg, #F59E0B, #D97706)',
                           color: 'white',
@@ -822,27 +867,27 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                         차량
                       </h4>
                     </div>
-                    <div className="text-sm space-y-1">
-                      <div>
-                        <span style={{ color: 'var(--text-tertiary)' }}>보유여부: </span>
-                        <span style={{ color: 'var(--text-secondary)' }}>{panel.metadata.보유차량여부}</span>
+                    <div className="text-sm space-y-3">
+                      <div className="flex items-center gap-3">
+                        <span style={{ color: 'var(--text-tertiary)' }}>보유여부:</span>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{panel.metadata.보유차량여부}</span>
                       </div>
                       {panel.metadata.보유차량여부 === "있다" && (
                         <>
                           {(panel.metadata["자동차 제조사"] || panel.metadata.자동차제조사) && 
                            (panel.metadata["자동차 제조사"] || panel.metadata.자동차제조사) !== "무응답" && (
-                            <div>
-                              <span style={{ color: 'var(--text-tertiary)' }}>제조사: </span>
-                              <span style={{ color: 'var(--text-secondary)' }}>
+                            <div className="flex items-center gap-3">
+                              <span style={{ color: 'var(--text-tertiary)' }}>제조사:</span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
                                 {panel.metadata["자동차 제조사"] || panel.metadata.자동차제조사}
                               </span>
                             </div>
                           )}
                           {(panel.metadata["자동차 모델"] || panel.metadata.자동차모델) && 
                            (panel.metadata["자동차 모델"] || panel.metadata.자동차모델) !== "무응답" && (
-                            <div>
-                              <span style={{ color: 'var(--text-tertiary)' }}>모델: </span>
-                              <span style={{ color: 'var(--text-secondary)' }}>
+                            <div className="flex items-center gap-3">
+                              <span style={{ color: 'var(--text-tertiary)' }}>모델:</span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
                                 {panel.metadata["자동차 모델"] || panel.metadata.자동차모델}
                               </span>
                             </div>
@@ -856,15 +901,16 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                 {/* 흡연 경험 */}
                 {panel.metadata.흡연경험 && panel.metadata.흡연경험.length > 0 && (
                   <div 
-                    className="p-4 rounded-xl space-y-3"
+                    className="p-6 rounded-xl space-y-3"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(220, 38, 38, 0.08))',
-                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--border-primary)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-3 mb-3">
                       <div 
-                        className="p-1.5 rounded-lg"
+                        className="p-2 rounded-lg"
                         style={{
                           background: 'linear-gradient(135deg, #EF4444, #DC2626)',
                           color: 'white',
@@ -890,14 +936,9 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                     </div>
                     {panel.metadata["흡연경험 담배브랜드"] && 
                      panel.metadata["흡연경험 담배브랜드"] !== "무응답" && (
-                      <div className="mt-2">
-                        <span 
-                          className="text-xs"
-                          style={{ color: 'var(--text-tertiary)' }}
-                        >
-                          담배 브랜드: 
-                        </span>
-                        <div className="flex flex-wrap gap-2 mt-1">
+                      <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-primary)' }}>
+                        <div className="text-xs mb-2 font-medium" style={{ color: 'var(--text-tertiary)' }}>담배 브랜드</div>
+                        <div className="flex flex-wrap gap-2">
                           {Array.isArray(panel.metadata["흡연경험 담배브랜드"]) ? (
                             panel.metadata["흡연경험 담배브랜드"].map((brand, idx) => (
                               <PIChip key={idx} type="tag" variant="secondary">{brand}</PIChip>
@@ -914,15 +955,16 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                 {/* 음용 경험 */}
                 {panel.metadata["음용경험 술"] && panel.metadata["음용경험 술"].length > 0 && (
                   <div 
-                    className="p-4 rounded-xl space-y-3"
+                    className="p-6 rounded-xl space-y-3"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(217, 119, 6, 0.08))',
-                      border: '1px solid rgba(245, 158, 11, 0.2)',
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--border-primary)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-3 mb-3">
                       <div 
-                        className="p-1.5 rounded-lg"
+                        className="p-2 rounded-lg"
                         style={{
                           background: 'linear-gradient(135deg, #F59E0B, #D97706)',
                           color: 'white',
@@ -944,176 +986,168 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                     </div>
                   </div>
                 )}
-              </div>
-            )}
+                </div>
+              );
+            })()}
 
-            {/* AI Summary - 맨 밑으로 이동 */}
-            {panel.aiSummary && (
-              <div 
-                className="p-5 rounded-xl relative overflow-hidden"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(124, 58, 237, 0.12))',
-                  border: '1px solid rgba(139, 92, 246, 0.3)',
-                }}
-              >
-                <div className="absolute top-0 right-0 w-32 h-32 opacity-10">
-                  <Sparkles className="w-full h-full" style={{ color: '#8B5CF6' }} />
-                </div>
-                <div className="flex items-center gap-3 mb-4 relative z-10">
-                  <div 
-                    className="p-2 rounded-lg"
-                    style={{
-                      background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
-                      color: 'white',
-                    }}
-                  >
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 
-                      className="font-semibold text-base"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
-                      AI 요약
-                    </h3>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                      패널 특성 분석
-                    </p>
-                  </div>
-{/* 태그는 panel.tags에서 가져옴 */}
-                  {panel.tags && panel.tags.length > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {panel.tags.slice(0, 5).map((tag, idx) => (
-                        <PIBadge key={idx} variant="outline">{tag}</PIBadge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <p 
-                  className="text-sm leading-relaxed relative z-10"
-                  style={{ color: 'var(--text-secondary)' }}
+            {/* AI 인사이트 - 개요 탭 하단 */}
+            <div 
+              className="p-6 rounded-xl relative overflow-hidden"
+              style={{
+                background: 'var(--surface-1)',
+                border: '1px solid var(--border-primary)',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div 
+                  className="p-2 rounded-lg"
+                  style={{
+                    background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
+                    color: 'white',
+                  }}
                 >
-                  {panel.aiSummary}
-                </p>
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <h3 
+                    className="font-semibold text-base"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    AI 인사이트
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    패널 특성 분석
+                  </p>
+                </div>
               </div>
-            )}
+              {panel.aiSummary ? (
+                <div 
+                  className="p-4 rounded-lg"
+                  style={{
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <p 
+                    className="text-sm leading-relaxed"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {panel.aiSummary}
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    AI 인사이트 생성 중...
+                  </p>
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           {/* Responses Tab */}
           <TabsContent 
             value="responses" 
-            className="flex-1 overflow-y-auto px-6 py-6 space-y-4"
+            className="flex-1 overflow-y-auto px-8 py-6 space-y-5"
             style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
           >
-            <div className="flex items-center gap-2 mb-4">
-              <div 
-                className="p-1.5 rounded-lg"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1))',
-                  color: '#3B82F6',
-                }}
-              >
-                <MessageSquare className="w-5 h-5" />
-              </div>
-              <h3 
-                className="font-semibold"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                응답 이력
-              </h3>
-              {panel.responses && panel.responses.length > 0 && (
-                <span 
-                  className="text-xs px-2 py-0.5 rounded-full"
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="p-1.5 rounded-lg"
                   style={{
-                    background: 'rgba(59, 130, 246, 0.1)',
+                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1))',
                     color: '#3B82F6',
                   }}
                 >
-                  {panel.responses.length}개
-                </span>
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <h3 
+                  className="font-semibold"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  응답 이력
+                </h3>
+                {panel.responses && panel.responses.length > 0 && (
+                  <span 
+                    className="text-xs px-2 py-0.5 rounded-full"
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      color: '#3B82F6',
+                    }}
+                  >
+                    {panel.responses.length}개
+                  </span>
+                )}
+              </div>
+              {panel.coverage && (
+                <div 
+                  className="px-3 py-1.5 rounded-lg font-semibold text-sm"
+                  style={{
+                    background: (panel.coverage === 'qw' || panel.coverage === 'qw1' || panel.coverage === 'qw2' || panel.coverage === 'q')
+                      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.15))'
+                      : 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.15))',
+                    color: (panel.coverage === 'qw' || panel.coverage === 'qw1' || panel.coverage === 'qw2' || panel.coverage === 'q') ? '#10B981' : '#3B82F6',
+                    border: (panel.coverage === 'qw' || panel.coverage === 'qw1' || panel.coverage === 'qw2' || panel.coverage === 'q')
+                      ? '1px solid rgba(16, 185, 129, 0.2)'
+                      : '1px solid rgba(59, 130, 246, 0.2)',
+                  }}
+                >
+                  {(panel.coverage === 'qw' || panel.coverage === 'qw1' || panel.coverage === 'qw2' || panel.coverage === 'q') ? 'Q+W' : 'W'}
+                </div>
               )}
             </div>
             
             {panel.responses && panel.responses.length > 0 ? (
-              panel.responses.map((response, i) => {
-                // Qpoll 응답 없음 메시지인 경우 특별 처리
-                if (response.key === 'no_qpoll') {
-                  return (
-                    <div 
-                      key={i} 
-                      className="p-6 rounded-xl border text-center"
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(156, 163, 175, 0.05), rgba(107, 114, 128, 0.08))',
-                        borderColor: 'rgba(156, 163, 175, 0.2)',
-                      }}
-                    >
-                      <div 
-                        className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center"
-                        style={{
-                          background: 'rgba(156, 163, 175, 0.1)',
-                          color: '#9CA3AF',
-                        }}
-                      >
-                        <MessageSquare className="w-6 h-6" />
-                      </div>
-                      <p 
-                        className="text-sm"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        {response.answer}
-                      </p>
-                    </div>
-                  );
-                }
-                
-                return (
+              <div className="space-y-5">
+                {panel.responses.map((response, index) => (
                   <div 
-                    key={i} 
-                    className="p-5 rounded-xl border transition-all hover:shadow-md"
+                    key={`response-${index}`}
+                    className="p-6 rounded-xl border transition-all hover:shadow-lg"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.03), rgba(139, 92, 246, 0.05))',
-                      borderColor: 'rgba(59, 130, 246, 0.2)',
+                      background: 'var(--surface-1)',
+                      borderColor: 'var(--border-primary)',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    <div className="flex items-start gap-3 mb-3">
+                    <div className="flex items-start gap-4 mb-3">
                       <div 
-                        className="p-2 rounded-lg flex-shrink-0"
+                        className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center font-semibold"
                         style={{
-                          background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
+                          background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
                           color: 'white',
                         }}
                       >
-                        <FileText className="w-4 h-4" />
+                        Q{index + 1}
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between mb-1">
-                          <h4 
-                            className="text-sm font-semibold"
-                            style={{ color: 'var(--text-primary)' }}
-                          >
-                            {response.title}
-                          </h4>
-                          <span 
-                            className="text-xs px-2 py-1 rounded-full flex-shrink-0 ml-2"
-                            style={{
-                              background: 'rgba(59, 130, 246, 0.1)',
-                              color: '#3B82F6',
-                            }}
-                          >
-                            {response.date}
-                          </span>
-                        </div>
-                        <p 
-                          className="text-sm leading-relaxed whitespace-pre-wrap mt-2"
-                          style={{ color: 'var(--text-secondary)' }}
+                      <div className="flex-1 min-w-0">
+                        <h5 
+                          className="text-sm font-semibold mb-3"
+                          style={{ color: 'var(--text-primary)' }}
                         >
-                          {response.answer}
-                        </p>
+                          {response.title}
+                        </h5>
+                        <div 
+                          className="p-5 rounded-lg"
+                          style={{
+                            background: 'var(--surface-2)',
+                            border: '1px solid var(--border-primary)',
+                          }}
+                        >
+                          <p 
+                            className="text-sm leading-relaxed whitespace-pre-wrap"
+                            style={{ color: 'var(--text-secondary)' }}
+                          >
+                            {response.answer}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
-                );
-              })
+                ))}
+              </div>
             ) : (
               <div 
                 className="text-center py-12"

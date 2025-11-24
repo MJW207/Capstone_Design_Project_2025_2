@@ -9,10 +9,14 @@ import {
   Briefcase, 
   Heart, 
   DollarSign,
-  TrendingUp
+  TrendingUp,
+  Car,
+  Smartphone,
+  Cigarette,
+  Wine
 } from 'lucide-react';
 
-export type ProfileChipKey = "age" | "region" | "job" | "marriage" | "income" | "custom";
+export type ProfileChipKey = "age" | "region" | "job" | "marriage" | "income" | "car" | "phone" | "smoking" | "drinking" | "custom";
 
 export interface SummaryProfileChip {
   key: ProfileChipKey | string;
@@ -308,6 +312,14 @@ export function SummaryBar({
                     return <Heart size={iconSize} style={{ color: iconColor }} />;
                   case 'income':
                     return <DollarSign size={iconSize} style={{ color: iconColor }} />;
+                  case 'car':
+                    return <Car size={iconSize} style={{ color: iconColor }} />;
+                  case 'phone':
+                    return <Smartphone size={iconSize} style={{ color: iconColor }} />;
+                  case 'smoking':
+                    return <Cigarette size={iconSize} style={{ color: iconColor }} />;
+                  case 'drinking':
+                    return <Wine size={iconSize} style={{ color: iconColor }} />;
                   default:
                     return <TrendingUp size={iconSize} style={{ color: iconColor }} />;
                 }

@@ -243,9 +243,10 @@ class PanelSearchPipeline:
         
         # 필터 충돌이 있으면 경고 로그
         if filter_conflicts:
+            conflict_str = ', '.join([f"{c['category']}.{c['key']}" for c in filter_conflicts])
             logger.warning(
                 f"[필터 충돌] 총 {len(filter_conflicts)}개 충돌 감지: "
-                f"{', '.join([f'{c['category']}.{c['key']}' for c in filter_conflicts])} "
+                f"{conflict_str} "
                 f"→ 외부 필터 값이 우선 적용됩니다"
             )
         

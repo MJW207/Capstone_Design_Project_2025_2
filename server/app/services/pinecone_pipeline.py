@@ -33,13 +33,6 @@ class PanelSearchPipeline:
             anthropic_api_key: Anthropic API 키
             openai_api_key: OpenAI API 키
         """
-        logger.debug(f"[Pipeline] 초기화 시작")
-        logger.debug(f"[Pipeline] Anthropic API 키 길이: {len(anthropic_api_key) if anthropic_api_key else 0}")
-        logger.debug(f"[Pipeline] OpenAI API 키 길이: {len(openai_api_key) if openai_api_key else 0}")
-        logger.debug(f"[Pipeline] Pinecone API 키 길이: {len(pinecone_api_key) if pinecone_api_key else 0}")
-        logger.debug(f"[Pipeline] Pinecone 인덱스 이름: {pinecone_index_name}")
-        logger.debug(f"[Pipeline] 카테고리 설정 개수: {len(category_config)}")
-        
         self.metadata_extractor = MetadataExtractor(anthropic_api_key)
         self.filter_extractor = MetadataFilterExtractor()
         self.category_classifier = CategoryClassifier(category_config, anthropic_api_key)
@@ -47,7 +40,6 @@ class PanelSearchPipeline:
         self.embedding_generator = EmbeddingGenerator(openai_api_key)
         self.searcher = PineconePanelSearcher(pinecone_api_key, pinecone_index_name, category_config)
         self.result_filter = PineconeResultFilter(self.searcher)
-        logger.debug(f"[Pipeline] 초기화 완료")
 
     def search(self, query: str, top_k: int = None, external_filters: Optional[Dict[str, Dict[str, Any]]] = None) -> List[str]:
         """
@@ -63,8 +55,6 @@ class PanelSearchPipeline:
             mb_sn 리스트
         """
         start_time = time.time()
-        logger.info(f"[검색 시작] 쿼리: '{query}', top_k: {top_k}, 외부 필터: {bool(external_filters)}")
-        logger.info(f"[Pipeline DEBUG] PanelSearchPipeline.search() 메서드 진입")
 
         # 빈 쿼리이고 외부 필터만 있는 경우
         if (not query or not query.strip()) and external_filters:

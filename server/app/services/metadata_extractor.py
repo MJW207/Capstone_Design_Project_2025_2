@@ -17,17 +17,13 @@ class MetadataExtractor:
         Args:
             api_key: Anthropic API 키
         """
-        logger.debug(f"[MetadataExtractor] 초기화 시작, API 키 길이: {len(api_key) if api_key else 0}")
         if not api_key:
             logger.error("[MetadataExtractor] API 키가 비어있습니다!")
         elif len(api_key) < 50:
             logger.warning(f"[MetadataExtractor] API 키가 너무 짧습니다 (길이: {len(api_key)})")
-        else:
-            logger.debug(f"[MetadataExtractor] API 키 시작: {api_key[:20]}...")
         
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
-        logger.debug(f"[MetadataExtractor] Anthropic 클라이언트 초기화 완료, 모델: {self.model}")
 
     def extract(self, query: str) -> Dict[str, Any]:
         """
@@ -40,7 +36,6 @@ class MetadataExtractor:
             메타데이터 딕셔너리 (예: {"지역": "서울", "지역구": "강남구", "나이": 27, "연령대": "20대", "성별": "남", "결혼여부": "기혼"})
         """
         extract_start = time.time()
-        logger.info(f"[MetadataExtractor DEBUG] extract() 시작: query='{query}'")
         
         prompt = f"""당신은 자연어 질의에서 메타데이터를 추출하는 전문가입니다.
 
@@ -514,15 +509,10 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
             
             # 실제 사용되는 API 키 확인
             actual_api_key = getattr(self.client, 'api_key', None)
-            if actual_api_key:
-                logger.debug(f"[메타데이터 추출] 실제 사용되는 API 키 길이: {len(actual_api_key)}")
-                logger.debug(f"[메타데이터 추출] 실제 사용되는 API 키 시작: {actual_api_key[:30]}...")
-                logger.debug(f"[메타데이터 추출] 실제 사용되는 API 키 끝: ...{actual_api_key[-10:]}")
-            else:
+            if not actual_api_key:
                 logger.error("[메타데이터 추출] 클라이언트에 API 키가 없습니다!")
                 return {}
             
-            logger.info(f"[MetadataExtractor DEBUG] Anthropic API 호출 시작 (모델: {self.model})")
             llm_call_start = time.time()
             try:
                 response = self.client.messages.create(
@@ -532,14 +522,10 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                     messages=[{"role": "user", "content": prompt}],
                     timeout=30.0  # 30초 타임아웃
                 )
-                llm_call_time = time.time() - llm_call_start
-                logger.info(f"[MetadataExtractor DEBUG] Anthropic API 호출 완료: {llm_call_time:.2f}초")
-
                 text = response.content[0].text
-                logger.debug(f"[메타데이터 추출] LLM 원본 응답: {text[:500]}")  # 처음 500자만 로깅
             except Exception as llm_error:
                 llm_call_time = time.time() - llm_call_start
-                logger.error(f"[MetadataExtractor DEBUG] Anthropic API 호출 실패: {llm_call_time:.2f}초, 에러: {llm_error}")
+                logger.error(f"[메타데이터 추출] Anthropic API 호출 실패: {llm_call_time:.2f}초, 에러: {llm_error}")
                 raise
             
             # JSON 파싱 (코드블록 제거)
@@ -549,8 +535,6 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                 json_text = text.split('```')[1].strip()
             else:
                 json_text = text.strip()
-            
-            logger.debug(f"[메타데이터 추출] 파싱할 JSON 텍스트: {json_text[:500]}")
             
             try:
                 metadata = json.loads(json_text)
@@ -563,7 +547,6 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                 logger.warning(f"[메타데이터 추출] LLM이 빈 메타데이터를 반환했습니다. 원본 응답: {text[:300]}")
             
             # ===== 후처리: 키 이름 및 값 정규화 =====
-            logger.debug(f"[메타데이터 추출 - LLM 원본] {metadata}")
 
             # 1. 지역 키 정규화
             if "거주지" in metadata and "지역" not in metadata:
@@ -576,7 +559,6 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
             for key in marriage_keys:
                 if key in metadata and "결혼여부" not in metadata:
                     metadata["결혼여부"] = metadata.pop(key)
-                    logger.debug(f"   [후처리] '{key}' → '결혼여부'로 키 정규화")
                     break
 
             # 3. 결혼여부 값 정규화
@@ -586,10 +568,8 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                     original = marriage
                     if marriage in ["결혼함", "결혼", "결혼한", "기혼자", "유부남", "유부녀"]:
                         metadata["결혼여부"] = "기혼"
-                        logger.debug(f"   [후처리] 결혼여부 값 '{original}' → '기혼'으로 정규화")
                     elif marriage in ["미혼인", "결혼 안함", "미혼자"]:
                         metadata["결혼여부"] = "미혼"
-                        logger.debug(f"   [후처리] 결혼여부 값 '{original}' → '미혼'으로 정규화")
 
             # 4. 가족수 키 정규화
             household_keys = ["가구형태", "가구유형", "거주형태", "가구구성"]
@@ -600,7 +580,6 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                         match = re.search(r'(\d+)인', value)
                         if match:
                             metadata["가족수"] = int(match.group(1))
-                            logger.debug(f"   [후처리] '{key}: {value}' → '가족수: {metadata['가족수']}'로 변환")
                     break
 
             # 5. ⭐ 직업 정규화 (15개 보기로 매핑)
@@ -608,7 +587,6 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                 job = metadata["직업"]
                 job_normalized = self._normalize_job(job)
                 if job_normalized != job:
-                    logger.debug(f"   [후처리] 직업 '{job}' → '{job_normalized}'로 정규화")
                     metadata["직업"] = job_normalized
 
             # 6. 성별 정규화
@@ -636,7 +614,6 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                 if "인원" in key and "수" in key and key != "인원수":
                     if "인원수" not in metadata:
                         metadata["인원수"] = metadata.pop(key)
-                        logger.debug(f"   [후처리] '{key}' → '인원수'로 키 정규화")
                     else:
                         metadata.pop(key)  # 중복 키 제거
             
@@ -648,22 +625,17 @@ JSON만 반환하세요. 다른 설명은 하지 마세요.
                     match = re.search(r'(\d+)', count)
                     if match:
                         metadata["인원수"] = int(match.group(1))
-                        logger.debug(f"   [후처리] 인원수 '{count}' → {metadata['인원수']}로 변환")
                     else:
                         # 숫자를 찾을 수 없으면 제거
                         metadata.pop("인원수")
-                        logger.debug(f"   [후처리] 인원수 '{count}'에서 숫자를 찾을 수 없어 제거")
                 elif isinstance(count, (int, float)):
                     # 이미 숫자면 정수로 변환
                     metadata["인원수"] = int(count)
                 else:
                     # 다른 타입이면 제거
                     metadata.pop("인원수")
-                    logger.debug(f"   [후처리] 인원수 타입이 올바르지 않아 제거: {type(count)}")
             
-            logger.debug(f"[메타데이터 추출 - 최종] {metadata}")
             extract_time = time.time() - extract_start
-            logger.info(f"[MetadataExtractor DEBUG] extract() 완료: {extract_time:.2f}초, 결과: {metadata}")
             return metadata
 
         except Exception as e:

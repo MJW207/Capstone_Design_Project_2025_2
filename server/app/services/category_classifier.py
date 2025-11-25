@@ -16,15 +16,9 @@ class CategoryClassifier:
             category_config: 카테고리 설정 딕셔너리
             api_key: Anthropic API 키
         """
-        logger.debug(f"[CategoryClassifier] 초기화 시작")
-        logger.debug(f"[CategoryClassifier] 카테고리 설정 개수: {len(category_config)}")
-        logger.debug(f"[CategoryClassifier] 카테고리 목록: {list(category_config.keys())}")
-        logger.debug(f"[CategoryClassifier] API 키 길이: {len(api_key) if api_key else 0}")
-        
         self.category_config = category_config
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-sonnet-4-5-20250929"
-        logger.debug(f"[CategoryClassifier] Anthropic 클라이언트 초기화 완료, 모델: {self.model}")
 
     def _build_prompt(self, metadata: Dict[str, Any]) -> str:
         """카테고리 설명 + 메타데이터를 포함한 LLM용 프롬프트 생성"""
@@ -99,12 +93,10 @@ JSON만 반환하세요:
             )
             
             raw_output = response.content[0].text.strip()
-            logger.debug(f"[카테고리 분류] LLM 원본 응답: {raw_output[:500]}")
 
             # JSON 파싱
             try:
                 mapping_tokens = self._parse_llm_output(raw_output)
-                logger.debug(f"[카테고리 분류] 파싱된 매핑 토큰: {mapping_tokens}")
             except Exception as parse_err:
                 logger.warning(f"[카테고리 분류] JSON 파싱 실패: {parse_err}, 원본: {raw_output[:200]}")
                 raise
@@ -130,9 +122,7 @@ JSON만 반환하세요:
             return categorized
 
         except Exception as e:
-            logger.warning(f"[WARN] LLM 분류/파싱 실패 ({e}) -> rule-based로 대체 (메타데이터: {metadata})")
-            import traceback
-            logger.debug(f"[WARN] 상세 오류: {traceback.format_exc()}")
+            logger.warning(f"[WARN] LLM 분류/파싱 실패 ({e}) -> rule-based로 대체")
             return self._rule_based_classify(metadata)
 
     def _parse_llm_output(self, raw_output: str) -> Dict[str, List[str]]:

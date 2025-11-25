@@ -207,37 +207,11 @@ export const searchApi = {
       payload.limit = limit;
     }
     
-    console.log('[DEBUG Frontend] 🔵 searchPanels 요청 시작:', {
-      query: query?.substring(0, 50),
-      filters: filters,
-      page,
-      limit,
-      payload
-    });
-    
     try {
       const response = await api.post('/api/search', payload);
-      
-      console.log('[DEBUG Frontend] 🟢 searchPanels 응답 받음:', {
-        query: response?.query,
-        count: response?.count,
-        total: response?.total,
-        resultsLength: response?.results?.length || 0,
-        firstResult: response?.results?.[0] ? {
-          id: response.results[0].id,
-          gender: response.results[0].gender,
-          age: response.results[0].age
-        } : null,
-        fullResponse: response
-      });
-      
       return response;
     } catch (error: any) {
-      console.error('[DEBUG Frontend] 🔴 searchPanels 에러:', {
-        error: error?.message,
-        stack: error?.stack,
-        detail: error
-      });
+      console.error('검색 요청 실패:', error?.message);
       throw error;
     }
   },

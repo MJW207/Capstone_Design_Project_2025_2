@@ -49,8 +49,6 @@ class MetadataFilterExtractor:
         
         # ⭐ 복수 값 보존을 위해 rule-based 정규화 직접 사용
         normalized_filter = self._rule_based_normalize(relevant_metadata)
-        
-        logger.debug(f"   [{category}] 필터 정규화: {relevant_metadata} → {normalized_filter}")
         return normalized_filter
 
     def _rule_based_normalize(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,7 +142,6 @@ class MetadataFilterExtractor:
                 # 개인소득, 가구소득 범위 비교 로직 (Pinecone 필터 형식)
                 elif key in ["개인소득", "가구소득"]:
                     import re
-                    logger.debug(f"   [DEBUG] 소득 처리: key={key}, value={value}, type={type(value)}")
                     # value는 쿼리에서 추출된 값 (예: 300만원)
                     # Pinecone 필터: {key_min: {$lte: 300}, key_max: {$gte: 300}}
                     if isinstance(value, (int, float)):

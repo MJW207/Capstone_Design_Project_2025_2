@@ -38,7 +38,6 @@ class CategoryTextGenerator:
             text = self._generate_by_template(category, metadata_dict)
             
             if text:
-                logger.debug(f"[{category}] {text[:80]}...")
                 return text
             
             # 템플릿이 없으면 LLM으로 생성
@@ -301,8 +300,6 @@ class CategoryTextGenerator:
             
             text = response.content[0].text.strip()
             text = text.replace('"', '').replace("'", '').replace('```', '').strip()
-            
-            logger.debug(f"[{category}] {text[:80]}...")
             return text
         
         except Exception as e:

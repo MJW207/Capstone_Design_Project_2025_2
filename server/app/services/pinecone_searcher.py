@@ -142,7 +142,6 @@ class PineconePanelSearcher:
 
                 # 🔄 Fallback: 결과가 0개면 메타데이터 필터 없이 재검색
                 if len(valid_results) == 0:
-                    logger.debug(f"    ⚠️ 메타데이터 필터로 0건 → Fallback (topic만)")
                     search_results = self.index.query(
                         vector=query_embedding,
                         top_k=actual_top_k,

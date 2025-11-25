@@ -26,7 +26,6 @@ class EmbeddingGenerator:
                 input=text
             )
             embedding = response.data[0].embedding
-            logger.debug(f"✅ [{category}] 임베딩 생성 완료")
             return (category, embedding)
         except Exception as e:
             logger.error(f"❌ [{category}] 임베딩 생성 실패: {e}")

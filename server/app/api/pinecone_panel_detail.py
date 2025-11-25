@@ -51,7 +51,6 @@ def get_panel_from_pinecone(panel_id: str) -> Optional[Dict[str, Any]]:
         # 인덱스 차원 동적으로 가져오기
         stats = index.describe_index_stats()
         dimension = stats.get('dimension', 1536)
-        logger.debug(f"[Panel Detail] Pinecone 인덱스 차원: {dimension}")
         
         # 랜덤 벡터 생성 (메타데이터만 필요하므로)
         random_vector = np.random.rand(dimension).astype(np.float32).tolist()

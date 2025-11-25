@@ -115,7 +115,6 @@ async def _get_panel_details_from_pinecone(
                 continue
             
             try:
-                logger.debug(f"[Panel Details] 카테고리 {category_count}/{len(category_config)}: {category_name} ({pinecone_topic})")
                 topic_results = index.query(
                     vector=random_vector,
                     top_k=len(mb_sn_list) * 2,  # 충분히 많이 가져오기
@@ -125,7 +124,6 @@ async def _get_panel_details_from_pinecone(
                         "mb_sn": {"$in": mb_sn_list}
                     }
                 )
-                logger.debug(f"[Panel Details] {category_name}: {len(topic_results.matches)}개 매치")
                 
                 # mb_sn별로 메타데이터 병합
                 for match in topic_results.matches:
@@ -161,7 +159,7 @@ async def _get_panel_details_from_pinecone(
                             else:
                                 panel_metadata_map[mb_sn][key] = value
             except Exception as e:
-                logger.debug(f"{category_name} ({pinecone_topic}) 메타데이터 조회 실패: {e}")
+                logger.warning(f"{category_name} ({pinecone_topic}) 메타데이터 조회 실패: {e}")
     except Exception as e:
         logger.warning(f"Pinecone 메타데이터 조회 실패: {e}, 빈 메타데이터 사용")
     

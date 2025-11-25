@@ -236,11 +236,6 @@ export function ResultsPage({
 
   // 서버 검색 (텍스트 일치 + 페이지네이션)
   const searchPanels = async (pageNum: number = currentPage, forceRefresh: boolean = false) => {
-    // 디버그 로그는 개발 환경에서만 출력 (선택적)
-    // if (import.meta.env.DEV) {
-    //   console.log('[DEBUG Frontend] searchPanels:', { query, pageNum, forceRefresh });
-    // }
-    
     // 쿼리가 없으면 검색하지 않음
     if (!query || !query.trim()) {
       setPanels([]);
@@ -1022,9 +1017,6 @@ export function ResultsPage({
               if (interactiveChips.includes(chip.key)) {
                 setSelectedChip(chip);
                 setStatDrawerOpen(true);
-              } else {
-                // 기타 칩은 기존 로직 (필요시 추가)
-                console.log('Chip clicked:', chip);
               }
             }}
           />

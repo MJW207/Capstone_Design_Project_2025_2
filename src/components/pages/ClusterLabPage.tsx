@@ -1547,15 +1547,6 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
     const currentSearchKey = searchResults 
       ? JSON.stringify(searchResults.map((r: any) => r.mb_sn || r.id || r.panel_id).sort())
       : '';
-    
-    // 디버그 로그는 개발 환경에서만 출력 (선택적)
-    // if (import.meta.env.DEV && currentSearchKey !== lastSearchResultsRef.current) {
-    //   console.log('[🔔 검색 결과 변경]', {
-    //     searchResultsLength: searchResults?.length || 0,
-    //     loading,
-    //     hasExtendedData: !!extendedClusteringData,
-    //   });
-    // }
 
     // 검색 키가 변경되지 않았으면 스킵 (탭 간 이동 시 재실행 방지)
     if (currentSearchKey === lastSearchResultsRef.current) {

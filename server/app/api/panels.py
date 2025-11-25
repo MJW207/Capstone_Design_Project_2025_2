@@ -196,7 +196,6 @@ async def get_panel(
             
             if isinstance(quick_answers, dict) and quick_answers:
                 logger.info(f"[Panel API] quick_answers 파싱 시작: {len(quick_answers)}개 키")
-                logger.debug(f"[Panel API] quick_answers 키 목록: {list(quick_answers.keys())[:10]}")
                 
                 # 질문 내용 기반 카테고리 매핑 함수
                 def determine_category_from_question(question: str, answer: str = "") -> str:
@@ -277,10 +276,6 @@ async def get_panel(
                                         'answer': str(answer).strip(),
                                         'date': response_date
                                     })
-            
-            logger.debug(f"[Panel API] 파싱된 responses 개수: {len(responses)}")
-            if responses:
-                logger.debug(f"[Panel API] responses 카테고리: {[r.get('category') for r in responses]}")
             
             # quick_answers가 비어있거나 responses가 없으면 "qpoll 응답 없음" 메시지 추가하지 않음
             # (프론트엔드에서 빈 상태로 표시)

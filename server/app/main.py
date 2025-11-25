@@ -22,9 +22,10 @@ import os
 import logging
 import traceback
 
-# 로깅 설정 (DEBUG 레벨로 변경하여 상세 로그 확인)
+# 로깅 설정 (프로덕션 환경: INFO 레벨, 개발 환경: 환경 변수로 제어)
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=getattr(logging, log_level, logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
@@ -32,16 +33,7 @@ logging.basicConfig(
 # HTTP 관련 로그는 WARNING으로 유지
 logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
-logging.getLogger('httpx').setLevel(logging.INFO)  # httpx는 INFO로 (API 호출 확인용)
-
-# 앱 관련 로거는 DEBUG 레벨로 설정
-logging.getLogger('app.services').setLevel(logging.DEBUG)
-logging.getLogger('app.api.search').setLevel(logging.DEBUG)
-logging.getLogger('app.api.panels').setLevel(logging.DEBUG)
-logging.getLogger('app.core.config').setLevel(logging.DEBUG)
-logging.getLogger('app.services.metadata_extractor').setLevel(logging.DEBUG)
-logging.getLogger('app.services.category_classifier').setLevel(logging.DEBUG)
-logging.getLogger('app.services.pinecone_pipeline').setLevel(logging.DEBUG)
+logging.getLogger('httpx').setLevel(logging.WARNING)
 
 # 환경 변수 로드 - Path 사용으로 경로 안정화
 ENV_PATH = (Path(__file__).resolve().parents[1] / ".env")
@@ -69,18 +61,12 @@ async def log_requests(request: Request, call_next):
     start_time = time.time()
     logger = logging.getLogger(__name__)
     
-    logger.info(f"[REQUEST] {request.method} {request.url.path} - 요청 수신")
-    if request.method == "POST":
-        try:
-            body = await request.body()
-            logger.info(f"[REQUEST] Body: {body[:200] if len(body) > 200 else body}")
-        except:
-            pass
-    
     try:
         response = await call_next(request)
         process_time = time.time() - start_time
-        logger.info(f"[REQUEST] {request.method} {request.url.path} - 응답 완료: {response.status_code} ({process_time:.2f}초)")
+        # 에러 응답만 로깅
+        if response.status_code >= 400:
+            logger.warning(f"[REQUEST] {request.method} {request.url.path} - 응답: {response.status_code} ({process_time:.2f}초)")
         return response
     except Exception as e:
         process_time = time.time() - start_time

@@ -35,12 +35,6 @@ class PineconeResultFilter:
             return []
 
         filter_start = time.time()
-        logger.info(f"\n[Pinecone 필터링 시작]")
-        logger.info(f"   카테고리 순서: {category_order}")
-        if final_count is None:
-            logger.info(f"   최종 반환 개수: 전체 (명수 미명시)")
-        else:
-            logger.info(f"   최종 반환 개수: {final_count}개")
 
         # 첫 번째 카테고리로 초기 선별
         first_category = category_order[0]
@@ -53,11 +47,6 @@ class PineconeResultFilter:
         first_filter = (topic_filters or {}).get(first_category, {})
         has_metadata_filter = bool(first_filter)
 
-        if first_filter:
-            logger.info(f"\n[1단계] {first_category} 카테고리 검색 (메타데이터 필터 적용)")
-            logger.info(f"   필터: {first_filter}")
-        else:
-            logger.info(f"\n[1단계] {first_category} 카테고리 검색 (필터 없음)")
 
         # ⭐ 초기 검색 수 결정 - final_count가 None이면 큰 수로 설정
         # ⚠️ Pinecone 제한: top_k는 최대 10000, 노트북과 동일하게 최소 10000개 검색 보장
@@ -67,20 +56,16 @@ class PineconeResultFilter:
             # 명수 미명시
             if has_metadata_filter:
                 initial_count = MAX_TOP_K  # 메타데이터 필터 있으면 충분히 큰 수로
-                logger.info(f"   [명수 미명시 + 필터 O] 메타데이터 조건 만족하는 모든 패널 검색 (최대 {initial_count}개)")
             else:
                 initial_count = MAX_TOP_K  # 필터 없으면 적당한 수
-                logger.info(f"   [명수 미명시 + 필터 X] 벡터 유사도 높은 상위 {initial_count}개 검색")
         else:
             # 명수 명시됨
             # ⭐ 메타데이터 필터가 있으면 모든 후보 확보, 없으면 제한적으로
             if has_metadata_filter:
                 initial_count = MAX_TOP_K  # 메타데이터 필터 O → 조건 만족하는 모든 패널 검색
-                logger.info(f"   [명수 명시: {final_count}명 + 필터 O] 메타데이터 조건 만족하는 모든 패널 검색 (최대 {initial_count}개)")
             else:
                 # 메타데이터 필터 X → 여유있게, 노트북과 동일하게 최소 2000개 보장
                 initial_count = max(final_count * 10, 2000)
-                logger.info(f"   [명수 명시: {final_count}명 + 필터 X] 여유있게 {initial_count}개 검색")
 
         first_results = self.searcher.search_by_category(
             query_embedding=first_embedding,
@@ -116,10 +101,6 @@ class PineconeResultFilter:
                 # 명수 명시 → 상위 유사도 패널만 (필터 조건 만족하는 패널 중에서)
                 candidate_mb_sns = [mb_sn for mb_sn, score in sorted_filtered[:final_count * 3]]
             
-            logger.info(
-                f"   -> [메타데이터 필터 + 유사도 정렬] {len(candidate_mb_sns)}개 후보 확보 "
-                f"(필터 조건 만족 + 유사도 상위)"
-            )
         else:
             # 필터 없을 때
             mb_sn_scores = {}
@@ -136,7 +117,6 @@ class PineconeResultFilter:
             else:
                 # 명수 있고 필터 없으면 여유있게
                 candidate_mb_sns = list(set([r["mb_sn"] for r in first_results[:max(final_count * 10, 10000)] if r.get("mb_sn")]))
-            logger.info(f"   -> [필터 없음] {len(candidate_mb_sns)}개 후보 선별")
 
         # 후보가 없으면 빈 리스트 반환
         if len(candidate_mb_sns) == 0:
@@ -153,11 +133,6 @@ class PineconeResultFilter:
             category_filter = (topic_filters or {}).get(category, {})
             has_category_filter = bool(category_filter)
 
-            if category_filter:
-                logger.info(f"\n[{i}단계] {category} 카테고리로 재필터링 (메타데이터 필터 적용)")
-                logger.info(f"   필터: {category_filter}")
-            else:
-                logger.info(f"\n[{i}단계] {category} 카테고리로 재필터링 (필터 없음)")
 
             # 후보가 비어있으면 필터링 중단
             if len(candidate_mb_sns) == 0:
@@ -208,10 +183,6 @@ class PineconeResultFilter:
                     # 명수 명시 → 상위 유사도 패널만 (필터 조건 만족하는 패널 중에서)
                     candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns[:final_count * 3]]
                 
-                logger.info(
-                    f"   -> [메타데이터 필터 + 유사도 정렬] {len(candidate_mb_sns)}개 후보 유지 "
-                    f"(필터 조건 만족 + 유사도 상위)"
-                )
             else:
                 # 메타데이터 필터 X → 벡터 유사도 기반 상위 선별
                 mb_sn_scores = {}
@@ -235,7 +206,6 @@ class PineconeResultFilter:
                     next_candidate_count = max(final_count * 3, MAX_TOP_K)
                 
                 candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns[:next_candidate_count]]
-                logger.info(f"   -> [필터 없음] {len(candidate_mb_sns)}개 후보 선별")
 
         # ⭐ 최종 결과 반환 (mb_sn과 score 함께 반환)
         # 모든 카테고리 점수의 평균을 사용 (더 합리적인 방식)
@@ -302,28 +272,12 @@ class PineconeResultFilter:
             reverse=True  # 내림차순 (높은 점수부터)
         )
         
-        # 디버그: 상위 5개 점수 로깅 (인원수 지정된 경우)
-        if final_count is not None and sorted_results:
-            top_scores = [score for _, score in sorted_results[:min(5, len(sorted_results))]]
-            top_mb_sns = [mb_sn for mb_sn, _ in sorted_results[:min(5, len(sorted_results))]]
-            logger.info(f"   [정렬 확인] 상위 5개 평균 유사도 점수: {top_scores}")
-            # 각 mb_sn의 카테고리별 점수도 로깅
-            for mb_sn in top_mb_sns[:3]:  # 상위 3개만 상세 로깅
-                scores = final_mb_sn_scores.get(mb_sn, [])
-                logger.info(f"      - {mb_sn}: 카테고리별 점수 {scores} → 평균 {final_mb_sn_avg_scores.get(mb_sn, 0.0):.4f}")
-        
         if final_count is None:
             # 명수 미명시 - 모든 후보 반환 (벡터 유사도로 정렬됨)
             final_results = [{"mb_sn": mb_sn, "score": score} for mb_sn, score in sorted_results]
-            logger.info(f"\n✅ 최종 {len(final_results)}개 패널 선별 완료 (조건 만족하는 전체 반환, 유사도 순 정렬)")
         else:
             # 명수 명시 - 지정된 개수만 반환 (상위 유사도 패널만)
             final_results = [{"mb_sn": mb_sn, "score": score} for mb_sn, score in sorted_results[:final_count]]
-            logger.info(f"\n✅ 최종 {len(final_results)}개 패널 선별 완료 ({final_count}명 요청, 상위 유사도 순)")
-        
-        total_time = time.time() - filter_start
-        logger.info(f"[Pinecone 필터링 완료] 총 소요 시간: {total_time:.2f}초")
-        logger.info("=" * 80)
 
         return final_results
 

@@ -68,10 +68,9 @@ Desktop.ini
 # Scripts (temporary)
 organize_folders.bat
 
-# Markdown files (except README.md and docs/)
+# Markdown files
 *.md
-!README.md
-!docs/**/*.md
+docs/**/*.md
 
 # Invalid/accidental files
 nul

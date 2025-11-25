@@ -205,6 +205,14 @@ export function ComparePage() {
         
         const responseData = await response.json();
         
+        // 디버깅: 응답 데이터 구조 확인
+        console.log('[비교 분석] API 응답:', {
+          success: responseData.success,
+          hasData: !!responseData.data,
+          dataKeys: responseData.data ? Object.keys(responseData.data) : [],
+          comparisonLength: responseData.data?.comparison?.length || 0,
+        });
+        
         // Precomputed API 응답 형식: {success: true, data: {...}}
         const data = responseData.success ? responseData.data : responseData;
         
@@ -219,6 +227,14 @@ export function ComparePage() {
         
         // comparison 데이터에서 highlights 생성
         const allComparisons = data.comparison || [];
+        
+        // 디버깅: comparison 데이터 확인
+        console.log('[비교 분석] Comparison 데이터:', {
+          allComparisonsLength: allComparisons.length,
+          firstItem: allComparisons[0] || null,
+          groupA: data.group_a,
+          groupB: data.group_b,
+        });
         
         // 연속형 변수: cohens_d 기준으로 정렬 (cohens_d가 있는 것만, 절댓값 기준)
         const continuousComparisons = allComparisons

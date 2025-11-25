@@ -1,5 +1,6 @@
 """Pinecone 결과 필터"""
 from typing import Dict, List, Any
+from collections import OrderedDict
 import logging
 import time
 
@@ -111,12 +112,16 @@ class PineconeResultFilter:
                     if mb_sn not in mb_sn_scores or score > mb_sn_scores[mb_sn]:
                         mb_sn_scores[mb_sn] = score
             
-            if final_count is None:
-                # 명수도 없고 필터도 없으면 검색된 전체 사용
-                candidate_mb_sns = list(set([r["mb_sn"] for r in first_results if r.get("mb_sn")]))
-            else:
-                # 명수 있고 필터 없으면 여유있게
-                candidate_mb_sns = list(set([r["mb_sn"] for r in first_results[:max(final_count * 10, 10000)] if r.get("mb_sn")]))
+            # ✅ 정렬 순서 유지하며 후보군 구성 (노트북과 동일)
+            first_sorted = sorted(
+                [r for r in first_results if r.get("mb_sn")],
+                key=lambda x: x["score"],
+                reverse=True
+            )
+            candidate_mb_sns = list(OrderedDict.fromkeys(r["mb_sn"] for r in first_sorted))
+            
+            if final_count is not None and not has_metadata_filter:
+                candidate_mb_sns = candidate_mb_sns[:max(final_count * 10, 10000)]
 
         # 후보가 없으면 빈 리스트 반환
         if len(candidate_mb_sns) == 0:

@@ -980,9 +980,13 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                       </h4>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {panel.metadata["음용경험 술"].map((item, idx) => (
-                        <PIChip key={idx} type="tag">{item}</PIChip>
-                      ))}
+                      {Array.isArray(panel.metadata["음용경험 술"]) 
+                        ? panel.metadata["음용경험 술"].map((item, idx) => (
+                            <PIChip key={idx} type="tag">{item}</PIChip>
+                          ))
+                        : panel.metadata["음용경험 술"] && (
+                            <PIChip type="tag">{panel.metadata["음용경험 술"]}</PIChip>
+                          )}
                     </div>
                   </div>
                 )}

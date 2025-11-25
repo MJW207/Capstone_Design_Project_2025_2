@@ -1,0 +1,138 @@
+{
+  "total_variables": 13,
+  "continuous": [
+    "Q6_income",
+    "Q8_count",
+    "Q8_premium_index",
+    "age",
+    "has_children",
+    "has_drinking_experience",
+    "has_smoking_experience",
+    "is_college_graduate",
+    "is_metro",
+    "is_premium_car"
+  ],
+  "binary": [],
+  "categorical": [
+    "Q6_category",
+    "age_group",
+    "generation"
+  ],
+  "variable_details": {
+    "continuous": [
+      {
+        "name": "age",
+        "type": "continuous",
+        "cluster_a_mean": 24.20253164556962,
+        "cluster_b_mean": 26.19,
+        "difference": 1.98746835443038,
+        "cohens_d": null
+      },
+      {
+        "name": "Q8_count",
+        "type": "continuous",
+        "cluster_a_mean": 14.329113924050633,
+        "cluster_b_mean": 14.096666666666666,
+        "difference": -0.2324472573839671,
+        "cohens_d": null
+      },
+      {
+        "name": "is_metro",
+        "type": "continuous",
+        "cluster_a_mean": 0.5358649789029536,
+        "cluster_b_mean": 0.49333333333333335,
+        "difference": -0.04253164556962025,
+        "cohens_d": null
+      },
+      {
+        "name": "Q6_income",
+        "type": "continuous",
+        "cluster_a_mean": 605.8945147679325,
+        "cluster_b_mean": 349.5,
+        "difference": -256.3945147679325,
+        "cohens_d": null
+      },
+      {
+        "name": "has_children",
+        "type": "continuous",
+        "cluster_a_mean": 0.05907172995780591,
+        "cluster_b_mean": 0.013333333333333334,
+        "difference": -0.04573839662447257,
+        "cohens_d": null
+      },
+      {
+        "name": "is_premium_car",
+        "type": "continuous",
+        "cluster_a_mean": 0.11392405063291139,
+        "cluster_b_mean": 0.06,
+        "difference": -0.05392405063291139,
+        "cohens_d": null
+      },
+      {
+        "name": "Q8_premium_index",
+        "type": "continuous",
+        "cluster_a_mean": 15.434599156118143,
+        "cluster_b_mean": 15.296666666666667,
+        "difference": -0.13793248945147596,
+        "cohens_d": null
+      },
+      {
+        "name": "is_college_graduate",
+        "type": "continuous",
+        "cluster_a_mean": 0.27848101265822783,
+        "cluster_b_mean": 0.5133333333333333,
+        "difference": 0.23485232067510547,
+        "cohens_d": null
+      },
+      {
+        "name": "has_smoking_experience",
+        "type": "continuous",
+        "cluster_a_mean": 0.0,
+        "cluster_b_mean": 0.0,
+        "difference": 0.0,
+        "cohens_d": null
+      },
+      {
+        "name": "has_drinking_experience",
+        "type": "continuous",
+        "cluster_a_mean": 0.0,
+        "cluster_b_mean": 0.0,
+        "difference": 0.0,
+        "cohens_d": null
+      }
+    ],
+    "binary": [],
+    "categorical": [
+      {
+        "name": "age_group",
+        "type": "categorical",
+        "categories": [
+          "20대"
+        ],
+        "category_count": 1,
+        "has_distribution": true
+      },
+      {
+        "name": "generation",
+        "type": "categorical",
+        "categories": [
+          "MZ"
+        ],
+        "category_count": 1,
+        "has_distribution": true
+      },
+      {
+        "name": "Q6_category",
+        "type": "categorical",
+        "categories": [
+          "고소득",
+          "중소득",
+          "중상소득"
+        ],
+        "category_count": 3,
+        "has_distribution": true
+      }
+    ]
+  },
+  "sample_cluster_pair": "0_vs_1"
+}

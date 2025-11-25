@@ -59,6 +59,8 @@ def analyze_cluster_profiles(df: pd.DataFrame, labels: np.ndarray) -> Dict[int, 
     for cluster_id in sorted(set(labels)):
         if cluster_id == -1:  # 노이즈는 별도 처리
             continue
+        if cluster_id == 0:  # 군집 0은 제외 (노이즈 군집 프로필이 별도로 있음)
+            continue
         
         cluster_data = df_temp[df_temp['cluster'] == cluster_id]
         
@@ -237,12 +239,18 @@ def extract_and_transform_features(df_panel: pd.DataFrame) -> pd.DataFrame:
         df['family_type'] = df[family_col].apply(lambda x: 
             f"{x}인가구" if pd.notna(x) and str(x).replace('명', '').replace('인', '').strip().isdigit() else None)
     
-    # 6. is_metro 생성
-    metro_cities = ['서울', '부산', '대구', '인천', '광주', '대전', '울산']
+    # 6. is_metro (수도권) 및 is_metro_city (광역시) 생성
     location_col = 'location'
     if location_col in df.columns:
-        df['is_metro'] = df[location_col].apply(lambda x: x in metro_cities if pd.notna(x) else False)
-        df['is_metro_city'] = df['is_metro']
+        # 수도권: 서울, 경기, 인천
+        metro_area = ['서울', '경기', '인천']
+        # 광역시: 부산, 대구, 인천, 광주, 대전, 울산
+        metro_cities = ['부산', '대구', '인천', '광주', '대전', '울산']
+        
+        df['is_metro'] = df[location_col].apply(lambda x: 
+            x in metro_area if pd.notna(x) else False)
+        df['is_metro_city'] = df[location_col].apply(lambda x: 
+            x in metro_cities if pd.notna(x) else False)
     else:
         df['is_metro'] = False
         df['is_metro_city'] = False
@@ -345,7 +353,31 @@ def extract_and_transform_features(df_panel: pd.DataFrame) -> pd.DataFrame:
         df['has_drinking_experience'] = False
         df['drinking_types_count'] = 0
     
-    # 18. drinks_wine, drinks_soju 등은 quick_answers에서 추출 (나중에)
+    # 18. drinks_beer, drinks_soju, drinks_wine 등 생성
+    # quick_answers에서 추출하거나 음용경험 술 컬럼에서 추출
+    if drinking_col in df.columns:
+        df['drinks_beer'] = df[drinking_col].apply(lambda x: 
+            isinstance(x, list) and any('맥주' in str(item) for item in x) if isinstance(x, list) else False)
+        df['drinks_soju'] = df[drinking_col].apply(lambda x: 
+            isinstance(x, list) and any('소주' in str(item) for item in x) if isinstance(x, list) else False)
+        df['drinks_wine'] = df[drinking_col].apply(lambda x: 
+            isinstance(x, list) and any('와인' in str(item) for item in x) if isinstance(x, list) else False)
+        df['drinks_western'] = df[drinking_col].apply(lambda x: 
+            isinstance(x, list) and any('양주' in str(item) or '위스키' in str(item) or '브랜디' in str(item) for item in x) if isinstance(x, list) else False)
+        df['drinks_makgeolli'] = df[drinking_col].apply(lambda x: 
+            isinstance(x, list) and any('막걸리' in str(item) for item in x) if isinstance(x, list) else False)
+        df['drinks_low_alcohol'] = df[drinking_col].apply(lambda x: 
+            isinstance(x, list) and any('저도수' in str(item) or '약주' in str(item) for item in x) if isinstance(x, list) else False)
+        df['drinks_cocktail'] = df[drinking_col].apply(lambda x: 
+            isinstance(x, list) and any('칵테일' in str(item) for item in x) if isinstance(x, list) else False)
+    else:
+        df['drinks_beer'] = False
+        df['drinks_soju'] = False
+        df['drinks_wine'] = False
+        df['drinks_western'] = False
+        df['drinks_makgeolli'] = False
+        df['drinks_low_alcohol'] = False
+        df['drinks_cocktail'] = False
     
     # 19. has_smoking_experience 생성
     smoking_col = '흡연경험'
@@ -857,6 +889,8 @@ async def main():
     for cluster_id in df_full['cluster'].unique():
         if cluster_id == -1:  # 노이즈 클러스터 제외
             continue
+        if cluster_id == 0:  # 군집 0은 제외 (노이즈 군집 프로필이 별도로 있음)
+            continue
         cluster_df = df_full[df_full['cluster'] == cluster_id]
         cluster_stats: Dict[str, dict] = {}
         
@@ -878,6 +912,8 @@ async def main():
     
     profiles_db = []
     for cluster_id, profile in cluster_profiles_raw.items():
+        if cluster_id == 0:  # 군집 0은 제외 (노이즈 군집 프로필이 별도로 있음)
+            continue
         profile_db = convert_profile_to_db_format(
             profile, 
             session_id, 

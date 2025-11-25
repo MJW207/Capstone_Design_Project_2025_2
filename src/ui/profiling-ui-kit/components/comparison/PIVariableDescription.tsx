@@ -13,7 +13,7 @@ export function PIVariableDescription() {
             <strong>계산 방식:</strong> 프리미엄 제품 수 ÷ 전체 전자제품 수 (0~1 범위)
           </p>
           <p style={{ marginBottom: '8px', fontSize: '13px', lineHeight: '1.6' }}>
-            <strong>프리미엄 제품:</strong> 제품 번호 3, 9, 18, 20, 22, 25번 (고가 스마트폰, 프리미엄 노트북, 고가 가전제품 등)
+            <strong>프리미엄 제품:</strong> 로봇청소기(10), 무선청소기(11), 커피 머신(12), 안마의자(13), 의류 관리기(16), 건조기(17), 식기세척기(19), 가정용 식물 재배기(21)
           </p>
           <p style={{ marginBottom: '0', fontSize: '13px', lineHeight: '1.6' }}>
             <strong>해석:</strong> 0.3 이상이면 프리미엄 소비 성향이 있는 것으로 판단

@@ -317,6 +317,8 @@ def _create_scaled_features(df: pd.DataFrame) -> pd.DataFrame:
             q8_comfort_counts.append(comfort_count)
             
             # 프리미엄 지수 계산 (프리미엄 제품 비율)
+            # TODO: 새로운 프리미엄 제품 번호 [10, 13, 16, 22, 25, 26]로 변경 가능
+            # 현재는 기존 번호 [3, 9, 18, 20, 22, 25] 유지 (재클러스터링 스크립트에서 별도 처리)
             premium_products = [3, 9, 18, 20, 22, 25]  # 프리미엄 제품 번호
             premium_count = sum(1 for x in q8_list if x in premium_products)
             premium_index = premium_count / max(q8_count, 1)  # 0~1 범위

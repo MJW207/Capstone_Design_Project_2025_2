@@ -74,10 +74,20 @@ export function PIStackedBarChart({ data, clusterLabels }: PIStackedBarChartProp
 
   // 각 변수별로 스택바 렌더링
   const renderStackedBar = (feature: CategoricalComparison, featureIdx: number) => {
+    // null/undefined 체크 추가
+    if (!feature.group_a_distribution || !feature.group_b_distribution) {
+      console.warn(`[PIStackedBarChart] 범주형 변수 데이터 누락: ${feature.feature}`, {
+        feature,
+        hasGroupA: !!feature.group_a_distribution,
+        hasGroupB: !!feature.group_b_distribution,
+      });
+      return null;
+    }
+    
     // Get all unique categories (원본 키)
     const allCategoryKeys = Array.from(new Set([
-      ...Object.keys(feature.group_a_distribution),
-      ...Object.keys(feature.group_b_distribution)
+      ...Object.keys(feature.group_a_distribution || {}),
+      ...Object.keys(feature.group_b_distribution || {})
     ]));
     
     // 한글 변환된 카테고리명 (표시용)
@@ -96,14 +106,25 @@ export function PIStackedBarChart({ data, clusterLabels }: PIStackedBarChartProp
     });
 
     // Prepare data for both clusters (원본 키 사용)
+    // 분포 합계를 100%로 정규화
+    const normalizeDistribution = (dist: Record<string, number>): Record<string, number> => {
+      const sum = Object.values(dist).reduce((acc, val) => acc + val, 0);
+      if (sum === 0) return dist;
+      const normalized: Record<string, number> = {};
+      for (const [key, value] of Object.entries(dist)) {
+        normalized[key] = value / sum;
+      }
+      return normalized;
+    };
+    
     const clusters = [
       { 
         label: clusterLabels[0], 
-        distribution: feature.group_a_distribution 
+        distribution: normalizeDistribution(feature.group_a_distribution || {})
       },
       { 
         label: clusterLabels[1], 
-        distribution: feature.group_b_distribution 
+        distribution: normalizeDistribution(feature.group_b_distribution || {})
       }
     ];
 

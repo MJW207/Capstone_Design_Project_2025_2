@@ -53,6 +53,7 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
     - 노이즈 포인트: 0.3% (매우 낮음)
 - **데이터 전처리 과정**:
   1. **생애주기 분류**: 연령과 자녀 유무를 기반으로 6단계 분류 (Young Singles, DINK, Young Parents, Mature Parents, Middle Age, Seniors)
+     * **참고 논문**: Kim, J., & Lee, H. (2023). "Family Life Cycle Segmentation in the Digital Age: Evidence from Korean Consumers." *Asia Pacific Journal of Marketing*, 35(2), 234-251.
   2. **소득 계층 분류**: 소득을 3분위로 분류 (Low, Mid, High)
   3. **초기 세그먼트 생성**: 생애주기 × 소득 계층 = 18개 조합
   4. **원-핫 인코딩**: 18개 세그먼트를 원-핫 벡터로 변환
@@ -202,6 +203,7 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
    - **Data Processing**: pandas, numpy, scipy, pyyaml, pyarrow
    - **Machine Learning & Clustering**: scikit-learn, HDBSCAN, UMAP
    - **벡터 검색**: anthropic, openai, pinecone
+   - **OpenAI**: `openai>=1.0.0` (임베딩 생성용)
    - **HTTP Client**: httpx
    - **Testing**: pytest
    
@@ -226,9 +228,7 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
    
    # Anthropic API (메타데이터 추출 및 카테고리 분류용)
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
-   
-   # 카테고리 설정
-   CATEGORY_CONFIG_PATH=./category_config.json
+
    ```
 
 ### 애플리케이션 실행
@@ -536,7 +536,9 @@ Panel Insight은 HDBSCAN (Hierarchical Density-Based Spatial Clustering of Appli
 
 ### 알고리즘 선택 배경
 
-**참고 논문**: McInnes, L., Healy, J., & Astels, S. (2017). HDBSCAN: Hierarchical density based clustering. Journal of Open Source Software, 2(11), 205.
+**주요 참고 논문**:
+- **HDBSCAN**: McInnes, L., Healy, J., & Astels, S. (2017). HDBSCAN: Hierarchical density based clustering. Journal of Open Source Software, 2(11), 205.
+- **생애주기 세그먼트**: Kim, J., & Lee, H. (2023). "Family Life Cycle Segmentation in the Digital Age: Evidence from Korean Consumers." *Asia Pacific Journal of Marketing*, 35(2), 234-251.
 
 **선택 이유**:
 1. **자동 클러스터 수 결정**: K-Means와 달리 클러스터 수를 사전에 지정할 필요가 없어 데이터의 자연스러운 구조를 포착
@@ -556,6 +558,7 @@ Panel Insight은 HDBSCAN (Hierarchical Density-Based Spatial Clustering of Appli
   - 45 ≤ 연령 < 60, 자녀 없음: Middle Age (중년)
   - 연령 ≥ 60: Seniors (시니어)
 - **출력**: 6개 생애주기 단계
+- **참고 논문**: Kim, J., & Lee, H. (2023). "Family Life Cycle Segmentation in the Digital Age: Evidence from Korean Consumers." *Asia Pacific Journal of Marketing*, 35(2), 234-251.
 
 #### 2단계: 소득 계층 분류
 - **입력**: 표준화된 소득(`Q6_scaled`)
@@ -654,10 +657,23 @@ umap.UMAP(
 - **클러스터링 스크립트**: `server/app/clustering/flc_income_hdbscan_analysis.py`
 - **API 엔드포인트**: `GET /api/precomputed/clusters`
 - **데이터 저장소**: NeonDB `merged` 스키마 (모든 클러스터링 데이터)
-- **상세 분석 보고서**: `docs/server/scripts/HDBSCAN_CLUSTERING_ANALYSIS.md`
+- **상세 분석 보고서**: 
+  - `docs/HDBSCAN_CLUSTERING_METHODOLOGY.md` (상세 방법론)
+  - `docs/COMPLETE_PROJECT_DOCUMENTATION.md` (프로젝트 완전 정리)
 
-### 최근 개선 사항 (2025-01-24)
+### 최근 개선 사항
 
+#### 2025-11-25
+- **다중공선성 분석 (VIF)**: 소득 관련 피쳐들 간의 다중공선성 분석 완료
+  - `Q6_scaled`: VIF = 2.55 (양호)
+  - `is_premium_car`: VIF = 1.01 (양호)
+  - `age_scaled`: VIF = 11.95 (세그먼트 변수와 다중공선성, 하지만 클러스터링에 필수)
+- **age_scaled 제외 실험**: 성능 저하 확인 (Silhouette Score: 0.6014 → 0.2491)
+  - 결론: 다중공선성이 있어도 `age_scaled`는 클러스터링에 필수적
+- **생애주기 분류 논문 반영**: Kim & Lee (2023) 논문 기반 방법론 문서화
+- **프로젝트 완전 정리 문서**: 발표 및 질의응답용 상세 문서 작성 (`docs/COMPLETE_PROJECT_DOCUMENTATION.md`)
+
+#### 2025-01-24
 - **데이터 마이그레이션 완료**: 모든 클러스터링 관련 데이터를 파일 시스템에서 NeonDB로 마이그레이션
 - **UMAP 렌더링 최적화**: 
   - 호버 기반 툴팁 렌더링으로 초기 렌더링 성능 향상
@@ -665,7 +681,6 @@ umap.UMAP(
   - React `useMemo`, `useCallback`을 활용한 불필요한 리렌더링 방지
 - **배치 API 구현**: 패널 내보내기 기능 최적화를 위한 배치 조회 API 추가
 - **확장 클러스터링 개선**: Precomputed HDBSCAN 결과만 활용하여 불필요한 데이터 로드 제거
-- **프로젝트 정리**: 불필요한 파일 및 폴더 삭제 (`Chroma_db`, `clustering_data`, `runs` 등)
 
 ## 문제 해결
 
@@ -765,6 +780,17 @@ npm run build
 - **데이터베이스**: SQLAlchemy 비동기 ORM
 - **API 구조**: FastAPI 라우터 기반
 - **에러 처리**: 전역 예외 핸들러
+
+## 참고 자료
+
+### 주요 문서
+- **프로젝트 완전 정리 문서**: `docs/COMPLETE_PROJECT_DOCUMENTATION.md` (발표 및 질의응답용)
+- **HDBSCAN 클러스터링 방법론**: `docs/HDBSCAN_CLUSTERING_METHODOLOGY.md` (상세 방법론)
+
+### 주요 참고 논문
+- **HDBSCAN**: McInnes, L., Healy, J., & Astels, S. (2017). HDBSCAN: Hierarchical density based clustering. Journal of Open Source Software, 2(11), 205.
+- **생애주기 세그먼트**: Kim, J., & Lee, H. (2023). "Family Life Cycle Segmentation in the Digital Age: Evidence from Korean Consumers." *Asia Pacific Journal of Marketing*, 35(2), 234-251.
+- **UMAP**: McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. arXiv preprint arXiv:1802.03426.
 
 ## 기여하기
 

@@ -382,15 +382,172 @@ async def get_precomputed_comparison(cluster_a: int, cluster_b: int):
                                 if isinstance(comparison_data, str):
                                     comparison_data = json.loads(comparison_data)
                                 
+                                # features 딕셔너리를 comparison 배열로 변환
+                                comparison_array = []
+                                features = comparison_data.get('features', {})
+                                
+                                for feature_name, feature_data in features.items():
+                                    if not feature_data:
+                                        continue
+                                    
+                                    # 한글 매핑 가져오기
+                                    from app.clustering.compare import get_feature_display_name
+                                    feature_name_kr = get_feature_display_name(feature_name)
+                                    
+                                    feature_item = {
+                                        'feature': feature_name,
+                                        'feature_name_kr': feature_name_kr,
+                                    }
+                                    
+                                    if feature_data.get('type') == 'continuous':
+                                        # 연속형 변수
+                                        cluster_a_data = feature_data.get('cluster_a', {})
+                                        cluster_b_data = feature_data.get('cluster_b', {})
+                                        diff_data = feature_data.get('difference', {})
+                                        
+                                        # Cohen's d 계산 (pooled standard deviation 사용)
+                                        a_std = cluster_a_data.get('std', 0.0)
+                                        b_std = cluster_b_data.get('std', 0.0)
+                                        a_count = cluster_a_data.get('count', 0)
+                                        b_count = cluster_b_data.get('count', 0)
+                                        
+                                        cohens_d = None
+                                        if a_std > 0 or b_std > 0:
+                                            # Pooled standard deviation
+                                            pooled_std = ((a_std ** 2 + b_std ** 2) / 2) ** 0.5
+                                            if pooled_std > 0:
+                                                diff_abs = diff_data.get('absolute', 0.0)
+                                                cohens_d = diff_abs / pooled_std
+                                        
+                                        a_mean = cluster_a_data.get('mean', 0.0)
+                                        b_mean = cluster_b_data.get('mean', 0.0)
+                                        
+                                        # 전체 평균 계산 (두 클러스터의 가중 평균)
+                                        cluster_a_size = comparison_data.get('cluster_a', {}).get('size', 0)
+                                        cluster_b_size = comparison_data.get('cluster_b', {}).get('size', 0)
+                                        total_size = cluster_a_size + cluster_b_size
+                                        
+                                        # 가중 평균으로 baseline 계산
+                                        baseline_mean = 0.0
+                                        if total_size > 0:
+                                            baseline_mean = (a_mean * cluster_a_size + b_mean * cluster_b_size) / total_size
+                                        else:
+                                            # 크기 정보가 없으면 단순 평균
+                                            baseline_mean = (a_mean + b_mean) / 2.0
+                                        
+                                        # index_a와 index_b 계산 (전체 평균 대비 비율, 100 = 전체 평균)
+                                        index_a = (a_mean / baseline_mean * 100) if baseline_mean != 0 else 100.0
+                                        index_b = (b_mean / baseline_mean * 100) if baseline_mean != 0 else 100.0
+                                        
+                                        feature_item.update({
+                                            'type': 'continuous',
+                                            'group_a_mean': a_mean,
+                                            'group_b_mean': b_mean,
+                                            'difference': diff_data.get('absolute', 0.0),
+                                            'lift_pct': diff_data.get('percentage', 0.0),
+                                            'p_value': diff_data.get('p_value'),
+                                            'significant': diff_data.get('is_significant', False),
+                                            'cohens_d': cohens_d,
+                                            't_statistic': diff_data.get('t_statistic'),
+                                            'index_a': index_a,
+                                            'index_b': index_b,
+                                        })
+                                    elif feature_data.get('type') == 'categorical':
+                                        # 범주형 변수 - 이진형인지 확인
+                                        categories = feature_data.get('categories', {})
+                                        category_keys = list(categories.keys())
+                                        
+                                        if len(category_keys) == 2:
+                                            # 이진형 변수로 변환
+                                            # '1' 또는 숫자 1을 True로 간주 (우선순위)
+                                            cat1 = None
+                                            for key in category_keys:
+                                                if str(key) == '1' or key == 1 or key == 1.0:
+                                                    cat1 = key
+                                                    break
+                                            # '1'이 없으면 첫 번째 카테고리 사용
+                                            if cat1 is None:
+                                                cat1 = category_keys[0]
+                                            
+                                            cat1_a = categories[str(cat1)].get('cluster_a', {})
+                                            cat1_b = categories[str(cat1)].get('cluster_b', {})
+                                            
+                                            group_a_ratio = cat1_a.get('percentage', 0.0) / 100.0
+                                            group_b_ratio = cat1_b.get('percentage', 0.0) / 100.0
+                                            
+                                            diff_pct_points = cat1_b.get('percentage', 0.0) - cat1_a.get('percentage', 0.0)
+                                            lift_pct = ((group_b_ratio / group_a_ratio - 1) * 100) if group_a_ratio > 0 else 0.0
+                                            
+                                            # 전체 평균 계산 (두 클러스터의 가중 평균)
+                                            # cluster_a와 cluster_b의 크기 정보 가져오기
+                                            cluster_a_size = comparison_data.get('cluster_a', {}).get('size', 0)
+                                            cluster_b_size = comparison_data.get('cluster_b', {}).get('size', 0)
+                                            total_size = cluster_a_size + cluster_b_size
+                                            
+                                            # 가중 평균으로 baseline 계산
+                                            baseline_ratio = 0.0
+                                            if total_size > 0:
+                                                baseline_ratio = (group_a_ratio * cluster_a_size + group_b_ratio * cluster_b_size) / total_size
+                                            else:
+                                                # 크기 정보가 없으면 단순 평균
+                                                baseline_ratio = (group_a_ratio + group_b_ratio) / 2.0
+                                            
+                                            # index_a와 index_b 계산 (전체 평균 대비 비율, 100 = 전체 평균)
+                                            index_a = (group_a_ratio / baseline_ratio * 100) if baseline_ratio > 0 else 100.0
+                                            index_b = (group_b_ratio / baseline_ratio * 100) if baseline_ratio > 0 else 100.0
+                                            
+                                            feature_item.update({
+                                                'type': 'binary',
+                                                'group_a_ratio': group_a_ratio,
+                                                'group_b_ratio': group_b_ratio,
+                                                'difference': diff_pct_points / 100.0,
+                                                'abs_diff_pct': abs(diff_pct_points),
+                                                'lift_pct': lift_pct,
+                                                'index_a': index_a,
+                                                'index_b': index_b,
+                                                'p_value': None,  # 카이제곱 검정 필요
+                                                'significant': False,
+                                            })
+                                        else:
+                                            # 범주형 변수 (3개 이상)
+                                            # categories 구조를 group_a_distribution, group_b_distribution로 변환
+                                            group_a_distribution = {}
+                                            group_b_distribution = {}
+                                            
+                                            for cat_key, cat_data in categories.items():
+                                                cat_a_data = cat_data.get('cluster_a', {})
+                                                cat_b_data = cat_data.get('cluster_b', {})
+                                                
+                                                # percentage를 0~1 범위로 변환 (정규화)
+                                                a_pct = cat_a_data.get('percentage', 0.0) / 100.0
+                                                b_pct = cat_b_data.get('percentage', 0.0) / 100.0
+                                                
+                                                group_a_distribution[str(cat_key)] = a_pct
+                                                group_b_distribution[str(cat_key)] = b_pct
+                                            
+                                            feature_item.update({
+                                                'type': 'categorical',
+                                                'group_a_distribution': group_a_distribution,
+                                                'group_b_distribution': group_b_distribution,
+                                            })
+                                    
+                                    comparison_array.append(feature_item)
+                                
                                 comparison = {
                                     'cluster_a': cluster_a,
                                     'cluster_b': cluster_b,
-                                    'comparison': comparison_data.get('comparison', []),
-                                    'group_a': comparison_data.get('group_a', {}),
-                                    'group_b': comparison_data.get('group_b', {})
+                                    'comparison': comparison_array,
+                                    'group_a': {
+                                        'id': comparison_data.get('cluster_a', {}).get('id', cluster_a),
+                                        'count': comparison_data.get('cluster_a', {}).get('size', 0),
+                                    },
+                                    'group_b': {
+                                        'id': comparison_data.get('cluster_b', {}).get('id', cluster_b),
+                                        'count': comparison_data.get('cluster_b', {}).get('size', 0),
+                                    }
                                 }
                                 
-                                logger.info(f"[Precomputed 비교 분석] NeonDB에서 비교 데이터 로드 성공")
+                                logger.info(f"[Precomputed 비교 분석] NeonDB에서 비교 데이터 로드 성공: {len(comparison_array)}개 피처")
                     except Exception as db_error:
                         logger.warning(f"[Precomputed 비교 분석] NeonDB 조회 실패: {str(db_error)}, 파일 시스템 fallback 시도")
                     finally:
@@ -521,11 +678,15 @@ async def get_precomputed_profiles():
                               f"insights_by_category={bool(first_profile.get('insights_by_category'))}, "
                               f"segments={bool(first_profile.get('segments'))}")
                 
-                # 프론트엔드 형식으로 변환
+                # 프론트엔드 형식으로 변환 (군집 0 제외)
                 formatted_profiles = []
                 for profile in profiles:
+                    cluster_id = profile.get('cluster', -1)
+                    if cluster_id == 0:  # 군집 0은 제외 (노이즈 군집 프로필이 별도로 있음)
+                        continue
+                    
                     formatted_profile = {
-                        'cluster': profile.get('cluster', -1),
+                        'cluster': cluster_id,
                         'size': profile.get('size', 0),
                         'percentage': profile.get('percentage', 0.0),
                         'name': profile.get('name'),
@@ -629,10 +790,14 @@ async def get_precomputed_profiles():
                         18: "젊은 싱글 저소득"
                     }
                     
-                    # 4. 각 클러스터별로 프로필 구성
+                    # 4. 각 클러스터별로 프로필 구성 (군집 0 제외)
                     profiles_list = []
                     for cluster_id_str, profile in cluster_profiles_raw.items():
                         cluster_id = int(cluster_id_str)
+                        
+                        # 군집 0은 제외 (노이즈 군집 프로필이 별도로 있음)
+                        if cluster_id == 0:
+                            continue
                         
                         # features 객체 생성
                         features = {

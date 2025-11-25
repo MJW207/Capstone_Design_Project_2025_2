@@ -26,7 +26,7 @@ umap-learn==0.5.5
 
 # 벡터 검색 관련 패키지
 anthropic>=0.34.0
-langchain-upstage>=0.1.0
+openai>=1.0.0
 pinecone>=3.0.0
 
 # HTTP Client

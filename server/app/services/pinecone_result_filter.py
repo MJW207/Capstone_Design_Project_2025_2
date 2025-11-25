@@ -78,8 +78,8 @@ class PineconeResultFilter:
                 initial_count = MAX_TOP_K  # 메타데이터 필터 O → 조건 만족하는 모든 패널 검색
                 logger.info(f"   [명수 명시: {final_count}명 + 필터 O] 메타데이터 조건 만족하는 모든 패널 검색 (최대 {initial_count}개)")
             else:
-                # 메타데이터 필터 X → 여유있게, 노트북과 동일하게 최소 10000개 보장
-                initial_count = max(final_count * 10, MAX_TOP_K)
+                # 메타데이터 필터 X → 여유있게, 노트북과 동일하게 최소 2000개 보장
+                initial_count = max(final_count * 10, 2000)
                 logger.info(f"   [명수 명시: {final_count}명 + 필터 X] 여유있게 {initial_count}개 검색")
 
         first_results = self.searcher.search_by_category(

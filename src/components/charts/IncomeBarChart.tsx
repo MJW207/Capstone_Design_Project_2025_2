@@ -34,8 +34,8 @@ export function IncomeBarChart({ data, totalCount }: IncomeBarChartProps) {
           <YAxis 
             dataKey="name" 
             type="category" 
-            width={100}
-            style={{ fill: 'var(--text-secondary)', fontSize: '12px' }}
+            width={120}
+            style={{ fill: 'var(--text-secondary)', fontSize: '16px', fontWeight: 500 }}
           />
           <Tooltip
             contentStyle={{

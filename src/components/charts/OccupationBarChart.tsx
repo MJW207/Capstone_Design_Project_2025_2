@@ -34,8 +34,8 @@ export function OccupationBarChart({ data, totalCount }: OccupationBarChartProps
           <YAxis 
             dataKey="name" 
             type="category" 
-            width={120}
-            style={{ fill: 'var(--text-secondary)', fontSize: '12px' }}
+            width={140}
+            style={{ fill: 'var(--text-secondary)', fontSize: '16px', fontWeight: 500 }}
           />
           <Tooltip
             contentStyle={{

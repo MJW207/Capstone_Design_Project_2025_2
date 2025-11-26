@@ -23,7 +23,7 @@ class MetadataExtractor:
             logger.warning(f"[MetadataExtractor] API 키가 너무 짧습니다 (길이: {len(api_key)})")
         
         self.client = Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-5-20250929"
+        self.model = "claude-haiku-4-5-20251001"
 
     def extract(self, query: str) -> Dict[str, Any]:
         """
@@ -59,6 +59,9 @@ class MetadataExtractor:
    - "27세" → "나이": 27, "연령대": "20대"
    - "35세" → "나이": 35, "연령대": "30대"
    - 연령대만 있으면: "20대" → "연령대": "20대"
+
+   - ⭐⭐⭐주의사항
+   - "20명", "30개" 와 같은 문장 끝에 있는건 인원수 추출이다. 연령대로 추출하면 안된다.
 
 4. **범위는 연령대 리스트로 변환**
    - "10~20세" → "연령대": ["10대", "20대"]
@@ -474,6 +477,9 @@ class MetadataExtractor:
 }}
 
 질의: {query}
+
+**절대 주의**
+- 문장 끝에 20명, 30개 등과 같은 표현은 인원수 추출만 하도록. 연령대로 추출하면 안됨. 혼동하지 않도록 주의해야함.
 
 ⚠️⚠️⚠️ 필수 주의사항:
 - IT, 개발, 디자인, 마케팅, 영업, 경영, 회계 등은 **무조건 직무**!

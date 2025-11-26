@@ -31,30 +31,15 @@ export function PIIndexDotPlot({
     
     if (item.type === 'binary') {
       const binaryItem = item as BinaryComparison;
-      // 이진형: index_a, index_b가 있으면 사용, 없으면 계산
-      if (binaryItem.index_a !== undefined && binaryItem.index_a !== null) {
-        indexA = binaryItem.index_a;
-      } else {
-        indexA = binaryItem.group_a_ratio ? ((binaryItem.group_a_ratio / baselineValue) * 100) : 100;
-      }
-      if (binaryItem.index_b !== undefined && binaryItem.index_b !== null) {
-        indexB = binaryItem.index_b;
-      } else {
-        indexB = binaryItem.group_b_ratio ? ((binaryItem.group_b_ratio / baselineValue) * 100) : 100;
-      }
+      // 이진형: 비율 기반 인덱스 계산
+      indexA = binaryItem.index_a ?? ((binaryItem.group_a_ratio / baselineValue) * 100);
+      indexB = binaryItem.index_b ?? ((binaryItem.group_b_ratio / baselineValue) * 100);
     } else {
-      // 연속형: index_a, index_b가 있으면 사용, 없으면 계산
+      // 연속형: 평균값 기반 인덱스 계산 (전체 평균 대비)
       const continuousItem = item as ContinuousComparison;
-      if (continuousItem.index_a !== undefined && continuousItem.index_a !== null) {
-        indexA = continuousItem.index_a;
-      } else {
-        indexA = continuousItem.group_a_mean ? ((continuousItem.group_a_mean / baselineValue) * 100) : 100;
-      }
-      if (continuousItem.index_b !== undefined && continuousItem.index_b !== null) {
-        indexB = continuousItem.index_b;
-      } else {
-        indexB = continuousItem.group_b_mean ? ((continuousItem.group_b_mean / baselineValue) * 100) : 100;
-      }
+      // 연속형은 전체 평균 대비 비율로 계산 (임시로 baselineValue 사용)
+      indexA = continuousItem.group_a_mean ? ((continuousItem.group_a_mean / baselineValue) * 100) : 100;
+      indexB = continuousItem.group_b_mean ? ((continuousItem.group_b_mean / baselineValue) * 100) : 100;
     }
     
     const maxIndex = Math.max(indexA, indexB);

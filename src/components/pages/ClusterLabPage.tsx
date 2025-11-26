@@ -3744,7 +3744,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                 quickpollCount={8863}
                 panelCount={clusteringMeta?.n_samples || 19020}
                 clusterCount={clusteringMeta?.n_clusters || clusters.length || 20}
-                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.6192}
+                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.601}
                 lastUpdated={clusteringMeta?.last_updated 
                   ? (() => {
                       const now = new Date();
@@ -3791,7 +3791,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
             </div>
             <div className="p-5">
               <PIQualityLegend
-                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.6192}
+                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.601}
                 daviesBouldin={clusteringMeta?.davies_bouldin_score != null && clusteringMeta.davies_bouldin_score !== 0 ? clusteringMeta.davies_bouldin_score : 0.687}
                 calinskiHarabasz={clusteringMeta?.calinski_harabasz != null && clusteringMeta.calinski_harabasz !== 0 ? clusteringMeta.calinski_harabasz : 6385.79}
                 balanceScore={clusteringMeta?.n_clusters && clusteringMeta?.n_samples && clusterSizes && typeof clusterSizes === 'object' && Object.keys(clusterSizes).length > 0

@@ -106,25 +106,14 @@ export function PIStackedBarChart({ data, clusterLabels }: PIStackedBarChartProp
     });
 
     // Prepare data for both clusters (원본 키 사용)
-    // 분포 합계를 100%로 정규화
-    const normalizeDistribution = (dist: Record<string, number>): Record<string, number> => {
-      const sum = Object.values(dist).reduce((acc, val) => acc + val, 0);
-      if (sum === 0) return dist;
-      const normalized: Record<string, number> = {};
-      for (const [key, value] of Object.entries(dist)) {
-        normalized[key] = value / sum;
-      }
-      return normalized;
-    };
-    
     const clusters = [
       { 
         label: clusterLabels[0], 
-        distribution: normalizeDistribution(feature.group_a_distribution || {})
+        distribution: feature.group_a_distribution 
       },
       { 
         label: clusterLabels[1], 
-        distribution: normalizeDistribution(feature.group_b_distribution || {})
+        distribution: feature.group_b_distribution 
       }
     ];
 

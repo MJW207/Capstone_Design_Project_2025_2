@@ -21,45 +21,10 @@ export function prepareRadarData(
   maxFeatures: number = 8,
   showOnlyMeaningful: boolean = true
 ): (ContinuousComparison | BinaryComparison)[] {
-  // 1. 연속형/이진형 변수 필터링 (categorical이면서 2개 카테고리도 binary로 변환)
-  const numericResults = allResults.filter(r => {
-    if (r.type === 'continuous' || r.type === 'binary') {
-      return true;
-    }
-    // categorical이면서 2개 카테고리인 경우 binary로 변환
-    if (r.type === 'categorical') {
-      const cat = r as CategoricalComparison;
-      const categories = cat.group_a_distribution || cat.group_b_distribution || {};
-      return Object.keys(categories).length === 2;
-    }
-    return false;
-  }).map(r => {
-    // categorical을 binary로 변환
-    if (r.type === 'categorical') {
-      const cat = r as CategoricalComparison;
-      const categories = cat.group_a_distribution || cat.group_b_distribution || {};
-      const categoryKeys = Object.keys(categories);
-      
-      // '1' 또는 첫 번째 카테고리를 True로 간주
-      const trueKey = categoryKeys.find(k => k === '1' || k === '1.0' || k === 1) || categoryKeys[0];
-      
-      const group_a_ratio = (cat.group_a_distribution?.[trueKey] || 0);
-      const group_b_ratio = (cat.group_b_distribution?.[trueKey] || 0);
-      const diff_pct_points = (group_b_ratio - group_a_ratio) * 100;
-      const lift_pct = group_a_ratio > 0 ? ((group_b_ratio / group_a_ratio - 1) * 100) : 0;
-      
-      return {
-        ...cat,
-        type: 'binary' as const,
-        group_a_ratio,
-        group_b_ratio,
-        abs_diff_pct: Math.abs(diff_pct_points),
-        lift_pct,
-        difference: diff_pct_points / 100,
-      } as BinaryComparison;
-    }
-    return r as ContinuousComparison | BinaryComparison;
-  }) as (ContinuousComparison | BinaryComparison)[];
+  // 1. 모든 연속형/이진형 변수 필터링
+  const numericResults = allResults.filter(r => 
+    r.type === 'continuous' || r.type === 'binary'
+  ) as (ContinuousComparison | BinaryComparison)[];
   
   // 2. 의미있는 차이만 필터링 (선택적)
   let filtered = numericResults;
@@ -138,46 +103,10 @@ export function prepareSideBySideData(
 export function prepareBinaryHeatmapData(
   allResults: ComparisonResult[]
 ): BinaryComparison[] {
-  // 1. 이진형 변수 필터링 (binary 타입 또는 categorical이면서 2개 카테고리)
-  const binaryResults = allResults.filter(r => {
-    if (r.type === 'binary') {
-      return true;
-    }
-    // categorical이면서 2개 카테고리인 경우 binary로 변환
-    if (r.type === 'categorical') {
-      const cat = r as CategoricalComparison;
-      const categories = cat.group_a_distribution || cat.group_b_distribution || {};
-      const categoryCount = Object.keys(categories).length;
-      return categoryCount === 2;
-    }
-    return false;
-  }).map(r => {
-    // categorical을 binary로 변환
-    if (r.type === 'categorical') {
-      const cat = r as CategoricalComparison;
-      const categories = cat.group_a_distribution || cat.group_b_distribution || {};
-      const categoryKeys = Object.keys(categories);
-      
-      // '1' 또는 첫 번째 카테고리를 True로 간주
-      const trueKey = categoryKeys.find(k => k === '1' || k === '1.0' || k === 1) || categoryKeys[0];
-      
-      const group_a_ratio = (cat.group_a_distribution?.[trueKey] || 0);
-      const group_b_ratio = (cat.group_b_distribution?.[trueKey] || 0);
-      const diff_pct_points = (group_b_ratio - group_a_ratio) * 100;
-      const lift_pct = group_a_ratio > 0 ? ((group_b_ratio / group_a_ratio - 1) * 100) : 0;
-      
-      return {
-        ...cat,
-        type: 'binary' as const,
-        group_a_ratio,
-        group_b_ratio,
-        abs_diff_pct: Math.abs(diff_pct_points),
-        lift_pct,
-        difference: diff_pct_points / 100,
-      } as BinaryComparison;
-    }
-    return r as BinaryComparison;
-  });
+  // 1. 모든 이진형 변수 필터링
+  const binaryResults = allResults.filter(r => 
+    r.type === 'binary'
+  ) as BinaryComparison[];
   
   // 2. 정의된 변수가 있으면 우선 사용 (순서 유지)
   const definedFeatures = binaryResults.filter(r => 
@@ -255,48 +184,11 @@ export function prepareStackedBarData(
 export function prepareIndexDotData(
   allResults: ComparisonResult[]
 ): (BinaryComparison | ContinuousComparison)[] {
-  // 1. 정의된 변수만 필터링 (categorical이면서 2개 카테고리도 binary로 변환)
-  const filtered = allResults.filter(r => {
-    if (!INDEX_DOT_ALL_FEATURES.includes(r.feature as any)) {
-      return false;
-    }
-    if (r.type === 'binary' || r.type === 'continuous') {
-      return true;
-    }
-    // categorical이면서 2개 카테고리인 경우 binary로 변환
-    if (r.type === 'categorical') {
-      const cat = r as CategoricalComparison;
-      const categories = cat.group_a_distribution || cat.group_b_distribution || {};
-      return Object.keys(categories).length === 2;
-    }
-    return false;
-  }).map(r => {
-    // categorical을 binary로 변환
-    if (r.type === 'categorical') {
-      const cat = r as CategoricalComparison;
-      const categories = cat.group_a_distribution || cat.group_b_distribution || {};
-      const categoryKeys = Object.keys(categories);
-      
-      // '1' 또는 첫 번째 카테고리를 True로 간주
-      const trueKey = categoryKeys.find(k => k === '1' || k === '1.0' || k === 1) || categoryKeys[0];
-      
-      const group_a_ratio = (cat.group_a_distribution?.[trueKey] || 0);
-      const group_b_ratio = (cat.group_b_distribution?.[trueKey] || 0);
-      const diff_pct_points = (group_b_ratio - group_a_ratio) * 100;
-      const lift_pct = group_a_ratio > 0 ? ((group_b_ratio / group_a_ratio - 1) * 100) : 0;
-      
-      return {
-        ...cat,
-        type: 'binary' as const,
-        group_a_ratio,
-        group_b_ratio,
-        abs_diff_pct: Math.abs(diff_pct_points),
-        lift_pct,
-        difference: diff_pct_points / 100,
-      } as BinaryComparison;
-    }
-    return r as BinaryComparison | ContinuousComparison;
-  }) as (BinaryComparison | ContinuousComparison)[];
+  // 1. 정의된 변수만 필터링
+  const filtered = allResults.filter(r => 
+    INDEX_DOT_ALL_FEATURES.includes(r.feature as any) &&
+    (r.type === 'binary' || r.type === 'continuous')
+  ) as (BinaryComparison | ContinuousComparison)[];
   
   // 2. 의미있는 차이만 (abs_diff_pct >= 5 또는 lift_pct >= 30)
   const significant = filtered.filter(r => {

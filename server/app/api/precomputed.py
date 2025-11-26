@@ -419,38 +419,16 @@ async def get_precomputed_comparison(cluster_a: int, cluster_b: int):
                                                 diff_abs = diff_data.get('absolute', 0.0)
                                                 cohens_d = diff_abs / pooled_std
                                         
-                                        a_mean = cluster_a_data.get('mean', 0.0)
-                                        b_mean = cluster_b_data.get('mean', 0.0)
-                                        
-                                        # 전체 평균 계산 (두 클러스터의 가중 평균)
-                                        cluster_a_size = comparison_data.get('cluster_a', {}).get('size', 0)
-                                        cluster_b_size = comparison_data.get('cluster_b', {}).get('size', 0)
-                                        total_size = cluster_a_size + cluster_b_size
-                                        
-                                        # 가중 평균으로 baseline 계산
-                                        baseline_mean = 0.0
-                                        if total_size > 0:
-                                            baseline_mean = (a_mean * cluster_a_size + b_mean * cluster_b_size) / total_size
-                                        else:
-                                            # 크기 정보가 없으면 단순 평균
-                                            baseline_mean = (a_mean + b_mean) / 2.0
-                                        
-                                        # index_a와 index_b 계산 (전체 평균 대비 비율, 100 = 전체 평균)
-                                        index_a = (a_mean / baseline_mean * 100) if baseline_mean != 0 else 100.0
-                                        index_b = (b_mean / baseline_mean * 100) if baseline_mean != 0 else 100.0
-                                        
                                         feature_item.update({
                                             'type': 'continuous',
-                                            'group_a_mean': a_mean,
-                                            'group_b_mean': b_mean,
+                                            'group_a_mean': cluster_a_data.get('mean', 0.0),
+                                            'group_b_mean': cluster_b_data.get('mean', 0.0),
                                             'difference': diff_data.get('absolute', 0.0),
                                             'lift_pct': diff_data.get('percentage', 0.0),
                                             'p_value': diff_data.get('p_value'),
                                             'significant': diff_data.get('is_significant', False),
                                             'cohens_d': cohens_d,
                                             't_statistic': diff_data.get('t_statistic'),
-                                            'index_a': index_a,
-                                            'index_b': index_b,
                                         })
                                     elif feature_data.get('type') == 'categorical':
                                         # 범주형 변수 - 이진형인지 확인
@@ -459,42 +437,18 @@ async def get_precomputed_comparison(cluster_a: int, cluster_b: int):
                                         
                                         if len(category_keys) == 2:
                                             # 이진형 변수로 변환
-                                            # '1' 또는 숫자 1을 True로 간주 (우선순위)
-                                            cat1 = None
-                                            for key in category_keys:
-                                                if str(key) == '1' or key == 1 or key == 1.0:
-                                                    cat1 = key
-                                                    break
-                                            # '1'이 없으면 첫 번째 카테고리 사용
-                                            if cat1 is None:
-                                                cat1 = category_keys[0]
+                                            # 첫 번째 카테고리를 True로 간주
+                                            cat1 = category_keys[0]
+                                            cat2 = category_keys[1]
                                             
-                                            cat1_a = categories[str(cat1)].get('cluster_a', {})
-                                            cat1_b = categories[str(cat1)].get('cluster_b', {})
+                                            cat1_a = categories[cat1].get('cluster_a', {})
+                                            cat1_b = categories[cat1].get('cluster_b', {})
                                             
                                             group_a_ratio = cat1_a.get('percentage', 0.0) / 100.0
                                             group_b_ratio = cat1_b.get('percentage', 0.0) / 100.0
                                             
                                             diff_pct_points = cat1_b.get('percentage', 0.0) - cat1_a.get('percentage', 0.0)
                                             lift_pct = ((group_b_ratio / group_a_ratio - 1) * 100) if group_a_ratio > 0 else 0.0
-                                            
-                                            # 전체 평균 계산 (두 클러스터의 가중 평균)
-                                            # cluster_a와 cluster_b의 크기 정보 가져오기
-                                            cluster_a_size = comparison_data.get('cluster_a', {}).get('size', 0)
-                                            cluster_b_size = comparison_data.get('cluster_b', {}).get('size', 0)
-                                            total_size = cluster_a_size + cluster_b_size
-                                            
-                                            # 가중 평균으로 baseline 계산
-                                            baseline_ratio = 0.0
-                                            if total_size > 0:
-                                                baseline_ratio = (group_a_ratio * cluster_a_size + group_b_ratio * cluster_b_size) / total_size
-                                            else:
-                                                # 크기 정보가 없으면 단순 평균
-                                                baseline_ratio = (group_a_ratio + group_b_ratio) / 2.0
-                                            
-                                            # index_a와 index_b 계산 (전체 평균 대비 비율, 100 = 전체 평균)
-                                            index_a = (group_a_ratio / baseline_ratio * 100) if baseline_ratio > 0 else 100.0
-                                            index_b = (group_b_ratio / baseline_ratio * 100) if baseline_ratio > 0 else 100.0
                                             
                                             feature_item.update({
                                                 'type': 'binary',
@@ -503,8 +457,6 @@ async def get_precomputed_comparison(cluster_a: int, cluster_b: int):
                                                 'difference': diff_pct_points / 100.0,
                                                 'abs_diff_pct': abs(diff_pct_points),
                                                 'lift_pct': lift_pct,
-                                                'index_a': index_a,
-                                                'index_b': index_b,
                                                 'p_value': None,  # 카이제곱 검정 필요
                                                 'significant': False,
                                             })

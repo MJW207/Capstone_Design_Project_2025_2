@@ -31,11 +31,6 @@ export function PIRadarChart({
   const { isDark } = useDarkMode();
   const [hoveredCluster, setHoveredCluster] = useState<'A' | 'B' | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-  
-  // 툴팁 크기 계산 (텍스트 길이에 따라 동적 조정)
-  const tooltipText = hoveredCluster === 'A' ? groupALabel : groupBLabel;
-  const tooltipWidth = Math.max(120, tooltipText.length * 8 + 40); // 최소 120px, 텍스트 길이에 따라 조정
-  const tooltipHeight = 30;
 
   // 데이터 준비
   const radarData = useMemo(() => {
@@ -324,10 +319,10 @@ export function PIRadarChart({
           {hoveredCluster && (
             <g>
               <rect
-                x={tooltipPosition.x - tooltipWidth / 2}
-                y={tooltipPosition.y - tooltipHeight - 10}
-                width={tooltipWidth}
-                height={tooltipHeight}
+                x={tooltipPosition.x - 60}
+                y={tooltipPosition.y - 35}
+                width={120}
+                height={30}
                 fill={isDark ? 'rgba(17, 24, 39, 0.95)' : 'rgba(31, 41, 55, 0.95)'}
                 rx="6"
                 style={{
@@ -337,19 +332,18 @@ export function PIRadarChart({
               />
               <text
                 x={tooltipPosition.x}
-                y={tooltipPosition.y - tooltipHeight / 2 - 5}
+                y={tooltipPosition.y - 15}
                 textAnchor="middle"
-                dominantBaseline="middle"
                 fill="#FFFFFF"
                 fontSize="13"
                 fontWeight="600"
                 style={{ pointerEvents: 'none' }}
               >
-                {tooltipText}
+                {hoveredCluster === 'A' ? groupALabel : groupBLabel}
               </text>
               <circle
                 cx={tooltipPosition.x}
-                cy={tooltipPosition.y - tooltipHeight - 5}
+                cy={tooltipPosition.y - 2}
                 r="4"
                 fill={hoveredCluster === 'A' ? clusterAColor : clusterBColor}
                 style={{ pointerEvents: 'none' }}

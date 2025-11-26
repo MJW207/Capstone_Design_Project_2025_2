@@ -46,11 +46,11 @@ React와 FastAPI로 구축된 종합 패널 분석 및 클러스터링 플랫폼
     - `metric`: euclidean (유클리드 거리)
     - `cluster_selection_method`: eom (Excess of Mass)
   * **성능 지표**: 
-    - Silhouette Score: 0.6192 (K-Means 대비 +102.2% 향상)
-    - Davies-Bouldin Index: 0.5322 (낮을수록 좋음, 원본 0.6872 대비 -22.56% 개선)
-    - Calinski-Harabasz Index: 7756.84 (원본 6385.79 대비 +21.5% 개선)
-    - 클러스터 수: 18개 (자동 결정, 원본 19개)
-    - 노이즈 포인트: 0.2% (매우 낮음, 원본 0.3% 대비 개선)
+    - Silhouette Score: 0.6014 (K-Means 대비 +96.5% 향상)
+    - Davies-Bouldin Index: 0.6872 (낮을수록 좋음)
+    - Calinski-Harabasz Index: 6385.79
+    - 클러스터 수: 19개 (자동 결정)
+    - 노이즈 포인트: 0.3% (매우 낮음)
 - **데이터 전처리 과정**:
   1. **생애주기 분류**: 연령과 자녀 유무를 기반으로 6단계 분류 (Young Singles, DINK, Young Parents, Mature Parents, Middle Age, Seniors)
      * **참고 논문**: Kim, J., & Lee, H. (2023). "Family Life Cycle Segmentation in the Digital Age: Evidence from Korean Consumers." *Asia Pacific Journal of Marketing*, 35(2), 234-251.
@@ -544,7 +544,7 @@ Panel Insight은 HDBSCAN (Hierarchical Density-Based Spatial Clustering of Appli
 1. **자동 클러스터 수 결정**: K-Means와 달리 클러스터 수를 사전에 지정할 필요가 없어 데이터의 자연스러운 구조를 포착
 2. **노이즈 포인트 식별**: 어떤 클러스터에도 속하지 않는 이상치를 자동으로 식별하여 클러스터 품질 향상
 3. **불규칙한 형태 포착**: 밀도 기반 클러스터링으로 구형이 아닌 불규칙한 형태의 클러스터도 포착 가능
-4. **최고 성능**: K-Means 대비 Silhouette Score +102.2% 향상 (0.3061 → 0.6192)
+4. **최고 성능**: K-Means 대비 Silhouette Score +96.5% 향상 (0.3061 → 0.6014)
 
 ### 데이터 전처리 파이프라인
 
@@ -609,9 +609,9 @@ hdbscan.HDBSCAN(
 - **클러스터 수**: 19개 (자동 결정)
 - **노이즈 포인트**: 60명 (0.3%)
 - **성능 지표**:
-  - Silhouette Score: **0.6192** 
-  - Davies-Bouldin Index: **0.5322** 
-  - Calinski-Harabasz Index: **7756.84**
+  - Silhouette Score: **0.6014** 
+  - Davies-Bouldin Index: **0.6872** 
+  - Calinski-Harabasz Index: **6385.79**
 
 ### UMAP 차원 축소
 
@@ -643,43 +643,35 @@ umap.UMAP(
 |------|------------|------------------|---------------------|------|
 | **K-Means (k=8)** | 8 | 0.3061 | 1.7035 | 기준 |
 | **K-Means (k=16)** | 16 | 0.5423 | 1.0613 | +77.2% |
-| **HDBSCAN** | **18** | **0.6192** | **0.5322** | **+102.2%** ⭐ |
+| **HDBSCAN** | **19** | **0.6014** | **0.6872** | **+96.5%** ⭐ |
 
 **결론**: HDBSCAN이 모든 평가 지표에서 최고 성능을 달성했습니다.
 
 #### 클러스터 품질
 - **명확한 구분**: 생애주기와 소득 계층별로 명확하게 구분됨
-- **균형도**: 클러스터 크기가 다양하게 분포 (최소 1.3% ~ 최대 17.6%)
-- **낮은 노이즈**: 0.2%의 노이즈 포인트로 안정적인 결과
+- **균형도**: 클러스터 크기가 다양하게 분포 (최소 1.3% ~ 최대 17.4%)
+- **낮은 노이즈**: 0.3%의 노이즈 포인트로 안정적인 결과
 
 ### 구현 위치
 
 - **클러스터링 스크립트**: `server/app/clustering/flc_income_hdbscan_analysis.py`
 - **API 엔드포인트**: `GET /api/precomputed/clusters`
 - **데이터 저장소**: NeonDB `merged` 스키마 (모든 클러스터링 데이터)
-- **상세 문서**: 
-  - `docs/SYSTEM_ARCHITECTURE.md` - 시스템 아키텍처 및 데이터 흐름
-  - `docs/HDBSCAN_CLUSTERING_METHODOLOGY.md` - 클러스터링 방법론
+- **상세 분석 보고서**: 
+  - `docs/HDBSCAN_CLUSTERING_METHODOLOGY.md` (상세 방법론)
+  - `docs/COMPLETE_PROJECT_DOCUMENTATION.md` (프로젝트 완전 정리)
 
 ### 최근 개선 사항
-
-#### 2025-01-25
-- **프리미엄 제품 선정 개선**: 새로운 프리미엄 제품 정의 `[10, 11, 12, 13, 16, 17, 19, 21]` 적용
-  - **Silhouette Score**: 0.6014 → **0.6192** (+2.96% 개선)
-  - **Davies-Bouldin Index**: 0.6872 → **0.5322** (-22.56% 개선, 낮을수록 좋음)
-  - **Calinski-Harabasz Index**: 6385.79 → **7756.84** (+21.5% 개선)
-  - **클러스터 수**: 19개 → **18개** (자동 결정)
-  - **노이즈 비율**: 0.3% → **0.2%** (41명 / 19,020명)
-  - **새로운 프리미엄 제품**: 로봇청소기, 무선청소기, 커피머신, 안마의자, 의류관리기, 건조기, 식기세척기, 가정용식물재배기
 
 #### 2025-11-25
 - **다중공선성 분석 (VIF)**: 소득 관련 피쳐들 간의 다중공선성 분석 완료
   - `Q6_scaled`: VIF = 2.55 (양호)
   - `is_premium_car`: VIF = 1.01 (양호)
   - `age_scaled`: VIF = 11.95 (세그먼트 변수와 다중공선성, 하지만 클러스터링에 필수)
-- **age_scaled 제외 실험**: 성능 저하 확인 (Silhouette Score: 0.6192 → 0.2491)
+- **age_scaled 제외 실험**: 성능 저하 확인 (Silhouette Score: 0.6014 → 0.2491)
   - 결론: 다중공선성이 있어도 `age_scaled`는 클러스터링에 필수적
 - **생애주기 분류 논문 반영**: Kim & Lee (2023) 논문 기반 방법론 문서화
+- **프로젝트 완전 정리 문서**: 발표 및 질의응답용 상세 문서 작성 (`docs/COMPLETE_PROJECT_DOCUMENTATION.md`)
 
 #### 2025-01-24
 - **데이터 마이그레이션 완료**: 모든 클러스터링 관련 데이터를 파일 시스템에서 NeonDB로 마이그레이션
@@ -792,8 +784,8 @@ npm run build
 ## 참고 자료
 
 ### 주요 문서
-- **시스템 아키텍처**: `docs/SYSTEM_ARCHITECTURE.md` - 전체 시스템 구조 및 데이터 흐름
-- **HDBSCAN 클러스터링 방법론**: `docs/HDBSCAN_CLUSTERING_METHODOLOGY.md` - 클러스터링 알고리즘 및 방법론 상세 설명
+- **프로젝트 완전 정리 문서**: `docs/COMPLETE_PROJECT_DOCUMENTATION.md` (발표 및 질의응답용)
+- **HDBSCAN 클러스터링 방법론**: `docs/HDBSCAN_CLUSTERING_METHODOLOGY.md` (상세 방법론)
 
 ### 주요 참고 논문
 - **HDBSCAN**: McInnes, L., Healy, J., & Astels, S. (2017). HDBSCAN: Hierarchical density based clustering. Journal of Open Source Software, 2(11), 205.

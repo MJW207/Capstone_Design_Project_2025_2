@@ -15,7 +15,7 @@ class CategoryTextGenerator:
             api_key: Anthropic API 키
         """
         self.client = Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-5-20250929"
+        self.model = "claude-haiku-4-5-20251001"
 
     def generate(self, category: str, metadata_items: List[str], full_metadata_dict: Dict[str, str] = None) -> str:
         """
@@ -132,6 +132,11 @@ class CategoryTextGenerator:
             
             parts = []
             
+            # 직무만 있는 경우 처리 (⭐⭐ 새로 추가)
+            if "직무" in metadata and "직업" not in metadata:
+                duty = metadata['직무']
+                return f"{duty} 분야에서 근무합니다."
+            
             if "직업" in metadata:
                 job = metadata['직업']
                 # 상세 설명 추가
@@ -159,10 +164,31 @@ class CategoryTextGenerator:
             if "자동차" in metadata:
                 car = metadata['자동차']
                 if car in ["없음", "없습니다", "보유하지 않음"]:
-                    return "현재 보유 차량은 없습니다."
+                    return "보유하고 있는 자동차가 없습니다."
                 else:
                     return f"{car} 모델의 자동차를 보유하고 있습니다."
             return ""
+        
+        elif category == "모바일·자동차":
+            # 휴대폰과 자동차 모두 처리
+            parts = []
+            
+            if "휴대폰" in metadata:
+                phone = metadata['휴대폰']
+                # 브랜드와 모델 추출 (간단한 처리)
+                parts.append(f"휴대폰은 {phone} 브랜드의 {phone} 모델을 사용하고 있습니다.")
+            
+            if "자동차" in metadata:
+                car = metadata['자동차']
+                if car in ["없음", "없습니다", "보유하지 않음"]:
+                    parts.append("보유하고 있는 자동차가 없습니다.")
+                elif "제조사" not in metadata or "차량명" not in metadata:
+                    # 제조사/차량명 없이 자동차만 있는 경우
+                    parts.append("어떤제조사의 어떤차량을 보유하고 있습니다.")
+                else:
+                    parts.append(f"{metadata.get('제조사', '')}의 {metadata.get('차량명', '')} 차량을 보유하고 있습니다.")
+            
+            return " ".join(parts) if parts else ""
         
         elif category == "흡연":
             if "흡연" in metadata:
@@ -239,7 +265,7 @@ class CategoryTextGenerator:
 - 최근지출_분야 → '최근 가장 지출이 많았던 분야는 {값}입니다.'""",
             
             "라이프스타일": """⭐ QuickPoll 메타데이터가 있는 경우, 반드시 아래 문장 구조를 따라 생성하세요:
-- 알람_방식 → '아침에 기상하기 위해 주로 알람 방식을 {값}'
+- 알람_방식 → '아침에 기상하기 위해 주로 알람 방식을 {값}' (값: "스누즈 기능 사용", "스누즈 기능 사용 안함")
 - 혼밥_빈도 → '혼자 외식하는 빈도는 {값} 입니다.'
 - 미니멀맥시멀 → '자신은 {값}에 더 가깝다고 생각합니다.'
 - 버리기아까운물건 → '버리기 아까운 물건은 주로 {값}합니다.'

@@ -51,63 +51,65 @@ export function getClusterColor(clusterId: number): string {
  */
 export const FEATURE_NAME_KR: Record<string, string> = {
   // ============================================================
-  // 연속형 변수 (Continuous) - 인구통계
+  // 연속형 변수 (Continuous)
   // ============================================================
-  'age': '연령',
-  'age_scaled': '연령 (정규화)',
-  'avg_age': '평균 연령',
-  'Q6_income': '소득액 (만원)',
-  'Q6_scaled': '소득 (정규화)',
+  
+  // HDBSCAN 메타데이터 변수
   'avg_income': '평균 소득',
-  'education_level': '학력',
-  'education_level_scaled': '학력 (0:고졸, 1:전문대, 2:대졸, 3:대학원)',
-  
-  // ============================================================
-  // 연속형 변수 (Continuous) - 소비 패턴
-  // ============================================================
-  'Q8_count': '전자제품 수',
-  'Q8_count_scaled': '전자제품 수 (정규화)',
+  'avg_age': '평균 연령',
   'avg_electronics_count': '평균 전자제품 수',
-  
-  // ============================================================
-  // 연속형 변수 (Continuous) - 라이프스타일
-  // ============================================================
-  'drinking_types_count': '음주 유형 수',
-  'smoking_types_count': '흡연 유형 수',
+  'avg_premium_index': '평균 프리미엄 지수',
   'avg_children_count': '평균 자녀 수',
   'std_age': '연령 표준편차',
   
-  // ============================================================
-  // 이진 변수 (Binary) - 인구통계
-  // ============================================================
-  'is_college_graduate': '대졸 이상',
-  'has_children': '자녀 있음',
-  'is_employed': '취업 중',
-  'is_unemployed': '실업',
-  'is_student': '학생',
+  // 기존 변수 (하위 호환)
+  'Q6_income': '소득',
+  'Q6_scaled': '소득 (정규화)',
+  'age': '연령',
+  'age_scaled': '연령 (정규화)',
+  'Q8_count': '전자제품 수',
+  'Q8_count_scaled': '전자제품 수 (정규화)',
+  'Q8_premium_index': '프리미엄 지수',
+  '08_premium_index': '프리미엄 지수', // 숫자로 시작하는 변수명 지원
+  'education_level_scaled': '학력 (정규화)',
+  'drinking_types_count': '음주 유형 수',
+  'smoking_types_count': '흡연 유형 수',
   
   // ============================================================
-  // 이진 변수 (Binary) - 지역
+  // 이진 변수 (Binary) - 비율
   // ============================================================
-  'is_metro': '수도권',
-  'is_metro_city': '광역시',
+  
+  // HDBSCAN 메타데이터 변수 (비율)
+  'college_graduate_rate': '대졸 이상 비율',
+  'has_children_rate': '자녀 있음 비율',
+  'metro_rate': '수도권 거주 비율',
+  'premium_car_rate': '프리미엄 차량 보유 비율',
   
   // ============================================================
-  // 이진 변수 (Binary) - 차량
+  // 이진 변수 (Binary) - 기존
   // ============================================================
+  
+  // 차량
   'has_car': '차량 보유',
   'is_premium_car': '프리미엄 차량',
   'is_domestic_car': '국산차',
   
-  // ============================================================
-  // 이진 변수 (Binary) - 브랜드/디바이스
-  // ============================================================
+  // 브랜드
   'is_apple_user': '애플 사용자',
   'is_samsung_user': '삼성 사용자',
+  'is_premium_phone': '프리미엄 폰 보유 여부',
   
-  // ============================================================
-  // 이진 변수 (Binary) - 음주
-  // ============================================================
+  // 직업/교육
+  'is_employed': '취업 중',
+  'is_unemployed': '실업',
+  'is_student': '학생',
+  'is_college_graduate': '대졸 이상',
+  
+  // 지역
+  'is_metro': '수도권',
+  'is_metro_city': '광역시',
+  
+  // 음주
   'has_drinking_experience': '음주 경험',
   'drinks_beer': '맥주',
   'drinks_soju': '소주',
@@ -117,52 +119,28 @@ export const FEATURE_NAME_KR: Record<string, string> = {
   'drinks_low_alcohol': '저도수주',
   'drinks_cocktail': '칵테일',
   
-  // ============================================================
-  // 이진 변수 (Binary) - 흡연
-  // ============================================================
+  // 흡연
   'has_smoking_experience': '흡연 경험',
   'smokes_regular': '일반 담배',
-  'smokes_heet': '히트',
+  'smokes_heet': '히트 (궐련형 전자담배)',
   'smokes_liquid': '액상',
   'smokes_other': '기타 흡연',
   
   // ============================================================
-  // 이진 변수 (Binary) - 비율 (HDBSCAN 메타데이터)
+  // 범주형 변수 (Categorical)
   // ============================================================
-  'college_graduate_rate': '대졸 이상 비율',
-  'has_children_rate': '자녀수 비율',
-  'metro_rate': '수도권 거주 비율',
-  'premium_car_rate': '프리미엄 차량 보유 비율',
   
-  // ============================================================
-  // 범주형 변수 (Categorical) - 인구통계
-  // ============================================================
+  // HDBSCAN 메타데이터 변수 (분포)
+  'income_tier_dist': '소득 구간 분포',
+  'life_stage_dist': '생애주기 분포',
+  
+  // 기존 변수
   'age_group': '연령대',
   'generation': '세대',
   'family_type': '가족 형태',
   'children_category': '자녀 수',
-  'children_category_ordinal': '자녀 수 (순서)',
-  
-  // ============================================================
-  // 범주형 변수 (Categorical) - 소득
-  // ============================================================
   'Q6_category': '소득 구간',
-  'income_tier_dist': '소득 구간 분포',
-  
-  // ============================================================
-  // 범주형 변수 (Categorical) - 생애주기
-  // ============================================================
-  'life_stage_dist': '생애주기 분포',
-  
-  // ============================================================
-  // 범주형 변수 (Categorical) - 지역
-  // ============================================================
   'region_category': '지역',
-  'region_lvl1': '지역 (1단계)',
-  
-  // ============================================================
-  // 범주형 변수 (Categorical) - 기타
-  // ============================================================
   'phone_segment': '폰 세그먼트',
   
   // 기존 매핑 유지 (하위 호환)
@@ -188,27 +166,6 @@ export const CATEGORY_VALUE_KR: Record<string, Record<string, string>> = {
     'high': '고소득',
     'mid': '중소득',
     'low': '저소득'
-  },
-  
-  // 소득 카테고리 (Q6_category)
-  Q6_category: {
-    '저소득': '저소득',
-    '중소득': '중소득',
-    '중상소득': '중상소득',
-    '고소득': '고소득',
-    'low': '저소득',
-    'mid': '중소득',
-    'high': '고소득',
-  },
-  
-  // 생애주기 (life_stage)
-  life_stage: {
-    '1': '젊은 싱글',
-    '2': 'DINK',
-    '3': '젊은 부모',
-    '4': '중년 부모',
-    '5': '중년',
-    '6': '시니어'
   },
   
   // 가족 형태 (family_type)
@@ -284,13 +241,14 @@ export const FEATURE_DESCRIPTION: Record<string, string> = {
   'avg_income': '클러스터 내 패널들의 평균 월소득 (만원)',
   'avg_age': '클러스터 내 패널들의 평균 연령 (세)',
   'avg_premium_index': '전체 전자제품 중 프리미엄 제품 비율 (0~1)',
-  'has_children_rate': '자녀수가 있는 패널의 비율 (%)',
+  'has_children_rate': '자녀가 있는 패널의 비율 (%)',
   'avg_electronics_count': '패널당 평균 전자제품 보유 개수',
   'premium_car_rate': '프리미엄 차량을 보유한 패널의 비율 (%)',
   'college_graduate_rate': '4년제 대학 졸업 이상 학력 보유 비율 (%)',
   
   'is_apple_user': '아이폰, 맥북 등 애플 제품 사용 여부',
   'is_samsung_user': '갤럭시, 삼성 가전 등 삼성 제품 사용 여부',
+  'is_premium_phone': '고가 스마트폰 보유 여부',
   
   'drinks_wine': '와인 음주 경험 여부',
   'drinks_western': '위스키, 브랜디 등 양주 음주 경험 여부',
@@ -323,6 +281,8 @@ export const FEATURE_UNIT: Record<string, string> = {
   'smoking_types_count': '개',
   
   // 비율 변수
+  'avg_premium_index': '',
+  'Q8_premium_index': '',
   'college_graduate_rate': '%',
   'has_children_rate': '%',
   'metro_rate': '%',
@@ -331,6 +291,7 @@ export const FEATURE_UNIT: Record<string, string> = {
   // 이진 변수는 단위 없음 (차트에서 %로 표시)
   'is_apple_user': '',
   'is_samsung_user': '',
+  'is_premium_phone': '',
   'has_car': '',
   'is_premium_car': '',
   'is_domestic_car': '',
@@ -411,8 +372,10 @@ export const featureNameMap: Record<string, string> = {
   // === 핵심 피쳐 ===
   'age_scaled': '연령',
   'Q6_scaled': '소득',
-  'education_level_scaled': '학력 (0:고졸, 1:전문대, 2:대졸, 3:대학원)',
+  'education_level_scaled': '학력',
   'Q8_count_scaled': '전자제품 수',
+  'Q8_premium_index': '프리미엄 지수',
+  '08_premium_index': '프리미엄 지수', // 숫자로 시작하는 변수명 지원
   'is_premium_car': '프리미엄차 보유',
   'age_z': '연령 (Z-score)',
   
@@ -463,6 +426,7 @@ export const featureNameMap: Record<string, string> = {
   // === 폰 관련 ===
   'is_apple_user': '애플 사용자',
   'is_samsung_user': '삼성 사용자',
+  'is_premium_phone': '프리미엄 폰 보유 여부',
   'phone_segment': '폰 세그먼트',
   
   // === 음주/흡연 관련 ===
@@ -490,7 +454,7 @@ export const featureNameMap: Record<string, string> = {
   'uses_glo': '글로 사용',
   
   // === 기본 이진 변수 ===
-  'has_children': '자녀수',
+  'has_children': '자녀 있음',
   'is_college_graduate': '대졸',
   'is_employed': '취업',
   'is_unemployed': '실업',
@@ -614,7 +578,9 @@ export const featureDomainMap: Record<string, 'economic' | 'demographic' | 'devi
   // 디바이스/프리미엄
   'Q8_count': 'device',
   'Q8_count_scaled': 'device',
+  'Q8_premium_index': 'device',
   'Q8_premium_count': 'device',
+  'is_premium_phone': 'device',
   'is_apple_user': 'device',
   'is_samsung_user': 'device',
   'has_car': 'device',

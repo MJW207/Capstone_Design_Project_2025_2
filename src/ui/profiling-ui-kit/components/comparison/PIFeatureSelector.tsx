@@ -80,7 +80,7 @@ export function PIFeatureSelector({
     resizeStartWidth.current = panelWidth;
   };
 
-  // 차트 타입별 필터링 및 데이터 유효성 검사
+  // 차트 타입별 필터링
   const availableFeatures = useMemo(() => {
     let filtered = allData;
     
@@ -97,30 +97,6 @@ export function PIFeatureSelector({
       // 인덱스 도트: 이진형만
       filtered = allData.filter(d => d.type === 'binary');
     }
-    
-    // 데이터 유효성 검사: 실제로 데이터를 불러올 수 있는 변수만 필터링
-    filtered = filtered.filter(d => {
-      if (d.type === 'continuous') {
-        const cont = d as any;
-        // group_a_mean과 group_b_mean이 유효한 숫자인지 확인
-        const hasValidA = cont.group_a_mean != null && !isNaN(cont.group_a_mean) && isFinite(cont.group_a_mean);
-        const hasValidB = cont.group_b_mean != null && !isNaN(cont.group_b_mean) && isFinite(cont.group_b_mean);
-        return hasValidA && hasValidB;
-      } else if (d.type === 'binary') {
-        const bin = d as any;
-        // group_a_ratio와 group_b_ratio가 유효한 숫자인지 확인
-        const hasValidA = bin.group_a_ratio != null && !isNaN(bin.group_a_ratio) && isFinite(bin.group_a_ratio);
-        const hasValidB = bin.group_b_ratio != null && !isNaN(bin.group_b_ratio) && isFinite(bin.group_b_ratio);
-        return hasValidA && hasValidB;
-      } else if (d.type === 'categorical') {
-        const cat = d as any;
-        // group_a_distribution과 group_b_distribution이 유효한 객체인지 확인
-        const hasValidA = cat.group_a_distribution != null && typeof cat.group_a_distribution === 'object' && Object.keys(cat.group_a_distribution).length > 0;
-        const hasValidB = cat.group_b_distribution != null && typeof cat.group_b_distribution === 'object' && Object.keys(cat.group_b_distribution).length > 0;
-        return hasValidA && hasValidB;
-      }
-      return false;
-    });
     
     return filtered.map(d => ({
       feature: d.feature,

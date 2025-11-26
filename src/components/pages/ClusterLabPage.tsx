@@ -51,8 +51,8 @@ const featureDisplayNameMap: Record<string, string> = {
   // 디바이스/프리미엄
   Q8_count: "전자제품 수",
   Q8_count_scaled: "전자제품 수",
-  Q8_premium_index: "프리미엄폰 전자제품 지수",
-  Q8_premium_count: "프리미엄폰 전자제품 수",
+  Q8_premium_index: "프리미엄 전자제품 지수",
+  Q8_premium_count: "프리미엄 전자제품 수",
   is_apple_user: "애플 사용자 비중",
   is_samsung_user: "삼성 사용자 비중",
   is_premium_phone: "프리미엄 스마트폰 비중",
@@ -425,13 +425,21 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
     // 노이즈 제거 및 클러스터 필터링 (HDBSCAN의 노이즈: -1과 0)
     let filtered = umapData.filter(d => d.cluster !== -1 && d.cluster !== 0);
     
-    // 검색 결과가 있으면 검색된 패널만 표시 (속한 군집의 모든 패널이 아닌 검색된 패널만)
-    if (highlightedPanelIds.size > 0) {
-      // 검색된 패널만 필터링
-      filtered = filtered.filter((d) => {
+    // 검색 결과가 있으면 검색된 패널이 속한 군집만 표시
+    if (searchResults && searchResults.length > 0 && highlightedPanelIds.size > 0) {
+      // 검색된 패널이 속한 클러스터 ID 추출
+      const searchedClusterIds = new Set<number>();
+      filtered.forEach((d) => {
         const normalizedId = normalizePanelId(d.panelId);
-        return highlightedPanelIds.has(normalizedId);
+        if (highlightedPanelIds.has(normalizedId)) {
+          searchedClusterIds.add(d.cluster);
+        }
       });
+      
+      // 검색된 패널이 속한 군집의 모든 패널만 필터링
+      if (searchedClusterIds.size > 0) {
+        filtered = filtered.filter(d => searchedClusterIds.has(d.cluster));
+      }
     }
     
     // selectedClusters 필터링 (사용자가 수동으로 선택한 경우)
@@ -441,7 +449,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
     }
     
     return filtered;
-  }, [umapData, highlightedPanelIds, selectedClusters]);
+  }, [umapData, searchResults, highlightedPanelIds, selectedClusters]);
   
   // 확장 클러스터링된 패널과 기존 전체 데이터 구분 (메모이제이션)
   const { extendedPanelsOnly, normalPanelsOnly, searchedPanelsOnly } = useMemo(() => {
@@ -467,33 +475,6 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
     
     return { extendedPanelsOnly: extended, normalPanelsOnly: normal, searchedPanelsOnly: searched };
   }, [filteredUmapData, extendedClusteringData, highlightedPanelIds]);
-  
-  // 성능 최적화: 데이터 샘플링 (5000개 이상이면 샘플링)
-  const MAX_RENDER_POINTS = 5000;
-  const sampledNormalPanels = useMemo(() => {
-    if (normalPanelsOnly.length <= MAX_RENDER_POINTS) {
-      return normalPanelsOnly;
-    }
-    // 균등 샘플링 (매 N번째 포인트 선택)
-    const step = Math.ceil(normalPanelsOnly.length / MAX_RENDER_POINTS);
-    return normalPanelsOnly.filter((_, index) => index % step === 0);
-  }, [normalPanelsOnly]);
-  
-  const sampledExtendedPanels = useMemo(() => {
-    if (extendedPanelsOnly.length <= MAX_RENDER_POINTS) {
-      return extendedPanelsOnly;
-    }
-    const step = Math.ceil(extendedPanelsOnly.length / MAX_RENDER_POINTS);
-    return extendedPanelsOnly.filter((_, index) => index % step === 0);
-  }, [extendedPanelsOnly]);
-  
-  const sampledFilteredData = useMemo(() => {
-    if (!extendedClusteringData && filteredUmapData.length > MAX_RENDER_POINTS) {
-      const step = Math.ceil(filteredUmapData.length / MAX_RENDER_POINTS);
-      return filteredUmapData.filter((_, index) => index % step === 0);
-    }
-    return filteredUmapData;
-  }, [filteredUmapData, extendedClusteringData]);
   
   // 패널 ID -> 인덱스 맵 생성 (성능 최적화)
   const panelIdToIndexMap = useMemo(() => {
@@ -544,74 +525,11 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
     localStorage.removeItem('cached_clustering_data');
     setLastSearchQuery(trimmedQuery);
     
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // 검색 API 호출
-      const searchResponse = await fetch(`${API_URL}/api/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: trimmedQuery,
-          page: 1,
-          limit: 1000, // 충분히 많은 결과 가져오기
-          force_refresh: true,
-        }),
-      });
-      
-      if (!searchResponse.ok) {
-        throw new Error('검색에 실패했습니다.');
-      }
-      
-      const searchData = await searchResponse.json();
-      
-      // 검색 결과에서 mb_sn만 추출
-      const searchResultsList = searchData.results || [];
-      const mbSns = searchResultsList
-        .map((r: any) => r.mb_sn || r.id || r.panel_id || r.name || r.panelId)
-        .filter((id: any) => id != null && id !== '')
-        .map((id: any) => String(id).trim());
-      
-      if (mbSns.length === 0) {
-        toast.warning('검색 결과가 없습니다.');
-        // 검색 결과가 없으면 전체 UMAP 로드
-        await runClustering();
-        setLoading(false);
-        return;
-      }
-      
-      // 검색된 패널의 mb_sn만으로 UMAP 표시 (검색 결과를 상태에 저장하지 않고 바로 처리)
-      await runClusteringAroundSearchWithMbSns(mbSns);
-    } catch (err: any) {
-      const errorMessage = err?.message || '검색 중 오류가 발생했습니다';
-      setError(errorMessage);
-      toast.error(errorMessage);
-      setLoading(false);
-    }
+    // 검색 API 호출 (실제 검색은 ResultsPage에서 처리되지만, 여기서는 클러스터링만 재실행)
+    await runClustering();
   };
 
-  // 검색 결과 주변 확장 클러스터링 (searchResults 사용)
   const runClusteringAroundSearch = async () => {
-    // searchResults에서 mb_sn 추출하여 runClusteringAroundSearchWithMbSns 호출
-    if (!searchResults || searchResults.length === 0) {
-      // 검색 결과가 없으면 전체 UMAP 로드
-      await runClustering();
-      return;
-    }
-    
-    const mbSns = searchResults
-      .map((r: any) => r.mb_sn || r.id || r.panel_id || r.name || r.panelId)
-      .filter((id: any) => id != null && id !== '')
-      .map((id: any) => String(id).trim());
-    
-    await runClusteringAroundSearchWithMbSns(mbSns);
-  };
-  
-  // 검색된 mb_sn만으로 UMAP 표시하는 함수 (내부 함수)
-  const runClusteringAroundSearchWithMbSns = async (mbSns: string[]) => {
     // 이미 실행 중이면 스킵
     if (isRunningClusteringRef.current) {
       return;
@@ -620,10 +538,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
     // 실행 중 플래그 설정
     isRunningClusteringRef.current = true;
 
-    if (!mbSns || mbSns.length === 0) {
-      // 검색 결과가 없으면 전체 UMAP 로드
-      await runClustering();
-      isRunningClusteringRef.current = false;
+    if (!searchResults || searchResults.length === 0) {
       return;
     }
 
@@ -631,125 +546,142 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
     setError(null);
 
     try {
-      // mb_sn을 정규화
-      const searchPanelIds = mbSns
-        .map((id: string) => id != null ? String(id).trim() : null)
+      // 검색 결과에서 패널 ID 추출
+      const searchPanelIds = searchResults
+        .map((r: any) => {
+          const panelId = r.mb_sn || r.id || r.panel_id || r.name || r.panelId;
+          return panelId != null ? String(panelId).trim() : null;
+        })
         .filter((id: any) => id != null && id !== '');
 
       if (searchPanelIds.length === 0) {
         throw new Error('검색 결과에서 패널 ID를 추출할 수 없습니다.');
       }
 
-      // 1. 먼저 전체 precomputed 데이터 로드
-      const precomputedApiUrl = `${API_URL}/api/precomputed/clustering`;
-      const precomputedResponse = await fetch(precomputedApiUrl);
-      
-      if (!precomputedResponse.ok) {
-        throw new Error('Precomputed 데이터를 불러올 수 없습니다.');
-      }
-      
-      const precomputedData = await precomputedResponse.json();
-      const clusterData = precomputedData.success ? precomputedData.data : precomputedData;
-      
-      if (!clusterData || !clusterData.umap_coordinates) {
-        throw new Error('Precomputed UMAP 데이터가 없습니다.');
-      }
+      const apiUrl = `${API_URL}/api/clustering/cluster-around-search`;
+      const requestBody = {
+        search_panel_ids: searchPanelIds,
+        k_neighbors_per_panel: 100,
+      };
 
-      // 2. 검색된 패널 ID를 정규화된 Set으로 변환
-      const searchPanelIdsSet = new Set(
-        searchPanelIds.map((id: string) => normalizePanelId(id))
-      );
-
-      // 3. 검색된 패널의 UMAP 좌표만 필터링 (검색된 패널만 표시)
-      const searchedUmapPoints: UMAPPoint[] = [];
-      const searchedClusterIds = new Set<number>();
+      // API 호출에 재시도 로직 추가
+      let response: Response | null = null;
+      let lastError: Error | null = null;
+      const maxRetries = 3;
+      const retryDelay = 1000; // 1초
       
-      clusterData.umap_coordinates.forEach((point: any) => {
-        const panelId = point.panelId || point.panel_id || '';
-        const normalizedId = normalizePanelId(panelId);
-        
-        if (searchPanelIdsSet.has(normalizedId)) {
-          searchedUmapPoints.push({
-            x: point.x,
-            y: point.y,
-            cluster: point.cluster ?? -1,
-            panelId: panelId,
-          });
-          if (point.cluster != null && point.cluster !== -1 && point.cluster !== 0) {
-            searchedClusterIds.add(point.cluster);
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
           }
-        }
-      });
-
-      if (searchedUmapPoints.length === 0) {
-        toast.warning('검색된 패널의 UMAP 좌표를 찾을 수 없습니다.');
-        setLoading(false);
-        isRunningClusteringRef.current = false;
-        return;
-      }
-
-      // 4. 검색된 패널만 UMAP에 표시
-      setUmapData(searchedUmapPoints);
-
-      // 5. 검색된 패널이 속한 군집의 프로필 가져오기
-      const profileResponse = await fetch(`${API_URL}/api/precomputed/profiles`);
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        if (profileData.success && profileData.data) {
-          // 검색된 패널이 속한 군집의 프로필만 필터링
-          const relevantProfiles = profileData.data.filter((p: any) => 
-            searchedClusterIds.has(p.cluster) && p.cluster !== 0
-          );
-          setClusterProfiles(relevantProfiles);
-        }
-      }
-
-      // 6. 검색된 패널이 속한 군집만 클러스터로 표시
-      const clustersData = clusterData.clusters || [];
-      const newClusters: ClusterData[] = [];
-      
-      Array.from(searchedClusterIds).forEach((clusterId) => {
-        const clusterInfo = clustersData.find((c: any) => c.id === clusterId);
-        if (clusterInfo) {
-          newClusters.push({
-            id: clusterId,
-            size: clusterInfo.size,
-            indices: [],
-            centroid: [0, 0],
-            query_similarity: 0.8,
-            representative_items: [],
+          
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
           });
+          
+          // 성공하면 루프 종료
+          break;
+        } catch (fetchError: any) {
+          lastError = fetchError;
+          
+          // 마지막 시도가 아니면 계속
+          if (attempt < maxRetries - 1) {
+            continue;
+          }
+          
+          // 모든 시도 실패
+          throw new Error(`API 호출 실패 (${maxRetries}회 시도): ${fetchError.message}`);
         }
-      });
+      }
       
-      setClusters(newClusters);
+      if (!response) {
+        throw lastError || new Error('API 응답을 받을 수 없습니다.');
+      }
 
-      // 7. 클러스터 메타데이터 업데이트
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { detail: errorText || '알 수 없는 오류' };
+        }
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || '확장 클러스터링 실패');
+      }
+
+      // 확장 클러스터링 데이터 저장
+      setExtendedClusteringData({
+        panels: data.panels,
+        cluster_stats: data.cluster_stats,
+        session_id: data.session_id,
+      });
+
+      // 세션 ID 저장 (비교 분석용)
+      if (data.session_id) {
+        localStorage.setItem('last_clustering_session_id', data.session_id);
+      }
+
+      // UMAP 데이터 업데이트
+      // 정상적으로 매칭된 검색 패널만 UMAP에 표시
+      setUmapData(() => {
+        // 기존 데이터를 모두 제거하고 정상적으로 매칭된 검색 패널만 표시
+        const newData: UMAPPoint[] = data.panels.map((p: any) => ({
+          x: p.umap_x,
+          y: p.umap_y,
+          cluster: p.cluster,
+          panelId: p.panel_id,
+        }));
+        
+        return newData;
+      });
+
+      // 클러스터 메타데이터 업데이트
       setClusteringMeta({
-        n_samples: clusterData.n_samples,
-        n_clusters: clusterData.n_clusters,
-        silhouette_score: clusterData.silhouette_score || null,
-        davies_bouldin_score: clusterData.davies_bouldin_index || null,
-        calinski_harabasz: clusterData.calinski_harabasz_index || null,
-        strategy: 'precomputed',
-        algorithm: 'hdbscan',
-        session_id: 'precomputed_default',
+        n_samples: data.n_total_panels,
+        n_clusters: data.n_clusters,
+        silhouette_score: data.silhouette_score || null,
+        davies_bouldin_score: data.davies_bouldin_score || null,
+        calinski_harabasz: data.calinski_harabasz_score || null,
+        strategy: 'search_extended',
+        algorithm: 'kmeans',
+        session_id: data.session_id,
         last_updated: new Date().toISOString(),
       });
 
-      // 8. 검색 결과 하이라이트 업데이트
+      // 클러스터 정보 업데이트
+      const newClusters: ClusterData[] = Object.entries(data.cluster_stats).map(
+        ([clusterId, stats]: [string, any]) => ({
+          id: parseInt(clusterId),
+          size: stats.size,
+          percentage: stats.percentage,
+          name: `검색 중심 그룹 ${parseInt(clusterId) + 1}`,
+          description: `검색 패널 ${stats.search_count}개 포함`,
+        })
+      );
+      setClusters(newClusters);
+
+      // 검색 결과 하이라이트 업데이트
       const searchPanelIdSet = new Set(
-        searchPanelIds.map((id: string) => normalizePanelId(id))
+        searchPanelIds.map((id: string) => id.toLowerCase())
       );
       setHighlightedPanelIds(searchPanelIdSet);
-
-      toast.success(`검색된 ${searchedUmapPoints.length}개 패널이 ${searchedClusterIds.size}개 군집에 분포되어 있습니다.`);
     } catch (err: any) {
       // 에러는 setError로 처리됨
       setError(
-        `검색 결과 로드 실패: ${err.message || '알 수 없는 오류'}`
+        `확장 클러스터링 실패: ${err.message || '알 수 없는 오류'}`
       );
-      toast.error(`검색 결과 로드 실패: ${err.message || '알 수 없는 오류'}`);
     } finally {
       setLoading(false);
       // 실행 중 플래그 해제
@@ -1322,7 +1254,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                 'Q6_scaled': '소득',
                 'education_level_scaled': '학력',
                 'Q8_count_scaled': '전자제품 수',
-                'Q8_premium_index': '프리미엄폰 지수',
+                'Q8_premium_index': '프리미엄 지수',
                 'is_premium_car': '프리미엄차',
                 'age_z': '연령',
                 'age': '연령',
@@ -1726,7 +1658,14 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
           setSearchedPanelClusters(panelClusterMap);
           setHighlightedPanelIds(foundPanelIds);
           
-          // 토스트 메시지는 runClusteringAroundSearchWithMbSns에서 표시하므로 여기서는 제거
+          // 매핑된 패널이 있으면 토스트 표시
+          if (foundPanelIds.size > 0) {
+            const uniqueClusters = [...new Set(Object.values(panelClusterMap))];
+            toast.success(
+              `검색된 ${foundPanelIds.size}개 패널 중 ${uniqueClusters.length}개 군집에 분포되어 있습니다.`,
+              { duration: 3000 }
+            );
+          }
           return;
         }
         
@@ -1771,7 +1710,14 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
         setSearchedPanelClusters(panelClusterMap);
         setHighlightedPanelIds(foundPanelIds);
         
-        // 토스트 메시지는 runClusteringAroundSearchWithMbSns에서 표시하므로 여기서는 제거
+        // 매핑된 패널이 있으면 토스트 표시
+        if (foundPanelIds.size > 0) {
+          const uniqueClusters = [...new Set(Object.values(panelClusterMap))];
+          toast.success(
+            `검색된 ${foundPanelIds.size}개 패널 중 ${uniqueClusters.length}개 군집에 분포되어 있습니다.`,
+            { duration: 3000 }
+          );
+        }
       } catch (err) {
         // 오류가 발생해도 UI는 계속 동작하도록 함
         console.error('[검색 결과-군집 매핑 오류]', err);
@@ -1878,7 +1824,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                 handleReSearch();
               }
             }}
-            placeholder="예) 서울 20대 여성, OTT 이용·스킨케어 관심 200명"
+            placeholder="예) 충남, 여성, 아반떼, 아이폰"
             style={{ 
               flex: 1,
               padding: '10px 12px', 
@@ -2059,9 +2005,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                     >
                       {clusters.map((cluster, idx) => {
                         const clusterProfile = clusterProfiles.find(p => p.cluster === cluster.id);
-                        let clusterDisplayName = clusterProfile?.name || `C${cluster.id + 1}`;
-                        // "프리미엄"을 "프리미엄폰"으로 변경 (단, "프리미엄차"는 제외)
-                        clusterDisplayName = clusterDisplayName.replace(/프리미엄(?![차폰])/g, '프리미엄폰');
+                        const clusterDisplayName = clusterProfile?.name || `C${cluster.id + 1}`;
                         const searchedCount = Array.from(highlightedPanelIds).filter(panelId => {
                           const clusterId = searchedPanelClusters[panelId];
                           return clusterId === cluster.id;
@@ -2349,15 +2293,21 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                       const clusterPoints = umapData.filter(p => p.cluster === clusterId);
                       if (clusterPoints.length === 0) return null;
                       
-                      // 평균(mean) 사용으로 실제 군집 중심을 정확히 계산
-                      const sumX = clusterPoints.reduce((sum, p) => sum + p.x, 0);
-                      const sumY = clusterPoints.reduce((sum, p) => sum + p.y, 0);
-                      const meanX = sumX / clusterPoints.length;
-                      const meanY = sumY / clusterPoints.length;
+                      // 중앙값(median) 사용으로 이상치에 덜 민감하게
+                      const xs = clusterPoints.map(p => p.x).sort((a, b) => a - b);
+                      const ys = clusterPoints.map(p => p.y).sort((a, b) => a - b);
+                      
+                      const medianX = xs.length % 2 === 0
+                        ? (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2
+                        : xs[Math.floor(xs.length / 2)];
+                      
+                      const medianY = ys.length % 2 === 0
+                        ? (ys[ys.length / 2 - 1] + ys[ys.length / 2]) / 2
+                        : ys[Math.floor(ys.length / 2)];
                       
                       return {
-                        x: meanX,
-                        y: meanY,
+                        x: medianX,
+                        y: medianY,
                         count: clusterPoints.length, // 포인트 개수 저장
                       };
                     };
@@ -2373,38 +2323,6 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                           viewBox={`0 0 ${width} ${height}`}
                           preserveAspectRatio="xMidYMid meet"
                           style={{ width: '100%', height: '100%', display: 'block' }}
-                          onMouseMove={(e) => {
-                            // 이벤트 위임: 가장 가까운 circle 요소 찾기
-                            const target = e.target as SVGElement;
-                            if (target.tagName === 'circle' && target.hasAttribute('data-panel-id')) {
-                              const normalizedId = target.getAttribute('data-panel-id');
-                              const originalPanelId = target.getAttribute('data-panel-id-original');
-                              
-                              if (normalizedId) {
-                                // 원본 panelId 우선 사용, 없으면 normalizedId로 찾기
-                                const panelId = originalPanelId || normalizedId;
-                                const point = filteredData.find(p => {
-                                  const pNormalized = normalizePanelId(p.panelId);
-                                  return pNormalized === normalizedId || p.panelId === panelId;
-                                });
-                                if (point) {
-                                  handlePointHover(point.panelId);
-                                }
-                              }
-                            }
-                          }}
-                          onClick={(e) => {
-                            // 검색된 패널 클릭 처리
-                            const target = e.target as SVGElement;
-                            if (target.tagName === 'circle' && target.hasAttribute('data-is-searched')) {
-                              const originalPanelId = target.getAttribute('data-panel-id-original');
-                              if (originalPanelId) {
-                                setSelectedPanelId(originalPanelId);
-                                setIsPanelDetailOpen(true);
-                              }
-                            }
-                          }}
-                          onMouseLeave={handlePointLeave}
                         >
                           {/* 배경 그리드 - 더 연하게 */}
                           <defs>
@@ -2521,8 +2439,8 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                             ));
                           })()}
                           
-                          {/* 데이터 포인트: 기존 전체 데이터 (회색) - 검색된 패널 제외 - 더 연하게 - 샘플링 적용 */}
-                          {sampledNormalPanels
+                          {/* 데이터 포인트: 기존 전체 데이터 (회색) - 검색된 패널 제외 - 더 연하게 */}
+                          {normalPanelsOnly
                             .filter(point => {
                               const normalizedId = normalizePanelId(point.panelId);
                               return !highlightedPanelIds.has(normalizedId);
@@ -2533,21 +2451,23 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                               const cy = yScale(point.y);
                               
                               return (
-                                <circle
-                                  key={`normal-${normalizedId}-${index}`}
-                                  cx={cx}
-                                  cy={cy}
-                                  r={3}
-                                  fill={isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)'}
-                                  opacity={0.6}
-                                  data-panel-id={normalizedId}
-                                  style={{ cursor: 'pointer' }}
-                                />
+                                <g key={`normal-${index}`}>
+                                  <circle
+                                    cx={cx}
+                                    cy={cy}
+                                    r={3}
+                                    fill={isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)'}
+                                    opacity={0.6}
+                                    onMouseEnter={() => handlePointHover(point.panelId)}
+                                    onMouseLeave={handlePointLeave}
+                                    style={{ cursor: 'pointer' }}
+                                  />
+                                </g>
                               );
                             })}
                           
-                          {/* 데이터 포인트: 확장 클러스터링된 패널 (컬러) - 검색된 패널 제외 - 더 연하게 - 샘플링 적용 */}
-                          {sampledExtendedPanels
+                          {/* 데이터 포인트: 확장 클러스터링된 패널 (컬러) - 검색된 패널 제외 - 더 연하게 */}
+                          {extendedPanelsOnly
                             .filter(point => {
                               const normalizedId = normalizePanelId(point.panelId);
                               return !highlightedPanelIds.has(normalizedId);
@@ -2559,21 +2479,23 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                               const clusterColor = getClusterColor(point.cluster);
                               
                               return (
-                                <circle
-                                  key={`extended-${normalizedId}-${index}`}
-                                  cx={cx}
-                                  cy={cy}
-                                  r={3.5}
-                                  fill={clusterColor}
-                                  opacity={0.5}
-                                  data-panel-id={normalizedId}
-                                  style={{ cursor: 'pointer' }}
-                                />
+                                <g key={`extended-${index}`}>
+                                  <circle
+                                    cx={cx}
+                                    cy={cy}
+                                    r={3.5}
+                                    fill={clusterColor}
+                                    opacity={0.5}
+                                    onMouseEnter={() => handlePointHover(point.panelId)}
+                                    onMouseLeave={handlePointLeave}
+                                    style={{ cursor: 'pointer' }}
+                                  />
+                                </g>
                               );
                             })}
                           
-                          {/* 확장 클러스터링이 없을 때만 전체 데이터 렌더링 - 검색된 패널 제외 - 더 연하게 - 샘플링 적용 */}
-                          {!extendedClusteringData && sampledFilteredData
+                          {/* 확장 클러스터링이 없을 때만 전체 데이터 렌더링 - 검색된 패널 제외 - 더 연하게 */}
+                          {!extendedClusteringData && filteredData
                             .filter(point => {
                               const normalizedId = normalizePanelId(point.panelId);
                               return !highlightedPanelIds.has(normalizedId);
@@ -2588,22 +2510,23 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                               
                               return (
                                 <circle
-                                  key={`legacy-${normalizedId}-${index}`}
+                                  key={`legacy-${index}`}
                                   cx={cx}
                                   cy={cy}
                                   r={3}
                                   fill={baseColor}
                                   opacity={0.4}
-                                  data-panel-id={normalizedId}
                                   style={{
                                     cursor: 'pointer',
                                     filter: isHovered ? `drop-shadow(0 0 4px ${baseColor})` : 'none',
                                   }}
+                                  onMouseEnter={() => handlePointHover(point.panelId)}
+                                  onMouseLeave={handlePointLeave}
                                 />
                               );
                             })}
                           
-                          {/* 검색된 패널만 최상위 레이어로 렌더링 (모든 일반 점들 위에 표시) - 이벤트 위임 적용 */}
+                          {/* 검색된 패널만 최상위 레이어로 렌더링 (모든 일반 점들 위에 표시) */}
                           {searchedPanelsOnly.map((point, index) => {
                             const normalizedId = normalizePanelId(point.panelId);
                             const cx = xScale(point.x);
@@ -2614,7 +2537,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                             const panelId = point.panelId || '';
                             
                             return (
-                              <g key={`searched-${normalizedId}-${index}`} style={{ pointerEvents: 'auto' }}>
+                              <g key={`searched-${index}`} style={{ pointerEvents: 'auto' }}>
                                 {/* 외곽 원 - 간소화 */}
                                 <circle
                                   cx={cx}
@@ -2622,10 +2545,12 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                                   r={6}
                                   fill={clusterColor}
                                   opacity={0.25}
-                                  data-panel-id={normalizedId}
-                                  data-panel-id-original={panelId}
-                                  data-is-searched="true"
-                                  style={{ cursor: 'pointer' }}
+                                  onClick={() => {
+                                    if (panelId) {
+                                      setSelectedPanelId(panelId);
+                                      setIsPanelDetailOpen(true);
+                                    }
+                                  }}
                                 />
                                 {/* 메인 점 - 간소화 */}
                                 <circle
@@ -2636,9 +2561,14 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                                   stroke="#FFFFFF"
                                   strokeWidth="1.5"
                                   opacity={0.95}
-                                  data-panel-id={normalizedId}
-                                  data-panel-id-original={panelId}
-                                  data-is-searched="true"
+                                  onMouseEnter={() => handlePointHover(point.panelId)}
+                                  onMouseLeave={handlePointLeave}
+                                  onClick={() => {
+                                    if (panelId) {
+                                      setSelectedPanelId(panelId);
+                                      setIsPanelDetailOpen(true);
+                                    }
+                                  }}
                                   style={{ cursor: 'pointer' }}
                                 />
                               </g>
@@ -2657,11 +2587,9 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                                 const cx = xScale(centroid.x);
                                 const cy = yScale(centroid.y);
                                 const clusterProfile = clusterProfiles.find(p => p.cluster === cluster.id);
-                                let clusterName = (clusterProfile as any)?.name_main || 
+                                const clusterName = (clusterProfile as any)?.name_main || 
                                                   clusterProfile?.name || 
                                                   `C${cluster.id + 1}`;
-                                // "프리미엄"을 "프리미엄폰"으로 변경 (단, "프리미엄차"는 제외)
-                                clusterName = clusterName.replace(/프리미엄(?![차폰])/g, '프리미엄폰');
                                 const clusterColor = getClusterColor(cluster.id);
                                 
                                 // 화면 경계 체크
@@ -2755,9 +2683,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                             const cy = yScale(point.y);
                             const clusterName = `C${point.cluster + 1}`;
                             const clusterProfile = clusterProfiles.find(p => p.cluster === point.cluster);
-                            let clusterDisplayName = (clusterProfile as any)?.name_main || clusterProfile?.name || clusterName;
-                            // "프리미엄"을 "프리미엄폰"으로 변경 (단, "프리미엄차"는 제외)
-                            clusterDisplayName = clusterDisplayName.replace(/프리미엄(?![차폰])/g, '프리미엄폰');
+                            const clusterDisplayName = (clusterProfile as any)?.name_main || clusterProfile?.name || clusterName;
                             const panelInfo = searchedPanelInfo[normalizedId] || searchedPanelInfo[point.panelId || ''];
                             
                             // 군집 프로필에서 소득 및 가족 구성 정보 추출
@@ -3116,23 +3042,6 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                   if (cluster.size <= 60) {
                     return false;
                   }
-                  
-                  // 검색 결과가 있으면 검색된 패널이 속한 군집만 표시
-                  if (searchResults && searchResults.length > 0 && highlightedPanelIds.size > 0) {
-                    // 검색된 패널이 속한 클러스터 ID 추출
-                    const searchedClusterIds = new Set<number>();
-                    Object.values(searchedPanelClusters).forEach(clusterId => {
-                      if (clusterId !== null && clusterId !== undefined) {
-                        searchedClusterIds.add(clusterId);
-                      }
-                    });
-                    
-                    // 검색된 패널이 속한 군집만 표시
-                    if (searchedClusterIds.size > 0 && !searchedClusterIds.has(cluster.id)) {
-                      return false;
-                    }
-                  }
-                  
                   return true;
                 })
                 .map((cluster, index) => {
@@ -3199,17 +3108,12 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                   if ((clusterProfile as any).name_main) {
                     clusterNameMain = (clusterProfile as any).name_main;
                     clusterNameSub = (clusterProfile as any).name_sub;
-                    // "프리미엄"을 "프리미엄폰"으로 변경 (단, "프리미엄차"는 제외)
-                    clusterNameMain = clusterNameMain.replace(/프리미엄(?![차폰])/g, '프리미엄폰');
                     clusterName = clusterNameMain;
                   } else if (clusterProfile.name) {
-                    // "프리미엄"을 "프리미엄폰"으로 변경 (단, "프리미엄차"는 제외)
-                    clusterName = clusterProfile.name.replace(/프리미엄(?![차폰])/g, '프리미엄폰');
+                    clusterName = clusterProfile.name;
                   } else if (clusterProfile.distinctive_features && clusterProfile.distinctive_features.length > 0) {
                     // 백엔드에서 제공하는 distinctive_features로 군집 이름 생성 (한글 매핑 적용)
                     clusterName = buildClusterDisplayName(clusterProfile);
-                    // "프리미엄"을 "프리미엄폰"으로 변경 (단, "프리미엄차"는 제외)
-                    clusterName = clusterName.replace(/프리미엄(?![차폰])/g, '프리미엄폰');
                   } else {
                     // 백엔드 프로필이 있지만 name이 없으면 기본 이름 생성
                     clusterName = generateDefaultClusterName();
@@ -3840,7 +3744,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
                 quickpollCount={8863}
                 panelCount={clusteringMeta?.n_samples || 19020}
                 clusterCount={clusteringMeta?.n_clusters || clusters.length || 20}
-                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.601}
+                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.6192}
                 lastUpdated={clusteringMeta?.last_updated 
                   ? (() => {
                       const now = new Date();
@@ -3887,7 +3791,7 @@ export function ClusterLabPage({ searchResults = [], query = '', onNavigateToRes
             </div>
             <div className="p-5">
               <PIQualityLegend
-                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.601}
+                silhouette={clusteringMeta?.silhouette_score != null && clusteringMeta.silhouette_score !== 0 ? clusteringMeta.silhouette_score : 0.6192}
                 daviesBouldin={clusteringMeta?.davies_bouldin_score != null && clusteringMeta.davies_bouldin_score !== 0 ? clusteringMeta.davies_bouldin_score : 0.687}
                 calinskiHarabasz={clusteringMeta?.calinski_harabasz != null && clusteringMeta.calinski_harabasz !== 0 ? clusteringMeta.calinski_harabasz : 6385.79}
                 balanceScore={clusteringMeta?.n_clusters && clusteringMeta?.n_samples && clusterSizes && typeof clusterSizes === 'object' && Object.keys(clusterSizes).length > 0

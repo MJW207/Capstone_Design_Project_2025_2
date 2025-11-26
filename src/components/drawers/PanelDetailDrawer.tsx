@@ -520,62 +520,6 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
             className="flex-1 overflow-y-auto px-8 py-6 space-y-8"
             style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
           >
-            {/* AI 인사이트 - 맨 상단 */}
-            <div 
-              className="p-6 rounded-xl relative overflow-hidden"
-              style={{
-                background: 'var(--surface-1)',
-                border: '1px solid var(--border-primary)',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-              }}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div 
-                  className="p-2 rounded-lg"
-                  style={{
-                    background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
-                    color: 'white',
-                  }}
-                >
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <h3 
-                    className="font-semibold text-base"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    AI 인사이트
-                  </h3>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                    패널 특성 분석
-                  </p>
-                </div>
-              </div>
-              {panel.aiSummary ? (
-                <div 
-                  className="p-4 rounded-lg"
-                  style={{
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border-primary)',
-                  }}
-                >
-                  <p 
-                    className="text-sm leading-relaxed"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {panel.aiSummary}
-                  </p>
-                </div>
-              ) : (
-                <div className="text-center py-4">
-                  <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
-                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    AI 인사이트 생성 중...
-                  </p>
-                </div>
-              )}
-            </div>
-
             {/* Basic Info */}
             <div className="space-y-4">
               <div className="flex items-center gap-3 mb-4">
@@ -1045,6 +989,62 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                 </div>
               );
             })()}
+
+            {/* AI 인사이트 - 개요 탭 하단 */}
+            <div 
+              className="p-6 rounded-xl relative overflow-hidden"
+              style={{
+                background: 'var(--surface-1)',
+                border: '1px solid var(--border-primary)',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div 
+                  className="p-2 rounded-lg"
+                  style={{
+                    background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
+                    color: 'white',
+                  }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <h3 
+                    className="font-semibold text-base"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    AI 인사이트
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    패널 특성 분석
+                  </p>
+                </div>
+              </div>
+              {panel.aiSummary ? (
+                <div 
+                  className="p-4 rounded-lg"
+                  style={{
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <p 
+                    className="text-sm leading-relaxed"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {panel.aiSummary}
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    AI 인사이트 생성 중...
+                  </p>
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           {/* Responses Tab */}

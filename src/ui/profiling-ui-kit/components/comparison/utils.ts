@@ -70,7 +70,6 @@ export const FEATURE_NAME_KR: Record<string, string> = {
   'Q8_count': '전자제품 수',
   'Q8_count_scaled': '전자제품 수 (정규화)',
   'Q8_premium_index': '프리미엄 지수',
-  '08_premium_index': '프리미엄 지수', // 숫자로 시작하는 변수명 지원
   'education_level_scaled': '학력 (정규화)',
   'drinking_types_count': '음주 유형 수',
   'smoking_types_count': '흡연 유형 수',
@@ -97,7 +96,7 @@ export const FEATURE_NAME_KR: Record<string, string> = {
   // 브랜드
   'is_apple_user': '애플 사용자',
   'is_samsung_user': '삼성 사용자',
-  'is_premium_phone': '프리미엄 폰 보유 여부',
+  'is_premium_phone': '프리미엄 폰',
   
   // 직업/교육
   'is_employed': '취업 중',
@@ -375,7 +374,6 @@ export const featureNameMap: Record<string, string> = {
   'education_level_scaled': '학력',
   'Q8_count_scaled': '전자제품 수',
   'Q8_premium_index': '프리미엄 지수',
-  '08_premium_index': '프리미엄 지수', // 숫자로 시작하는 변수명 지원
   'is_premium_car': '프리미엄차 보유',
   'age_z': '연령 (Z-score)',
   
@@ -426,7 +424,6 @@ export const featureNameMap: Record<string, string> = {
   // === 폰 관련 ===
   'is_apple_user': '애플 사용자',
   'is_samsung_user': '삼성 사용자',
-  'is_premium_phone': '프리미엄 폰 보유 여부',
   'phone_segment': '폰 세그먼트',
   
   // === 음주/흡연 관련 ===

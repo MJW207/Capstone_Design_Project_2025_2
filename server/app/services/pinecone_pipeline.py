@@ -34,7 +34,7 @@ class PanelSearchPipeline:
             openai_api_key: OpenAI API 키
         """
         self.metadata_extractor = MetadataExtractor(anthropic_api_key)
-        self.filter_extractor = MetadataFilterExtractor()
+        self.filter_extractor = MetadataFilterExtractor(anthropic_api_key)  # ⭐ LLM 기반 필터 추출기
         self.category_classifier = CategoryClassifier(category_config, anthropic_api_key)
         self.text_generator = CategoryTextGenerator(anthropic_api_key)
         self.embedding_generator = EmbeddingGenerator(openai_api_key)
@@ -194,51 +194,22 @@ class PanelSearchPipeline:
         logger.info("[2.5단계] 카테고리별 메타데이터 필터 추출 시작")
         category_filters = {}
         
-        # 외부 필터가 있으면 우선 사용 (프론트엔드 필터)
-        if external_filters:
-            logger.info(f"[2.5단계] 외부 필터 적용: {external_filters}")
-            category_filters.update(external_filters)
-        
-        # 쿼리에서 추출한 메타데이터 필터 추가 (외부 필터와 병합)
-        filter_conflicts = []  # 충돌 감지용
+        # ⭐ 옵션 2: 외부 필터와 쿼리 필터 중 하나만 사용 (병합하지 않음)
+        # 쿼리에서 추출한 필터 확인 (비교용)
+        query_extracted_filters = {}
         for category in classified.keys():
-            if category not in category_filters:  # 외부 필터가 없을 때만 추가
-                cat_filter = self.filter_extractor.extract_filters(metadata, category)
-                if cat_filter:
-                    category_filters[category] = cat_filter
-            else:
-                # 외부 필터와 병합 (외부 필터 우선)
-                cat_filter = self.filter_extractor.extract_filters(metadata, category)
-                if cat_filter:
-                    # 외부 필터에 없는 키만 추가
-                    for key, value in cat_filter.items():
-                        if key in category_filters[category]:
-                            # ⭐ 필터 충돌 감지
-                            external_value = category_filters[category][key]
-                            if external_value != value:
-                                # 값이 다르면 충돌
-                                filter_conflicts.append({
-                                    'category': category,
-                                    'key': key,
-                                    'query_value': value,
-                                    'filter_value': external_value
-                                })
-                                logger.warning(
-                                    f"[필터 충돌] {category}.{key}: "
-                                    f"쿼리='{value}', 필터='{external_value}' → 필터 값 우선 적용"
-                                )
-                        else:
-                            # 충돌 없으면 추가
-                            category_filters[category][key] = value
+            cat_filter = self.filter_extractor.extract_filters(metadata, category)
+            if cat_filter:
+                query_extracted_filters[category] = cat_filter
         
-        # 필터 충돌이 있으면 경고 로그
-        if filter_conflicts:
-            conflict_str = ', '.join([f"{c['category']}.{c['key']}" for c in filter_conflicts])
-            logger.warning(
-                f"[필터 충돌] 총 {len(filter_conflicts)}개 충돌 감지: "
-                f"{conflict_str} "
-                f"→ 외부 필터 값이 우선 적용됩니다"
-            )
+        if external_filters:
+            # 외부 필터가 있으면 외부 필터만 사용 (쿼리 필터 무시)
+            logger.info(f"[2.5단계] 외부 필터만 사용 (쿼리 필터 무시)")
+            category_filters.update(external_filters)
+        else:
+            # 외부 필터가 없으면 쿼리에서 추출한 필터만 사용
+            logger.info(f"[2.5단계] 쿼리 필터만 사용 (외부 필터 없음)")
+            category_filters.update(query_extracted_filters)
         
         step_time = time.time() - step_start
         logger.info(f"[2.5단계 완료] 필터 추출: {step_time:.2f}초, 결과: {category_filters}")
@@ -271,19 +242,19 @@ class PanelSearchPipeline:
             texts = {}
             
             if classified:
-                # 병렬 처리로 텍스트 생성
-                from concurrent.futures import ThreadPoolExecutor, as_completed
-                with ThreadPoolExecutor(max_workers=min(len(classified), 5)) as executor:
-                    futures = {
-                        executor.submit(self.text_generator.generate, category, items): category
-                        for category, items in classified.items()
-                    }
-                    
-                    for future in as_completed(futures):
-                        category = futures[future]
-                        text = future.result()
-                        if text:
+                # ⭐ 노트북과 동일: 순차 처리로 변경 (카테고리 순서 보장)
+                # 병렬 처리는 성능 향상이지만 카테고리 순서가 달라질 수 있어 노트북과 다를 수 있음
+                # 노트북: for category, items in classified.items(): text = self.text_generator.generate(...)
+                for category, items in classified.items():
+                    try:
+                        # ⭐ 노트북과 동일: full_metadata_dict=metadata로 키워드 인자 전달
+                        text = self.text_generator.generate(category, items, full_metadata_dict=metadata)
+                        if text and text.strip():
                             texts[category] = text
+                        else:
+                            logger.warning(f"[WARN] 텍스트 생성 결과가 비어있음 ({category})")
+                    except Exception as e:
+                        logger.error(f"[ERROR] 텍스트 생성 중 예외 발생 ({category}): {e}", exc_info=True)
             
             step_time = time.time() - step_start
             logger.info(f"[3단계 완료] 텍스트 생성: {step_time:.2f}초, 카테고리 수: {len(texts)}")
@@ -291,12 +262,14 @@ class PanelSearchPipeline:
             # 4단계: 임베딩 생성
             step_start = time.time()
             logger.info("[4단계] 임베딩 생성 시작")
+            
             try:
                 if texts:
                     embeddings = self.embedding_generator.generate(texts)
                 else:
                     # 텍스트가 없으면 랜덤 벡터 사용
-                    logger.info("[4단계] 텍스트 없음, 랜덤 벡터 사용")
+                    logger.warning(f"[4단계] ⚠️ 텍스트 없음, 랜덤 벡터 사용 (유사도 기반 검색 불가)")
+                    logger.warning(f"[4단계] ⚠️ classified 카테고리: {list(classified.keys()) if classified else []}")
                     import numpy as np
                     dimension = 1536
                     random_vector = np.random.rand(dimension).astype(np.float32).tolist()
@@ -305,20 +278,26 @@ class PanelSearchPipeline:
                         random_vector = (np.array(random_vector) / norm).tolist()
                     
                     embeddings = {}
-                    for category in classified.keys():
+                    for category in classified.keys() if classified else []:
                         embeddings[category] = random_vector
+                    
+                    logger.warning(f"[4단계] ⚠️ 랜덤 벡터로 검색 (필터만 적용, 유사도 무시)")
                 
                 step_time = time.time() - step_start
                 logger.info(f"[4단계 완료] 임베딩 생성: {step_time:.2f}초, 카테고리 수: {len(embeddings)}")
             except Exception as e:
-                logger.warning(f"[4단계 경고] 임베딩 생성 실패 (계속 진행): {e}")
+                logger.error(f"[4단계 에러] 임베딩 생성 실패: {e}", exc_info=True)
+                logger.warning(f"[4단계] 임베딩 생성 실패로 빈 embeddings 사용")
                 embeddings = {}
             
             if not embeddings:
                 logger.warning("[경고] 임베딩이 비어있음, 검색 불가")
                 return []
             
-            category_order = list(embeddings.keys())
+            # ⭐ 노트북과 동일: classified의 키 순서 사용 (카테고리 순서 보장)
+            # embeddings.keys()는 texts.keys()에서 오는데, 병렬 처리 시 순서가 달라질 수 있음
+            # 노트북은 classified.items()의 순서를 그대로 사용
+            category_order = list(classified.keys()) if classified else list(embeddings.keys())
 
         # 5단계: 단계적 필터링 검색
         step_start = time.time()

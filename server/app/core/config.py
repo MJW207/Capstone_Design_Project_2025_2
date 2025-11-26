@@ -82,17 +82,23 @@ if _category_config_env:
     # 환경변수로 절대 경로 또는 상대 경로 지정 가능
     CATEGORY_CONFIG_PATH: Final[str] = _category_config_env
 else:
-    # 우선순위: 1) 프로젝트 루트/category_config.json, 2) 프로젝트 루트/notebooks/category_config.json
-    _root_path = _PROJECT_ROOT / "category_config.json"
+    # 우선순위: 1) notebooks/category_config_수정.json, 2) 프로젝트 루트/category_config_수정.json, 3) notebooks/category_config.json, 4) 프로젝트 루트/category_config.json
+    _notebooks_modified_path = _PROJECT_ROOT / "notebooks" / "category_config_수정.json"
+    _root_modified_path = _PROJECT_ROOT / "category_config_수정.json"
     _notebooks_path = _PROJECT_ROOT / "notebooks" / "category_config.json"
+    _root_path = _PROJECT_ROOT / "category_config.json"
     
-    if _root_path.exists():
-        CATEGORY_CONFIG_PATH: Final[str] = str(_root_path)
+    if _notebooks_modified_path.exists():
+        CATEGORY_CONFIG_PATH: Final[str] = str(_notebooks_modified_path)
+    elif _root_modified_path.exists():
+        CATEGORY_CONFIG_PATH: Final[str] = str(_root_modified_path)
     elif _notebooks_path.exists():
         CATEGORY_CONFIG_PATH: Final[str] = str(_notebooks_path)
+    elif _root_path.exists():
+        CATEGORY_CONFIG_PATH: Final[str] = str(_root_path)
     else:
-        # 둘 다 없으면 notebooks 경로를 기본값으로 (에러는 load_category_config에서 처리)
-        CATEGORY_CONFIG_PATH: Final[str] = str(_notebooks_path)
+        # 모두 없으면 notebooks/category_config_수정.json을 기본값으로 (에러는 load_category_config에서 처리)
+        CATEGORY_CONFIG_PATH: Final[str] = str(_notebooks_modified_path)
 
 # API Keys (환경변수 우선, 없으면 기본값 사용 - 보안상 .env 파일 사용 권장)
 ANTHROPIC_API_KEY: Final[str] = os.getenv("ANTHROPIC_API_KEY", "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")

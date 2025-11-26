@@ -35,10 +35,31 @@ async def get_search_status():
         if PINECONE_SEARCH_ENABLED:
             try:
                 if PINECONE_API_KEY:
-                    status["pinecone_available"] = True
-                    status["pinecone_index_name"] = PINECONE_INDEX_NAME
+                    # 실제 Pinecone 연결 테스트
+                    try:
+                        from pinecone import Pinecone
+                        pc = Pinecone(api_key=PINECONE_API_KEY)
+                        index = pc.Index(PINECONE_INDEX_NAME)
+                        
+                        # 인덱스 통계 조회로 연결 확인
+                        stats = index.describe_index_stats()
+                        
+                        status["pinecone_available"] = True
+                        status["pinecone_index_name"] = PINECONE_INDEX_NAME
+                        status["pinecone_connected"] = True
+                        status["pinecone_stats"] = {
+                            "dimension": stats.get("dimension", "unknown"),
+                            "total_vector_count": stats.get("total_vector_count", 0),
+                            "index_fullness": stats.get("index_fullness", 0)
+                        }
+                    except Exception as conn_error:
+                        status["pinecone_available"] = False
+                        status["pinecone_connected"] = False
+                        status["pinecone_error"] = f"Pinecone 연결 실패: {str(conn_error)}"
+                        status["pinecone_index_name"] = PINECONE_INDEX_NAME
                 else:
                     status["pinecone_available"] = False
+                    status["pinecone_connected"] = False
                     status["pinecone_error"] = "Pinecone API 키가 설정되지 않았습니다"
                 
                 # 카테고리 설정 파일 확인
@@ -52,9 +73,11 @@ async def get_search_status():
                     
             except Exception as e:
                 status["pinecone_available"] = False
+                status["pinecone_connected"] = False
                 status["pinecone_error"] = str(e)
         else:
             status["pinecone_available"] = False
+            status["pinecone_connected"] = False
         
         # 전체 상태 메시지 생성
         modes = []
@@ -74,6 +97,63 @@ async def get_search_status():
             "pinecone_search_enabled": False,
             "status": "error",
             "message": f"상태 확인 중 오류: {str(e)}"
+        }
+
+
+@router.get("/api/search/cache")
+async def get_cache_status():
+    """검색 캐시 상태 확인"""
+    import threading
+    global _pinecone_cache, _cache_lock
+    
+    if _cache_lock is None:
+        _cache_lock = threading.Lock()
+    
+    with _cache_lock:
+        cache_keys = list(_pinecone_cache.keys())
+        cache_size = len(_pinecone_cache)
+        cache_max_size = _cache_max_size
+        
+        # 캐시 항목 요약 정보
+        cache_items = []
+        for key, value in _pinecone_cache.items():
+            cache_items.append({
+                "key": key,
+                "query": key.split(":")[0] if ":" in key else key,
+                "top_k": value.get("top_k", "unknown"),
+                "result_count": len(value.get("results", [])),
+                "timestamp": value.get("timestamp", "unknown")
+            })
+        
+        return {
+            "cache_enabled": True,
+            "cache_size": cache_size,
+            "cache_max_size": cache_max_size,
+            "cache_usage_percent": round((cache_size / cache_max_size) * 100, 2) if cache_max_size > 0 else 0,
+            "cache_keys": cache_keys,
+            "cache_items": cache_items
+        }
+
+
+@router.delete("/api/search/cache")
+async def clear_cache():
+    """검색 캐시 초기화"""
+    import threading
+    global _pinecone_cache, _cache_lock
+    
+    if _cache_lock is None:
+        _cache_lock = threading.Lock()
+    
+    with _cache_lock:
+        cache_size_before = len(_pinecone_cache)
+        _pinecone_cache.clear()
+        logger.info(f"[Cache] 캐시 초기화 완료: {cache_size_before}개 항목 삭제")
+        
+        return {
+            "success": True,
+            "message": f"캐시가 초기화되었습니다. ({cache_size_before}개 항목 삭제)",
+            "cache_size_before": cache_size_before,
+            "cache_size_after": 0
         }
 
 
@@ -202,8 +282,20 @@ async def _search_with_pinecone(
         # 프론트엔드 필터를 Pinecone 필터로 변환
         external_filters = None
         if filters_dict:
-            converter = PineconeFilterConverter()
-            external_filters = converter.convert_to_pinecone_filters(filters_dict)
+            # ⭐ 빈 필터 체크: 실제로 값이 있는 필터만 있는지 확인
+            has_actual_filters = any(
+                (isinstance(v, list) and len(v) > 0) or
+                (isinstance(v, bool) and v is True) or
+                (isinstance(v, (int, float)) and v > 0) or
+                (isinstance(v, str) and v.strip())
+                for v in filters_dict.values()
+            )
+            
+            if has_actual_filters:
+                converter = PineconeFilterConverter()
+                external_filters = converter.convert_to_pinecone_filters(filters_dict)
+            else:
+                external_filters = None
         
         # 동기 함수를 비동기로 실행 (LLM 호출 등 블로킹 작업 포함)
         # 타임아웃 설정: 240초 (LLM 호출이 여러 단계에서 발생하므로 여유있게 설정)

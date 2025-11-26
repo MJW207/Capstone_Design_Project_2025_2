@@ -421,6 +421,12 @@ def get_panel_from_pinecone(panel_id: str) -> Optional[Dict[str, Any]]:
         welcome1_info = {}
         welcome2_info = {}
         
+        # ⭐ merged_data 로드 및 original_panel 초기화 (함수 시작 부분에서)
+        merged_data = load_merged_data()
+        original_panel = {}
+        if merged_data and panel_id in merged_data:
+            original_panel = merged_data[panel_id]
+        
         # welcome1 정보 (인구 topic에서)
         # ⭐ has_welcome1이 False여도 인구 topic이 있으면 welcome1_info 생성
         if 인구_topic in metadata_by_topic:
@@ -469,12 +475,7 @@ def get_panel_from_pinecone(panel_id: str) -> Optional[Dict[str, Any]]:
                 # 기존 필드명도 확인 (하위 호환성)
                 household_income_str = 직업소득_data.get("가구소득") or all_metadata.get("가구소득", "")
             
-            # ⭐ merged_final.json에서 모든 데이터 가져오기
-            merged_data = load_merged_data()
-            original_panel = {}
-            if merged_data and panel_id in merged_data:
-                original_panel = merged_data[panel_id]
-            
+            # ⭐ original_panel은 이미 위에서 로드됨
             original_job = original_panel.get("직업", "")
             original_job_role = original_panel.get("직무", "")
             

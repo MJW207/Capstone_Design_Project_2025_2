@@ -257,7 +257,23 @@ export function ResultsPage({
       interestLogic: propFilters.interestLogic || 'and',
     };
     
-    const searchKey = getSearchKey(query, filtersToSend);
+    // ⭐ 빈 필터 제거 (백엔드에서 빈 필터를 받으면 쿼리 필터를 무시하는 문제 방지)
+    const cleanedFilters: any = {};
+    for (const [key, value] of Object.entries(filtersToSend)) {
+      if (Array.isArray(value) && value.length > 0) {
+        cleanedFilters[key] = value;
+      } else if (typeof value === 'boolean' && value === true) {
+        cleanedFilters[key] = value;
+      } else if (Array.isArray(value) && value.length === 2 && key === 'ageRange') {
+        // ageRange는 [min, max] 형태, 둘 다 0이 아니거나 범위가 유효한 경우만 포함
+        const [min, max] = value;
+        if (min > 15 || max < 80) {  // 기본 범위(15-80)가 아닌 경우만 포함
+          cleanedFilters[key] = value;
+        }
+      }
+    }
+    
+    const searchKey = getSearchKey(query, cleanedFilters);
     
     // 캐시 확인 (강제 새로고침이 아니고, 같은 검색 키이고, 캐시가 있는 경우)
     if (!forceRefresh && searchCache && searchCache.key === searchKey) {
@@ -294,8 +310,8 @@ export function ResultsPage({
     const searchStartTime = Date.now();
     
     try {
-      // 전체 결과 가져오기
-      const allResults = await fetchAllResults(query.trim(), filtersToSend);
+      // 전체 결과 가져오기 (정리된 필터 사용)
+      const allResults = await fetchAllResults(query.trim(), cleanedFilters);
       const total = allResults.length;
       const pages = Math.max(1, Math.ceil(total / pageSize));
       
@@ -329,8 +345,8 @@ export function ResultsPage({
         onTotalResultsChange(total);
       }
       
-      // 히스토리 저장 (전체 개수 사용)
-      const historyItem = historyManager.createQueryHistory(query.trim(), filtersToSend, total);
+      // 히스토리 저장 (전체 개수 사용, 정리된 필터 사용)
+      const historyItem = historyManager.createQueryHistory(query.trim(), cleanedFilters, total);
       historyManager.save(historyItem);
       
     } catch (err: any) {
@@ -467,18 +483,20 @@ export function ResultsPage({
 
   // 퀵 인사이트 데이터/뷰 제거
 
-  // Sort panels by response date
+  // Sort panels by similarity score (노트북 기반 유사도 정렬)
+  // 백엔드에서 이미 유사도 기준으로 정렬되어 있지만, 프론트엔드에서도 유사도 기준 정렬 유지
   const sortedPanels = useMemo(() => {
     return [...panels].sort((a, b) => {
-      // Handle null dates (W-only) - always put at the end
-      if (!a.created_at && !b.created_at) return 0;
-      if (!a.created_at) return 1;
-      if (!b.created_at) return 1;
+      // 유사도 점수가 있으면 유사도 기준으로 정렬 (내림차순 - 높은 점수부터)
+      const similarityA = a.similarity ?? 0;
+      const similarityB = b.similarity ?? 0;
       
-      const dateA = new Date(a.created_at).getTime();
-      const dateB = new Date(b.created_at).getTime();
+      if (similarityA !== similarityB) {
+        return sortOrder === 'desc' ? similarityB - similarityA : similarityA - similarityB;
+      }
       
-      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      // 유사도가 같으면 원래 순서 유지 (백엔드에서 정렬된 순서)
+      return 0;
     });
   }, [panels, sortOrder]);
 
@@ -998,6 +1016,20 @@ export function ResultsPage({
           // latestDate와 medianDate는 현재 데이터가 없음
           // previousTotal도 현재 추적하지 않음
         };
+
+        // 디버깅: summaryData 확인
+        console.log('[ResultsPage] summaryData 생성:', {
+          total: summaryData.total,
+          avgAge: summaryData.avgAge,
+          regionsTop: summaryData.regionsTop,
+          occupationTop: summaryData.occupationTop,
+          marriedRate: summaryData.marriedRate,
+          avgPersonalIncome: summaryData.avgPersonalIncome,
+          avgHouseholdIncome: summaryData.avgHouseholdIncome,
+          carOwnershipRate: summaryData.carOwnershipRate,
+          topPhoneBrand: summaryData.topPhoneBrand,
+          allSearchResultsLength: allSearchResults.length,
+        });
 
         // 새로운 SummaryBar 사용
         const summaryBarProps = convertSummaryDataToBarProps(

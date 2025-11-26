@@ -91,17 +91,30 @@ export function SummaryBar({
   avgAge,
   genderText,
   genderSubText,
-  profileChips,
+  profileChips = [], // 기본값 설정
   onChipClick,
   className = '',
 }: SummaryBarProps) {
+  // 디버깅: 받은 props 확인
+  console.log('[SummaryBarNew] 받은 props:', {
+    foundCount,
+    profileChipsLength: profileChips?.length,
+    profileChips,
+  });
+
   const defaultColors: Array<SummaryProfileChip['color']> = ['indigo', 'blue', 'violet', 'amber', 'emerald', 'slate'];
   
   const chipsWithColors = useMemo(() => {
-    return profileChips.map((chip, index) => ({
+    if (!profileChips || profileChips.length === 0) {
+      console.warn('[SummaryBarNew] profileChips가 비어있습니다.');
+      return [];
+    }
+    const result = profileChips.map((chip, index) => ({
       ...chip,
       color: chip.color || defaultColors[index % defaultColors.length],
     }));
+    console.log('[SummaryBarNew] chipsWithColors:', result);
+    return result;
   }, [profileChips]);
 
   return (

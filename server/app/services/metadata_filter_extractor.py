@@ -1,16 +1,26 @@
 """카테고리별 메타데이터 필터 추출기"""
 from typing import Dict, Any
 import logging
+from anthropic import Anthropic
 
 logger = logging.getLogger(__name__)
 
 
 class MetadataFilterExtractor:
-    """카테고리별 메타데이터 필터 추출 및 정규화 (복수 값 지원)"""
+    """카테고리별 메타데이터 필터 추출 및 정규화 (복수 값 지원) - LLM 기반"""
 
-    def __init__(self):
-        """초기화 (LLM 사용 안 함, rule-based만 사용)"""
-        pass
+    def __init__(self, api_key: str):
+        """
+        Args:
+            api_key: Anthropic API 키
+        """
+        if not api_key:
+            logger.error("[MetadataFilterExtractor] API 키가 비어있습니다!")
+        elif len(api_key) < 50:
+            logger.warning(f"[MetadataFilterExtractor] API 키가 너무 짧습니다 (길이: {len(api_key)})")
+        
+        self.client = Anthropic(api_key=api_key)
+        self.model = "claude-haiku-4-5-20251001"  # ⭐ haiku 사용
 
     def extract_filters(self, metadata: Dict[str, Any], category: str) -> Dict[str, Any]:
         """
@@ -47,7 +57,8 @@ class MetadataFilterExtractor:
         if not relevant_metadata:
             return {}
         
-        # ⭐ 복수 값 보존을 위해 rule-based 정규화 직접 사용
+        # ⭐ 복수 값 보존을 위해 rule-based 정규화 직접 사용 (노트북과 동일)
+        # LLM이 리스트를 단일 값으로 변환하는 문제를 해결하기 위해 rule-based 사용
         normalized_filter = self._rule_based_normalize(relevant_metadata)
         return normalized_filter
 

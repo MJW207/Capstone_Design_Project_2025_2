@@ -28,6 +28,18 @@ export function convertSummaryDataToBarProps(
   // 프로필 칩 생성
   const profileChips: SummaryProfileChip[] = [];
 
+  // 디버깅: 데이터 확인
+  console.log('[SummaryBar] summaryData:', {
+    avgAge: data.avgAge,
+    regionsTop: data.regionsTop,
+    occupationTop: data.occupationTop,
+    marriedRate: data.marriedRate,
+    avgPersonalIncome: data.avgPersonalIncome,
+    avgHouseholdIncome: data.avgHouseholdIncome,
+    carOwnershipRate: data.carOwnershipRate,
+    topPhoneBrand: data.topPhoneBrand,
+  });
+
   // 평균 연령
   if (data.avgAge) {
     profileChips.push({
@@ -109,6 +121,9 @@ export function convertSummaryDataToBarProps(
     });
   }
 
+
+  // 디버깅: 생성된 칩 확인
+  console.log('[SummaryBar] profileChips 생성됨:', profileChips);
 
   return {
     foundCount: data.total,

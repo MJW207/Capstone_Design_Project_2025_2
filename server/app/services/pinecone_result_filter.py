@@ -49,24 +49,19 @@ class PineconeResultFilter:
         has_metadata_filter = bool(first_filter)
 
 
-        # ⭐ 초기 검색 수 결정 - final_count가 None이면 큰 수로 설정
-        # ⚠️ Pinecone 제한: top_k는 최대 10000, 노트북과 동일하게 최소 10000개 검색 보장
-        MAX_TOP_K = 10000  # Pinecone 최대 제한
-        
+        # ⭐ 노트북과 완전히 동일: 초기 검색 수 결정
         if final_count is None:
             # 명수 미명시
             if has_metadata_filter:
-                initial_count = MAX_TOP_K  # 메타데이터 필터 있으면 충분히 큰 수로
+                initial_count = 10000  # 노트북과 동일: 메타데이터 조건 만족하는 모든 패널 검색
             else:
-                initial_count = MAX_TOP_K  # 필터 없으면 적당한 수
+                initial_count = 10000  # 노트북과 동일: 벡터 유사도 높은 상위 10000개 검색
         else:
             # 명수 명시됨
-            # ⭐ 메타데이터 필터가 있으면 모든 후보 확보, 없으면 제한적으로
             if has_metadata_filter:
-                initial_count = MAX_TOP_K  # 메타데이터 필터 O → 조건 만족하는 모든 패널 검색
+                initial_count = 10000  # 노트북과 동일: 메타데이터 조건 만족하는 모든 패널 검색
             else:
-                # 메타데이터 필터 X → 여유있게, 노트북과 동일하게 최소 2000개 보장
-                initial_count = max(final_count * 10, 2000)
+                initial_count = max(final_count * 10, 2000)  # 노트북과 동일: 여유있게 검색
 
         first_results = self.searcher.search_by_category(
             query_embedding=first_embedding,
@@ -95,23 +90,12 @@ class PineconeResultFilter:
                 reverse=True  # 높은 점수부터
             )
             
-            if final_count is None:
-                # 명수 미명시 → 필터 조건 만족하는 전체 반환 (유사도 순)
-                candidate_mb_sns = [mb_sn for mb_sn, score in sorted_filtered]
-            else:
-                # 명수 명시 → 상위 유사도 패널만 (필터 조건 만족하는 패널 중에서)
-                candidate_mb_sns = [mb_sn for mb_sn, score in sorted_filtered[:final_count * 3]]
+            # ⭐ 노트북과 동일: 필터가 있을 때는 전체 유지 (조기 제한 없음)
+            # 노트북: candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns]  # 전체 유지
+            candidate_mb_sns = [mb_sn for mb_sn, score in sorted_filtered]
             
         else:
-            # 필터 없을 때
-            mb_sn_scores = {}
-            for r in first_results:
-                mb_sn = r.get("mb_sn", "")
-                if mb_sn:
-                    score = r.get("score", 0.0)
-                    if mb_sn not in mb_sn_scores or score > mb_sn_scores[mb_sn]:
-                        mb_sn_scores[mb_sn] = score
-            
+            # 필터 없을 때 (노트북과 동일)
             # ✅ 정렬 순서 유지하며 후보군 구성 (노트북과 동일)
             first_sorted = sorted(
                 [r for r in first_results if r.get("mb_sn")],
@@ -119,7 +103,7 @@ class PineconeResultFilter:
                 reverse=True
             )
             candidate_mb_sns = list(OrderedDict.fromkeys(r["mb_sn"] for r in first_sorted))
-            
+
             if final_count is not None and not has_metadata_filter:
                 candidate_mb_sns = candidate_mb_sns[:max(final_count * 10, 10000)]
 
@@ -143,16 +127,13 @@ class PineconeResultFilter:
             if len(candidate_mb_sns) == 0:
                 break
 
-            # 후보 수에 따라 검색 수 결정
-            # ⚠️ Pinecone 제한: top_k는 최대 10000, 노트북과 동일하게 최대 10000개 검색
-            MAX_TOP_K = 10000  # Pinecone 최대 제한
-            
+            # ⭐ 노트북과 완전히 동일: 후보 수에 따라 검색 수 결정
             if final_count is None and has_category_filter:
                 # 명수 미명시 + 메타데이터 필터 O → 충분히 큰 수
-                search_count = min(len(candidate_mb_sns) * 3, MAX_TOP_K)
+                search_count = min(len(candidate_mb_sns) * 3, 10000)
             else:
                 # 명수 명시 or 필터 없음 → 적당히
-                search_count = min(len(candidate_mb_sns) * 2, MAX_TOP_K)
+                search_count = min(len(candidate_mb_sns) * 2, 10000)
 
             search_count = max(search_count, 1)
 
@@ -181,15 +162,12 @@ class PineconeResultFilter:
                 # ⭐ 유사도 점수 기준으로 정렬 (필터 조건 만족하는 패널 중에서)
                 sorted_mb_sns = sorted(mb_sn_scores.items(), key=lambda x: x[1], reverse=True)
                 
-                if final_count is None:
-                    # 명수 미명시 → 필터 조건 만족하는 전체 반환 (유사도 순)
-                    candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns]
-                else:
-                    # 명수 명시 → 상위 유사도 패널만 (필터 조건 만족하는 패널 중에서)
-                    candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns[:final_count * 3]]
+                # ⭐ 노트북과 동일: 필터가 있을 때는 전체 유지 (조기 제한 없음)
+                # 노트북: candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns]  # 전체 유지
+                candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns]
                 
             else:
-                # 메타데이터 필터 X → 벡터 유사도 기반 상위 선별
+                # 메타데이터 필터 X → 벡터 유사도 기반 상위 선별 (노트북과 완전히 동일)
                 mb_sn_scores = {}
                 for r in results:
                     mb_sn = r.get("mb_sn", "")
@@ -199,90 +177,52 @@ class PineconeResultFilter:
 
                 sorted_mb_sns = sorted(mb_sn_scores.items(), key=lambda x: x[1], reverse=True)
                 
-                # 다음 단계를 위한 후보 수 결정
-                # ⚠️ Pinecone 제한: top_k는 최대 10000, 노트북과 동일하게 최소 10000개 보장
-                MAX_TOP_K = 10000  # Pinecone 최대 제한
-                
+                # ⭐ 노트북과 완전히 동일: 다음 단계를 위한 후보 수 결정
                 if final_count is None:
                     # 명수 미명시 → 전체 유지
                     next_candidate_count = len(sorted_mb_sns)
                 else:
                     # 명수 명시 → 여유있게, 노트북과 동일하게 최소 10000개 보장
-                    next_candidate_count = max(final_count * 3, MAX_TOP_K)
+                    next_candidate_count = max(final_count * 3, 10000)
                 
                 candidate_mb_sns = [mb_sn for mb_sn, score in sorted_mb_sns[:next_candidate_count]]
 
-        # ⭐ 최종 결과 반환 (mb_sn과 score 함께 반환)
-        # 모든 카테고리 점수의 평균을 사용 (더 합리적인 방식)
-        final_mb_sn_scores = {}  # {mb_sn: [점수1, 점수2, ...]}
-        final_mb_sn_avg_scores = {}  # {mb_sn: 평균점수}
-        
-        # 첫 번째 카테고리 결과에서 점수 수집
-        for r in first_results:
+        # ⭐ 노트북 기반: 최종 결과도 score 정렬 보장 (마지막 카테고리 점수만 사용)
+        # 노트북과 동일하게 마지막 카테고리의 점수만 사용하여 정렬
+        final_results = self.searcher.search_by_category(
+            query_embedding=embeddings[category_order[-1]],
+            category=category_order[-1],
+            top_k=len(candidate_mb_sns),
+            filter_mb_sns=candidate_mb_sns
+        )
+
+        final_scores = {}
+        for r in final_results:
             mb_sn = r.get("mb_sn", "")
             if mb_sn in candidate_mb_sns:
                 score = r.get("score", 0.0)
-                if mb_sn not in final_mb_sn_scores:
-                    final_mb_sn_scores[mb_sn] = []
-                final_mb_sn_scores[mb_sn].append(score)
+                # 최고 점수만 유지 (여러 카테고리에서 같은 mb_sn이 나올 수 있음)
+                if mb_sn not in final_scores or score > final_scores[mb_sn]:
+                    final_scores[mb_sn] = score
+
+        # ⭐ 노트북과 동일: 마지막 카테고리 점수 기준으로 정렬 (내림차순)
+        final_sorted = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
         
-        # 나머지 카테고리 결과에서도 점수 수집
-        for i, category in enumerate(category_order[1:], start=2):
-            embedding = embeddings.get(category)
-            if embedding is None:
-                continue
-            
-            category_filter = (topic_filters or {}).get(category, {})
-            has_category_filter = bool(category_filter)
-            
-            if len(candidate_mb_sns) == 0:
-                break
-            
-            MAX_TOP_K = 10000
-            if final_count is None and has_category_filter:
-                search_count = min(len(candidate_mb_sns) * 3, MAX_TOP_K)
-            else:
-                search_count = min(len(candidate_mb_sns) * 2, MAX_TOP_K)
-            search_count = max(search_count, 1)
-            
-            results = self.searcher.search_by_category(
-                query_embedding=embedding,
-                category=category,
-                top_k=search_count,
-                filter_mb_sns=candidate_mb_sns,
-                metadata_filter=category_filter if has_category_filter else None
+        # ⭐ 노트북과 동일: 최소 유사도 점수 필터링 없이 모든 결과 반환
+        final_mb_sns = [mb_sn for mb_sn, score in final_sorted]
+        
+        if final_count is not None:
+            final_mb_sns = final_mb_sns[:final_count]
+            logger.info(
+                f"✅ 최종 {len(final_mb_sns)}개 패널 선별 완료 ({final_count}명 요청)"
             )
-            
-            # 점수 수집 (모든 카테고리 점수 누적)
-            for r in results:
-                mb_sn = r.get("mb_sn", "")
-                if mb_sn in candidate_mb_sns:
-                    score = r.get("score", 0.0)
-                    if mb_sn not in final_mb_sn_scores:
-                        final_mb_sn_scores[mb_sn] = []
-                    final_mb_sn_scores[mb_sn].append(score)
-        
-        # 각 mb_sn의 평균 점수 계산
-        for mb_sn, scores in final_mb_sn_scores.items():
-            if scores:
-                avg_score = sum(scores) / len(scores)
-                final_mb_sn_avg_scores[mb_sn] = avg_score
-            else:
-                final_mb_sn_avg_scores[mb_sn] = 0.0
-        
-        # ⭐ 평균 점수 기준으로 정렬 (유사도 높은 순서대로)
-        sorted_results = sorted(
-            [(mb_sn, final_mb_sn_avg_scores.get(mb_sn, 0.0)) for mb_sn in candidate_mb_sns],
-            key=lambda x: x[1],
-            reverse=True  # 내림차순 (높은 점수부터)
-        )
-        
-        if final_count is None:
-            # 명수 미명시 - 모든 후보 반환 (벡터 유사도로 정렬됨)
-            final_results = [{"mb_sn": mb_sn, "score": score} for mb_sn, score in sorted_results]
         else:
-            # 명수 명시 - 지정된 개수만 반환 (상위 유사도 패널만)
-            final_results = [{"mb_sn": mb_sn, "score": score} for mb_sn, score in sorted_results[:final_count]]
+            logger.info(
+                f"✅ 최종 {len(final_mb_sns)}개 패널 선별 완료 (조건 만족하는 전체 반환)"
+            )
+
+        # ⭐ 노트북과 동일: mb_sn과 score 함께 반환 (페이지네이션 정렬에 사용)
+        final_results = [{"mb_sn": mb_sn, "score": final_scores.get(mb_sn, 0.0)} for mb_sn in final_mb_sns]
 
         return final_results
 

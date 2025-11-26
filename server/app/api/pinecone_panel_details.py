@@ -168,11 +168,25 @@ async def _get_panel_details_from_pinecone(
     # 응답, AI 요약 등은 패널 상세 정보창에서만 로딩 (/api/panels/{panel_id})
     logger.info(f"[Panel Details] 메타데이터 수집 완료: {len(panel_metadata_map)}개 패널, 결과 변환 시작 (응답 제외)")
     
-    # ⭐ 페이지네이션 적용 (전체 리스트에서 현재 페이지만 처리)
-    total_count = len(mb_sn_list)
+    # ⭐ 노트북 기반 유사도로 정렬 후 페이지네이션 적용
+    # similarity_scores가 있으면 유사도 기준으로 정렬, 없으면 원래 순서 유지
+    if similarity_scores:
+        # 유사도 점수 기준으로 정렬 (내림차순 - 높은 점수부터)
+        sorted_mb_sn_list = sorted(
+            mb_sn_list,
+            key=lambda mb_sn: similarity_scores.get(mb_sn, 0.0),
+            reverse=True
+        )
+        logger.info(f"[Panel Details] 유사도 점수 기준으로 정렬 완료 (상위 5개 점수: {[similarity_scores.get(mb_sn, 0.0) for mb_sn in sorted_mb_sn_list[:5]]})")
+    else:
+        # 유사도 점수가 없으면 원래 순서 유지
+        sorted_mb_sn_list = mb_sn_list
+        logger.info(f"[Panel Details] 유사도 점수 없음, 원래 순서 유지")
+    
+    total_count = len(sorted_mb_sn_list)
     start_idx = (page - 1) * limit
     end_idx = start_idx + limit
-    paginated_mb_sn_list = mb_sn_list[start_idx:end_idx]
+    paginated_mb_sn_list = sorted_mb_sn_list[start_idx:end_idx]
     
     logger.info(f"[Panel Details] 페이지네이션: 전체 {total_count}개 중 {start_idx}~{end_idx}번째 ({len(paginated_mb_sn_list)}개) 처리")
     
@@ -265,18 +279,59 @@ async def _get_panel_details_from_pinecone(
             # merged_data의 base_profile 필드들을 metadata에 병합
             # 시스템 필드 및 중복 필드 제외 (Pinecone 메타데이터 우선)
             exclude_fields = ['mb_sn', 'quick_answers', 'id', 'name', 'gender', 'age', 'region', 'income', 'location', 'detail_location']
+            
+            # SummaryBar에 필요한 한글 필드명 목록 (모든 가능한 변형 포함)
+            important_fields = [
+                # 차량 관련
+                '보유차량여부', '보유차량', 'car_ownership', 'car',
+                # 휴대폰 관련
+                '보유 휴대폰 단말기 브랜드', '휴대폰 브랜드', 'phone_brand', 'phone',
+                # 흡연/음주 관련
+                '흡연경험', '음용경험 술', '궐련형 전자담배/가열식 전자담배 이용경험',
+                'smoking_experience', 'drinking_experience',
+                # 가족 관련
+                '자녀수', '가족수', '결혼여부', 'children_count', 'family_size', 'marriage_status',
+                # 직업/소득 관련
+                '직업', '직무', '월평균 개인소득', '월평균 가구소득', '개인소득', '가구소득',
+                'occupation', 'job_role', 'personal_income', 'household_income',
+                # 학력 관련
+                '최종학력', 'education',
+                # 기타
+                '보유전제품'
+            ]
+            
+            # 디버깅: merged_data의 키 확인 (처음 패널만)
+            if mb_sn == paginated_mb_sn_list[0] if paginated_mb_sn_list else False:
+                merged_keys = [k for k in merged_data.keys() if k not in exclude_fields]
+                important_keys_found = [k for k in merged_keys if k in important_fields]
+                logger.info(f"[Panel Details] merged_data 키 샘플 (mb_sn={mb_sn}): {merged_keys[:20]}")
+                logger.info(f"[Panel Details] important_fields 매칭: {important_keys_found}")
+            
+            # ⭐ 모든 merged_data 필드를 clean_metadata에 병합 (SummaryBar 통계를 위해)
             for key, value in merged_data.items():
                 if key not in exclude_fields and value is not None:
-                    # Pinecone 메타데이터가 있으면 유지, 없으면 merged 데이터 사용
-                    # 단, SummaryBar에 필요한 필드들(보유차량여부, 보유 휴대폰 단말기 브랜드, 흡연경험, 음용경험 술 등)은 항상 merged 데이터 사용
-                    important_fields = ['보유차량여부', '보유 휴대폰 단말기 브랜드', '흡연경험', '음용경험 술', 
-                                       '궐련형 전자담배/가열식 전자담배 이용경험', '보유전제품']
-                    if key in important_fields or key not in clean_metadata:
+                    # SummaryBar에 필요한 필드들은 항상 merged 데이터로 덮어쓰기 (우선순위 최고)
+                    # 다른 필드는 clean_metadata에 없을 때만 추가
+                    if key in important_fields:
+                        clean_metadata[key] = value
+                    elif key not in clean_metadata:
                         clean_metadata[key] = value
         
         # ⭐ 검색 결과에서는 Pinecone 메타데이터 + merged 데이터 병합 완료
         original_job = ""
         original_job_role = ""
+        
+        # ⭐ income을 clean_metadata에서 다시 확인 (merged_data 병합 후)
+        # 모든 가능한 소득 필드명 확인
+        if not income:
+            income = (clean_metadata.get("월평균 개인소득") or 
+                     clean_metadata.get("개인소득") or 
+                     clean_metadata.get("월평균 가구소득") or 
+                     clean_metadata.get("가구소득") or
+                     clean_metadata.get("personal_income") or
+                     clean_metadata.get("household_income") or "")
+            if income:
+                income = str(income)
         
         # ⭐ coverage 계산 (QuickPoll 응답 여부 확인)
         coverage = None
@@ -334,17 +389,17 @@ async def _get_panel_details_from_pinecone(
                 "gender": gender,
                 "age": age,
                 "region": region,
-                "age_group": metadata.get("연령대", ""),
-                "marriage": metadata.get("결혼여부", ""),
-                "children": metadata.get("자녀수"),
-                "family": metadata.get("가족수", ""),
-                "education": metadata.get("최종학력", ""),
+                "age_group": clean_metadata.get("연령대", ""),
+                "marriage": clean_metadata.get("결혼여부", ""),
+                "children": clean_metadata.get("자녀수"),
+                "family": clean_metadata.get("가족수", ""),
+                "education": clean_metadata.get("최종학력", ""),
             },
             "welcome2_info": {
-                "job": metadata.get("직업", "") or original_job,
-                "job_role": metadata.get("직무", "") or original_job_role,
-                "personal_income": metadata.get("개인소득", ""),
-                "household_income": metadata.get("가구소득", ""),
+                "job": clean_metadata.get("직업", "") or original_job,
+                "job_role": clean_metadata.get("직무", "") or original_job_role,
+                "personal_income": clean_metadata.get("월평균 개인소득", "") or clean_metadata.get("개인소득", ""),
+                "household_income": clean_metadata.get("월평균 가구소득", "") or clean_metadata.get("가구소득", ""),
             },
             "similarity": similarity,
             "embedding": None,

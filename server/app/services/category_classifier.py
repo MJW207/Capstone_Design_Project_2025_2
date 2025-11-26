@@ -18,7 +18,7 @@ class CategoryClassifier:
         """
         self.category_config = category_config
         self.client = Anthropic(api_key=api_key)
-        self.model = "claude-haiku-4-5-20251001"
+        self.model = "claude-haiku-4-5-20251001"  # ⭐ haiku 사용
 
     def _build_prompt(self, metadata: Dict[str, Any]) -> str:
         """카테고리 설명 + 메타데이터를 포함한 LLM용 프롬프트 생성"""

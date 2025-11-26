@@ -24,7 +24,6 @@ Kim, J., & Lee, H. (2023). "Family Life Cycle Segmentation in the Digital Age: E
 ## 1. HDBSCAN 알고리즘 개요
 
 ### 1.1 알고리즘 소개
-ㅇㅇ
 **HDBSCAN (Hierarchical Density-Based Spatial Clustering of Applications with Noise)**은 밀도 기반 계층적 클러스터링 알고리즘으로, 다음과 같은 특징을 가집니다:
 
 - **밀도 기반 클러스터링**: 데이터 포인트의 밀도를 기반으로 클러스터를 형성

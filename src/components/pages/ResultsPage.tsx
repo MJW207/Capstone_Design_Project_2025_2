@@ -81,7 +81,7 @@ export function ResultsPage({
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
   const [appliedFilters, setAppliedFilters] = useState<string[]>([]);
   const [selectedPanels, setSelectedPanels] = useState<string[]>([]);
-  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = 최신순, asc = 오래된순
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = 유사도 높은순, asc = 유사도 낮은순
   const [bookmarkedPanels, setBookmarkedPanels] = useState<Set<string>>(new Set());
   const [isBookmarkPanelOpen, setIsBookmarkPanelOpen] = useState(false);
   
@@ -1065,8 +1065,8 @@ export function ResultsPage({
                 {/* Sort Control */}
                 <PISegmentedControl
                   options={[
-                    { value: 'desc', label: '최신순' },
-                    { value: 'asc', label: '오래된순' },
+                    { value: 'desc', label: '유사도 높은순' },
+                    { value: 'asc', label: '유사도 낮은순' },
                   ]}
                   value={sortOrder}
                   onChange={(v) => setSortOrder(v as 'desc' | 'asc')}

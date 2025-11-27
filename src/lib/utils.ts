@@ -258,7 +258,15 @@ export const searchApi = {
   compareGroups: async (groupAId: string, groupBId: string, groupType: string = 'cluster', analysisType: string = 'difference') => {
     // UI 틀만 남기고 실제 구현 제거
     throw new Error('군집 비교 기능이 비활성화되었습니다.');
-  }
+  },
+  
+  // 패널의 군집 매핑 정보 조회
+  getPanelClusterMapping: (panelIds: string[], sessionId: string = 'hdbscan_default') =>
+    api.post('/api/clustering/panel-cluster-mapping', { panel_ids: panelIds, session_id: sessionId }),
+  
+  // 군집 프로필 목록 조회
+  getClusterProfiles: () =>
+    api.get('/api/precomputed/profiles'),
 }
 
 // 로컬 스토리지 유틸리티

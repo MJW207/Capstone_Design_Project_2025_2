@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   X, Loader2, User, MapPin, Calendar, DollarSign, Briefcase, 
   GraduationCap, Home, Car, Smartphone, Heart, Users, 
-  MessageSquare, Tag, Sparkles, FileText, CheckCircle2 
+  MessageSquare, Tag, Sparkles, FileText, CheckCircle2, BarChart3
 } from 'lucide-react';
 import { PIBadge } from '../../ui/pi/PIBadge';
 import { PIChip } from '../../ui/pi/PIChip';
@@ -14,6 +14,8 @@ interface PanelDetailDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   panelId: string;
+  searchResults?: any[];
+  query?: string;
 }
 
 interface PanelResponse {
@@ -68,10 +70,11 @@ interface PanelData {
   };
 }
 
-export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawerProps) {
+export function PanelDetailDrawer({ isOpen, onClose, panelId, searchResults = [], query = '' }: PanelDetailDrawerProps) {
   const [panel, setPanel] = useState<PanelData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clusterInfo, setClusterInfo] = useState<{ clusterId: number; clusterData: any } | null>(null);
   
   // 리사이즈 및 드래그 상태
   const [size, setSize] = useState({ width: 520, height: window.innerHeight });
@@ -223,6 +226,306 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
       loadPanel();
     }
   }, [isOpen, panelId]);
+
+  // 군집 정보 로드 (API에서 가져오기)
+  useEffect(() => {
+    if (!isOpen || !panelId) {
+      setClusterInfo(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadClusterInfo = async () => {
+      try {
+        console.log('[군집 정보] ========== 로드 시작 ==========');
+        console.log('[군집 정보] panelId:', panelId, 'isOpen:', isOpen);
+        
+        // 1. 패널의 군집 ID 가져오기
+        console.log('[군집 정보] [1단계] getPanelClusterMapping 호출 시작');
+        const mappingResponse = await searchApi.getPanelClusterMapping([panelId], 'hdbscan_default');
+        console.log('[군집 정보] [1단계] 매핑 응답:', mappingResponse);
+        
+        if (!isMounted) {
+          console.warn('[군집 정보] 컴포넌트가 언마운트됨 (1단계)');
+          return;
+        }
+        
+        if (!mappingResponse) {
+          console.warn('[군집 정보] [1단계 실패] mappingResponse가 null/undefined');
+          setClusterInfo(null);
+          return;
+        }
+        
+        if (!mappingResponse.mappings) {
+          console.warn('[군집 정보] [1단계 실패] mappings 필드가 없음:', Object.keys(mappingResponse));
+          setClusterInfo(null);
+          return;
+        }
+        
+        const mappings = mappingResponse.mappings;
+        console.log('[군집 정보] [1단계] mappings 배열:', mappings.length, '개');
+        
+        if (!Array.isArray(mappings) || mappings.length === 0) {
+          console.warn('[군집 정보] [1단계 실패] mappings가 배열이 아니거나 비어있음');
+          setClusterInfo(null);
+          return;
+        }
+        
+        // panel_id 매칭 (정규화하여 비교)
+        const normalizedPanelId = String(panelId).trim().toLowerCase();
+        console.log('[군집 정보] [1단계] 정규화된 panelId:', normalizedPanelId);
+        console.log('[군집 정보] [1단계] 매핑 항목 샘플:', mappings.slice(0, 3).map((m: any) => ({
+          panel_id: m.panel_id,
+          found: m.found,
+          cluster_id: m.cluster_id
+        })));
+        
+        // panel_id 매칭 (정규화하여 비교, found 체크는 나중에)
+        const panelMapping = mappings.find((m: any) => {
+          if (!m) return false;
+          const normalizedMappingId = String(m.panel_id || '').trim().toLowerCase();
+          const match = normalizedMappingId === normalizedPanelId;
+          if (match) {
+            console.log('[군집 정보] [1단계] 매칭 발견:', {
+              panel_id: m.panel_id,
+              cluster_id: m.cluster_id,
+              found: m.found,
+              normalizedMappingId,
+              normalizedPanelId
+            });
+          }
+          return match;
+        });
+        
+        if (!panelMapping) {
+          console.warn('[군집 정보] [1단계 실패] panelMapping을 찾을 수 없음');
+          console.warn('[군집 정보] [1단계] 요청한 panelId:', panelId);
+          console.warn('[군집 정보] [1단계] 정규화된 panelId:', normalizedPanelId);
+          console.warn('[군집 정보] [1단계] 사용 가능한 panel_id 목록:', mappings.map((m: any) => ({
+            panel_id: m.panel_id,
+            normalized: String(m.panel_id || '').trim().toLowerCase(),
+            found: m.found
+          })));
+          setClusterInfo(null);
+          return;
+        }
+        
+        if (!panelMapping.found) {
+          console.warn('[군집 정보] [1단계 실패] panelMapping.found가 false - 패널이 Precomputed 데이터에 없음');
+          console.warn('[군집 정보] [1단계] panel_id:', panelMapping.panel_id);
+          setClusterInfo(null);
+          return;
+        }
+        
+        // 군집 0 (노이즈) 또는 -1 제외
+        const clusterId = panelMapping.cluster_id;
+        console.log('[군집 정보] [1단계] 찾은 clusterId:', clusterId, '타입:', typeof clusterId);
+        
+        if (clusterId === null || clusterId === undefined || clusterId === -1 || clusterId === 0) {
+          console.warn('[군집 정보] [1단계 실패] 유효하지 않은 clusterId:', clusterId);
+          setClusterInfo(null);
+          return;
+        }
+        
+        console.log('[군집 정보] [1단계] ✅ 성공 - clusterId:', clusterId);
+
+        // 2. 군집 프로필 정보 가져오기
+        console.log('[군집 정보] [2단계] getClusterProfiles 호출 시작');
+        const profilesResponse = await searchApi.getClusterProfiles();
+        console.log('[군집 정보] [2단계] 프로필 응답 원본:', profilesResponse);
+        console.log('[군집 정보] [2단계] 응답 타입:', typeof profilesResponse, 'isArray:', Array.isArray(profilesResponse));
+        
+        if (!isMounted) {
+          console.warn('[군집 정보] 컴포넌트가 언마운트됨 (2단계)');
+          return;
+        }
+        
+        if (!profilesResponse) {
+          console.warn('[군집 정보] [2단계 실패] 프로필 응답이 없음');
+          setClusterInfo(null);
+          return;
+        }
+        
+        // 응답 형식 확인: { success: true, data: [...] } 또는 직접 배열
+        let profiles: any[] = [];
+        if (Array.isArray(profilesResponse)) {
+          console.log('[군집 정보] [2단계] 응답이 직접 배열');
+          profiles = profilesResponse;
+        } else if (profilesResponse && typeof profilesResponse === 'object') {
+          console.log('[군집 정보] [2단계] 응답이 객체, keys:', Object.keys(profilesResponse));
+          // data 필드가 있으면 사용
+          if ('data' in profilesResponse && Array.isArray(profilesResponse.data)) {
+            console.log('[군집 정보] [2단계] data 필드에서 배열 추출');
+            profiles = profilesResponse.data;
+          } else {
+            console.warn('[군집 정보] [2단계] data 필드가 없거나 배열이 아님');
+          }
+        }
+        
+        console.log('[군집 정보] [2단계] 파싱된 프로필 목록:', profiles.length, '개');
+        if (profiles.length > 0) {
+          console.log('[군집 정보] [2단계] 프로필 cluster 값들 (처음 5개):', profiles.slice(0, 5).map((p: any) => ({
+            cluster: p.cluster,
+            cluster_id: p.cluster_id,
+            name: p.name
+          })));
+        }
+        
+        if (!Array.isArray(profiles) || profiles.length === 0) {
+          console.warn('[군집 정보] [2단계 실패] 프로필 목록이 비어있음');
+          setClusterInfo(null);
+          return;
+        }
+        
+        // cluster 필드로 매칭 (숫자 비교, 타입 안전)
+        const targetClusterId = Number(clusterId);
+        console.log('[군집 정보] [2단계] 찾을 clusterId:', targetClusterId, '타입:', typeof targetClusterId);
+        
+        const clusterProfile = profiles.find((p: any) => {
+          if (!p || typeof p !== 'object') return false;
+          
+          // cluster 필드 찾기
+          let pCluster: number | null = null;
+          if (p.cluster !== undefined && p.cluster !== null) {
+            pCluster = Number(p.cluster);
+          } else if (p.cluster_id !== undefined && p.cluster_id !== null) {
+            pCluster = Number(p.cluster_id);
+          }
+          
+          if (pCluster === null || isNaN(pCluster)) return false;
+          
+          const match = pCluster === targetClusterId;
+          if (match) {
+            console.log('[군집 정보] [2단계] 매칭 성공:', {
+              profile_cluster: pCluster,
+              target_cluster: targetClusterId,
+              name: p.name
+            });
+          }
+          return match;
+        });
+
+        if (!clusterProfile) {
+          console.warn('[군집 정보] [2단계 실패] 프로필을 찾을 수 없음. clusterId:', targetClusterId);
+          console.warn('[군집 정보] [2단계] 사용 가능한 cluster 값들:', profiles.map((p: any) => p.cluster || p.cluster_id));
+          setClusterInfo(null);
+          return;
+        }
+        
+        console.log('[군집 정보] [2단계] ✅ 성공 - 찾은 프로필:', {
+          cluster: clusterProfile.cluster,
+          name: clusterProfile.name,
+          size: clusterProfile.size,
+          has_insights_storytelling: !!clusterProfile.insights_storytelling,
+          has_tags: !!clusterProfile.tags,
+          has_tags_hierarchical: !!clusterProfile.tags_hierarchical
+        });
+
+        // 군집 색상 계산
+        const colors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#6366F1', '#EC4899', '#14B8A6'];
+        const colorIndex = Number(clusterId) % colors.length;
+        
+        // tags 추출
+        let tags: string[] = [];
+        if (clusterProfile.tags && Array.isArray(clusterProfile.tags) && clusterProfile.tags.length > 0) {
+          tags = clusterProfile.tags.filter((t: any) => t && typeof t === 'string');
+        } else if (clusterProfile.tags_hierarchical) {
+          const primaryTags = clusterProfile.tags_hierarchical.primary || [];
+          const secondaryTags = clusterProfile.tags_hierarchical.secondary || [];
+          const lifestyleTags = clusterProfile.tags_hierarchical.lifestyle || [];
+          tags = [
+            ...primaryTags.map((t: any) => {
+              if (typeof t === 'string') return t;
+              return t?.label || t?.name || String(t);
+            }),
+            ...secondaryTags.map((t: any) => {
+              if (typeof t === 'string') return t;
+              return t?.label || t?.name || String(t);
+            }),
+            ...lifestyleTags.map((t: any) => {
+              if (typeof t === 'string') return t;
+              return t?.label || t?.name || String(t);
+            })
+          ].filter((t: string) => t && t.trim().length > 0);
+        }
+        
+        // description 추출 (insights_storytelling 우선)
+        let description = '';
+        if (clusterProfile.insights_storytelling) {
+          if (clusterProfile.insights_storytelling.who?.[0]?.message) {
+            description = clusterProfile.insights_storytelling.who[0].message;
+          } else if (clusterProfile.insights_storytelling.why?.[0]?.message) {
+            description = clusterProfile.insights_storytelling.why[0].message;
+          } else if (clusterProfile.insights_storytelling.what?.[0]?.message) {
+            description = clusterProfile.insights_storytelling.what[0].message;
+          }
+        }
+        
+        if (!description && clusterProfile.insights && Array.isArray(clusterProfile.insights) && clusterProfile.insights.length > 0) {
+          description = clusterProfile.insights[0];
+        }
+        
+        if (!description && clusterProfile.description) {
+          description = clusterProfile.description;
+        }
+        
+        // name 추출
+        const name = clusterProfile.name || 
+                    clusterProfile.name_main || 
+                    clusterProfile.segments?.name_main ||
+                    clusterProfile.segments?.name ||
+                    `클러스터 ${clusterId}`;
+        
+        if (!isMounted) return;
+        
+        const finalClusterInfo = {
+          clusterId: Number(clusterId),
+          clusterData: {
+            size: Number(clusterProfile.size || 0),
+            color: colors[colorIndex],
+            name: String(name || `클러스터 ${clusterId}`),
+            tags: Array.isArray(tags) ? tags : [],
+            description: String(description || ''),
+          }
+        };
+        
+        console.log('[군집 정보] [3단계] 최종 설정할 데이터:', finalClusterInfo);
+        console.log('[군집 정보] [3단계] setClusterInfo 호출 전');
+        setClusterInfo(finalClusterInfo);
+        console.log('[군집 정보] [3단계] setClusterInfo 호출 후');
+        console.log('[군집 정보] ========== 로드 완료 ==========');
+      } catch (err) {
+        console.error('[군집 정보 로드] ========== 에러 발생 ==========');
+        console.error('[군집 정보 로드] 에러 상세:', err);
+        console.error('[군집 정보 로드] 에러 스택:', (err as Error)?.stack);
+        if (isMounted) {
+          setClusterInfo(null);
+        }
+      }
+    };
+
+    loadClusterInfo();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, panelId]);
+
+  // clusterInfo 상태 변경 감지 (디버깅용)
+  useEffect(() => {
+    console.log('[군집 정보] clusterInfo 상태 변경:', clusterInfo);
+    if (clusterInfo) {
+      console.log('[군집 정보] clusterInfo 상세:', {
+        clusterId: clusterInfo.clusterId,
+        hasClusterData: !!clusterInfo.clusterData,
+        name: clusterInfo.clusterData?.name,
+        description: clusterInfo.clusterData?.description,
+        tagsCount: clusterInfo.clusterData?.tags?.length || 0,
+        size: clusterInfo.clusterData?.size
+      });
+    }
+  }, [clusterInfo]);
 
   const loadPanel = async () => {
     setLoading(true);
@@ -520,6 +823,63 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
             className="flex-1 overflow-y-auto px-8 py-6 space-y-8"
             style={{ height: 'calc(100% - 120px)', overflowY: 'auto' }}
           >
+            {/* AI 인사이트 - 최상단 */}
+            <div 
+              className="p-6 rounded-xl relative overflow-hidden"
+              style={{
+                background: 'var(--surface-1)',
+                border: '1px solid var(--border-primary)',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div 
+                  className="p-2 rounded-lg"
+                  style={{
+                    background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
+                    color: 'white',
+                  }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <h3 
+                    className="font-semibold text-base"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    AI 인사이트
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    패널 특성 분석
+                  </p>
+                </div>
+              </div>
+              {panel.aiSummary ? (
+                <div 
+                  className="p-4 rounded-lg"
+                  style={{
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <p 
+                    className="text-sm leading-relaxed"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {panel.aiSummary}
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    AI 인사이트 생성 중...
+                  </p>
+                </div>
+              )}
+            </div>
+
+
             {/* Basic Info */}
             <div className="space-y-4">
               <div className="flex items-center gap-3 mb-4">
@@ -989,62 +1349,6 @@ export function PanelDetailDrawer({ isOpen, onClose, panelId }: PanelDetailDrawe
                 </div>
               );
             })()}
-
-            {/* AI 인사이트 - 개요 탭 하단 */}
-            <div 
-              className="p-6 rounded-xl relative overflow-hidden"
-              style={{
-                background: 'var(--surface-1)',
-                border: '1px solid var(--border-primary)',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-              }}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div 
-                  className="p-2 rounded-lg"
-                  style={{
-                    background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
-                    color: 'white',
-                  }}
-                >
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <h3 
-                    className="font-semibold text-base"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    AI 인사이트
-                  </h3>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                    패널 특성 분석
-                  </p>
-                </div>
-              </div>
-              {panel.aiSummary ? (
-                <div 
-                  className="p-4 rounded-lg"
-                  style={{
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border-primary)',
-                  }}
-                >
-                  <p 
-                    className="text-sm leading-relaxed"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {panel.aiSummary}
-                  </p>
-                </div>
-              ) : (
-                <div className="text-center py-4">
-                  <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
-                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    AI 인사이트 생성 중...
-                  </p>
-                </div>
-              )}
-            </div>
           </TabsContent>
 
           {/* Responses Tab */}

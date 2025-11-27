@@ -430,6 +430,8 @@ export default function App() {
           setSelectedPanelId('');
         }}
         panelId={selectedPanelId}
+        searchResults={searchResults}
+        query={query}
       />
 
       <ExportDrawer
